@@ -1,9 +1,12 @@
 import Fastify from 'fastify'
 import cookie from '@fastify/cookie'
 import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify'
+import { db } from '@phoneup/db'
 import { appRouter } from './appRouter'
 import { createContext } from './trpc/context'
 import { attachRealtimeServer } from './realtime/server'
+import { scheduleEligibilityJob } from './jobs/eligibility'
+import { scheduleReconciliationJob } from './jobs/reconciliation'
 
 const server = Fastify({ logger: true })
 
@@ -22,4 +25,6 @@ server.listen({ port }, (err) => {
     process.exit(1)
   }
   attachRealtimeServer(server.server)
+  scheduleEligibilityJob(db)
+  scheduleReconciliationJob(db)
 })
