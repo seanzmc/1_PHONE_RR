@@ -12,12 +12,8 @@
   "dependencies": {
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "@tanstack/react-query": "^5.62.7",
-    "@trpc/client": "^11.0.0-rc.677",
-    "@trpc/tanstack-react-query": "^11.0.0-rc.677",
     "zustand": "^5.0.2",
-    "@phoneup/contracts": "workspace:*",
-    "@phoneup/api": "workspace:*"
+    "@phoneup/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
