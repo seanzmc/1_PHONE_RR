@@ -19,13 +19,15 @@
     "fastify": "^5.1.0",
     "ws": "^8.18.0",
     "node-cron": "^3.0.3",
-    "drizzle-orm": "^0.36.4"
+    "drizzle-orm": "^0.36.4",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "tsx": "^4.19.2",
     "vitest": "^2.1.5",
     "typescript": "^5.7.2",
     "@types/ws": "^8.5.13",
-    "@types/node": "^22.10.1"
+    "@types/node": "^22.10.1",
+    "@types/node-cron": "^3.0.11"
   }
 }
