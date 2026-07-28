@@ -1,0 +1,56 @@
+# PhoneUp Round-Robin Tool — Project Guardrails
+
+## What this is
+
+Internal tool for one dealership team: assign inbound phone-up leads to sales reps via round-robin, track fairness, and manage rep active/inactive status. **Single team, single rotation queue, single store.** Not a multi-department CRM, not a multi-rooftop platform. Do not build toward those unless explicitly asked.
+
+Team size: ~6 managers, ~30 sales reps, ~8 BDC agents. Built and maintained by one solo dev.
+
+## The one thing this tool must always do well
+
+Assign a phone-up lead to the correct next rep, correctly, in under a few seconds, even with multiple BDC agents submitting at once. Everything else (dashboards, calendars, reports) is secondary and must never slow down or complicate that core loop.
+
+**Before adding any feature, ask:** does this make assigning a lead faster or more correct, or is it a reporting/nice-to-have? If the latter, it's backlog, not core.
+
+## Source documents
+
+- `plans/fusion-plan.md` — the full original architecture (comprehensive, higher-rigor option). Source of truth for schema/algorithm details.
+- `plans/poe-plan.md` — alternate architecture, simpler stack, not the chosen path but useful for comparison.
+- `plans/plan-compare.md` — comparison of the two.
+- `plans/v1-plan.md` — **the actual build spec.** This is what to implement. It's fusion-plan trimmed down to single-team scope — follow it, not the untrimmed fusion-plan, when the two disagree on scope.
+
+## Decided architecture (do not re-litigate without reason)
+
+- **Stack:** Fastify + tRPC v11 + Zod, Drizzle ORM, PostgreSQL, in-process WebSocket (no Redis at this scale), node-cron in-process jobs.
+- **Truth model:** append-only `assignment_events` ledger + `rep_month_counters` projection, rebuildable from the ledger, nightly reconciliation job asserts they match. Never replace this with plain counter increments — it's what makes "why wasn't I next" answerable and drift detectable.
+- **Concurrency:** one `pg_advisory_xact_lock` per assignment transaction. This is the load-bearing correctness mechanism for multi-BDC-agent races. Every path that changes ordering (assign, void, reassign, status override, reactivation) takes the same lock.
+- **The algorithm reads exactly one table: `rep_daily_status`.** Schedule, disqualification, manager override, reactivation — all of these only ever *write* that table. Never add a branch to the ranking/eligibility algorithm for a new edge case; add a status write instead.
+- **Call activity is CRM-exported, not self-reported.** Daily clerical task: import prior day's call activity from the CRM export. This is the one accepted manual chore — do not build fraud-detection heuristics (note-hash dedup, burst-backdate detection) since the data is already externally verified. Keep note-logging simple/optional context.
+- **Disqualification ships in SHADOW mode first** (compute + log + notify managers, enforce nothing) before flipping to ENFORCE, even with verified call data — because the *thresholds* (min calls/notes) still need real-world calibration. Shadow window: 1–2 weeks.
+
+## Roles (exactly 4 — do not add more without explicit ask)
+
+| Role | Can do |
+|---|---|
+| ADMIN | Everything, including policy/enforcement-mode config and role grants |
+| MANAGER | Activate/deactivate any rep, override/reassign assignments, manage staff list & schedule, review reactivation requests, view audit log |
+| BDC | Assign/unassign leads (create + assign, void own within time window), log own activity |
+| REP | View own status/leads only, submit reactivation requests |
+
+## Explicitly cut from v1 (fusion-plan has these; do not build them without a real reason surfacing)
+
+- Multi-store tenancy, Postgres RLS, multi-region hosting
+- Multiple rotation groups (INTERNET/WALK_IN/COMMERCIAL) — `rotation_group` column exists in schema for future-proofing but app logic is hardcoded to `PHONE_UP`
+- Custom fiscal periods — calendar month only
+- Reactivation evidence upload pipeline (S3, malware scan, sha256 dedupe) — text-based manager review is enough until disputes actually require attachments
+- Hash-chained tamper-evident audit log sealing — plain append-only table + no-update/no-delete DB rules is enough
+- Redis (pub/sub, caching) — in-process EventEmitter for realtime fan-out at this scale
+- Graphile Worker — node-cron in-process is permanent, not a stepping stone
+- OpenTelemetry tracing, formal SLO alerting — pino logs are enough until something is actually slow
+- Offline IndexedDB outbox, multi-tab BroadcastChannel dedup
+- Part-time weighting UI (column exists, defaults to 1.0, no UI unless part-timers actually show up)
+- Calendar heatmap, conversion funnels, Gini fairness scores, override-abuse digest emails — backlog, build only after the core loop and a minimal dashboard are solid
+
+## When in doubt
+
+Re-read `plans/v1-plan.md`. If a request would expand scope beyond it, flag that explicitly before building rather than quietly absorbing it.
