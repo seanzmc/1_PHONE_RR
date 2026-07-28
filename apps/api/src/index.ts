@@ -3,6 +3,7 @@ import cookie from '@fastify/cookie'
 import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify'
 import { appRouter } from './appRouter'
 import { createContext } from './trpc/context'
+import { attachRealtimeServer } from './realtime/server'
 
 const server = Fastify({ logger: true })
 
@@ -20,4 +21,5 @@ server.listen({ port }, (err) => {
     server.log.error(err)
     process.exit(1)
   }
+  attachRealtimeServer(server.server)
 })
