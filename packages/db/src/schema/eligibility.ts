@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, integer, timestamp, unique } from 'drizzle-orm/pg-core'
 import { salesRep } from './store'
 
 export const workRequirementPolicy = pgTable('work_requirement_policy', {
@@ -34,7 +34,9 @@ export const repDailyStatus = pgTable('rep_daily_status', {
   decidedBy: text('decided_by', { enum: ['SYSTEM', 'MANAGER_OVERRIDE'] }).notNull().default('SYSTEM'),
   dailyCap: integer('daily_cap'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (table) => ({
+  repDateUnique: unique('rep_daily_status_rep_date_unique').on(table.repId, table.businessDate),
+}))
 
 export const statusOverride = pgTable('status_override', {
   id: uuid('id').primaryKey().defaultRandom(),

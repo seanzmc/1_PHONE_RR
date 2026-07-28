@@ -12,7 +12,7 @@ beforeAll(async () => {
   repId = rep.id
   const [manager] = await db
     .insert(schema.appUser)
-    .values({ email: 'override-test-manager@dealership.test', passwordHash: 'x:y', role: 'MANAGER' })
+    .values({ email: `override-test-manager-${Date.now()}@dealership.test`, passwordHash: 'x:y', role: 'MANAGER' })
     .returning()
   managerUserId = manager.id
 })

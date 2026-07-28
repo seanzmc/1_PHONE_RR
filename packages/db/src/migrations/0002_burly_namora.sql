@@ -1,0 +1,1 @@
+ALTER TABLE "rep_daily_status" ADD CONSTRAINT "rep_daily_status_rep_date_unique" UNIQUE("rep_id","business_date");
