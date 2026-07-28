@@ -43,29 +43,26 @@ Cut from fusion-plan: no `store` plurality (one row, seeded once), no `fiscal_pe
 Kept, same shape as fusion-plan:
 
 ```
-store                 (one row: name, timezone, rotation_salt, settings jsonb)
+store                 (one row: name, rotation_salt, settings jsonb)
 store_hours           (per day-of-week open/close)
 store_closure         (holidays/closures)
 app_user              (email, password_hash, totp_secret, is_active)
-sales_rep             (store_id, user_id, display_name, hired_on, terminated_on,
-                        rotation_groups[] default '{PHONE_UP}', weight default 1.00,
-                        is_house_account)
+sales_rep             (user_id, display_name, weight default 1.00, is_house_account)
 rep_shift             (rep_id, business_date, kind: WORK|OFF|PTO|SICK|TRAINING|SUSPENDED)
 
-work_requirement_policy   (min_calls, calls_per_lead, min_notes, min_note_chars,
-                            min_shift_hours, grace_days_after_hire, grace_after_absence_days,
+work_requirement_policy   (min_calls, grace_days_after_hire, grace_after_absence_days,
                             max_prior_workday_age, enforcement_mode: SHADOW|ENFORCE)
 eligibility_snapshot      (immutable per rep/day evaluation record, versioned)
 rep_daily_status          (THE table the algorithm reads: status, reason, decided_by, daily_cap)
 status_override           (append-only override log, mandatory reason_code + reason_note)
 
 customer              (full_name, phone_e164, phone_digits generated, do_not_call)
-lead                  (customer_id, assigned_rep_id, source_id, vehicle_*, stock_number,
-                        status, business_date, period_key, created_by [BDC actor])
-lead_source           (label, short_key, hotkey_slot)
-lead_activity         (rep_id, lead_id, kind, note_body, occurred_at, business_date,
-                        entry_source: WEB|CRM_IMPORT — CRM_IMPORT rows are what
-                        eligibility actually counts against)
+lead                  (customer_id, assigned_rep_id, status, business_date, period_key,
+                        created_by [BDC actor])
+lead_activity         (rep_id, lead_id, note_body, occurred_at, business_date,
+                        entry_source: CRM_IMPORT — manual daily import is the only
+                        way calls get tracked, no CRM API integration at v1, so
+                        every row is CRM_IMPORT; no self-reported WEB path exists)
 
 assignment_events     (append-only ledger: ASSIGN|SKIP|VOID|REASSIGN_OUT|REASSIGN_IN|
                         BALANCE_CREDIT, cycle_no, credit_delta, queue_snapshot jsonb,
@@ -83,7 +80,7 @@ unassigned_queue       (leads with zero eligible reps — never drop a live phon
 daily_facts            (nightly rollup for the dashboard)
 ```
 
-`business_date`/`period_key` computed by one function (`businessDate(instant, tz)` in `packages/core`), never a generated column (timezone conversion isn't `IMMUTABLE`).
+`business_date`/`period_key` computed by one function (`businessDate(instant)` in `packages/core`, hardcoded `America/New_York` — single store, single timezone, no per-store tz needed), never a generated column.
 
 ---
 
@@ -103,7 +100,7 @@ daily_facts            (nightly rollup for the dashboard)
 | `audit.view` | ✅ | ✅ | — | — |
 | `admin.*` (policy, enforcement mode, roles) | ✅ | — | — | — |
 
-Checked via `requirePerm()` tRPC middleware on every mutation and query, never client-side only. Tenancy (`store_id`) always taken from session, never client input.
+Checked via `requirePerm()` tRPC middleware on every mutation and query, never client-side only. Single store — no tenancy scoping needed.
 
 ---
 
@@ -131,7 +128,6 @@ Two BDC agents submitting within 50ms: agent A gets the lock, assigns, commits. 
 
 Every assignment must expose, in one panel from the board:
 - Customer name + phone (`customer.phone_e164`), with a **one-click copy button** — copies digits only, leading `1` stripped, no formatting (dealer CRM search boxes choke on formatted numbers). Auto-focused for ~5s right after assignment so the loop is: assign → `Enter` → paste in CRM.
-- Vehicle interest, stock number, lead source
 - Timestamp + logging BDC agent
 - Full ranked-roster snapshot at decision time (`assignment_events.queue_snapshot`) — answers "why did X get it" without re-deriving from possibly-mutated state
 - Subsequent `lead_activity` rows tied to that lead (calls/notes logged against it)
@@ -144,8 +140,8 @@ This is schema fusion-plan already provides — just make sure the entry-screen 
 
 Runs early (before shift start), store-local time, node-cron. For each active rep:
 1. Find rep-relative previous working day (store open AND rep scheduled AND employed), bounded by `max_prior_workday_age`.
-2. Pull calls/notes for that day **from CRM-imported `lead_activity` rows** (`entry_source = 'CRM_IMPORT'`) — this is real data, not self-reported, so skip note-hash/burst-backdate fraud heuristics entirely.
-3. Compute required calls (`max(min_calls, ceil(calls_per_lead × leads_received))`) and required notes.
+2. Pull calls for that day **from CRM-imported `lead_activity` rows** — this is real data, not self-reported, so skip note-hash/burst-backdate fraud heuristics entirely.
+3. Compute required calls (`min_calls` threshold).
 4. Write immutable `eligibility_snapshot`, then write `rep_daily_status` (unless a manager override already exists for today — override always wins).
 5. In `SHADOW` mode: compute and log, but status still resolves `ELIGIBLE`; email/dashboard-notify managers "who would have been cut." Flip to `ENFORCE` per policy after 1-2 weeks of shadow review.
 
@@ -165,7 +161,7 @@ A manager or admin uploads/imports the previous day's call-activity export from 
 
 ## 8. Screens (v1 only)
 
-1. **Assign screen (the star).** Lead entry form (phone, name, source, vehicle, optional notes) + full roster panel (Next Up pinned, on-deck list, unavailable-with-reason list) + just-assigned drill-down card with quick-copy. Keyboard-first: `Ctrl+Enter` submits to Next Up, `Alt+C` recalls last copied phone.
+1. **Assign screen (the star).** Lead entry form (phone, name, optional notes) + full roster panel (Next Up pinned, on-deck list, unavailable-with-reason list) + just-assigned drill-down card with quick-copy. Keyboard-first: `Ctrl+Enter` submits to Next Up, `Alt+C` recalls last copied phone.
 2. **Staff list / status toggle (Manager+).** Roster table, one-click Force Active / Force Inactive / Follow Schedule per rep, mandatory reason, visible on the row afterward (no anonymous overrides). Shift entry here too (manual only — CSV import can wait).
 3. **My status (Rep, view-only).** Own eligibility status + reason text (`computed_reason` shown verbatim) + reactivation request form if disqualified.
 4. **Reactivation queue (Manager+).** Pending requests, approve/deny + reason, no self-approval.
