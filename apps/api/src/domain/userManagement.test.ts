@@ -145,3 +145,76 @@ describe('setRole', () => {
     }
   })
 })
+
+import { setActive } from './userManagement'
+
+describe('setActive', () => {
+  it('deactivates and reactivates an account', async () => {
+    const email = `um-test-setactive-a-${Date.now()}@dealership.test`
+    const { userId } = await createAccount(db, {
+      email, displayName: 'Active Test A', role: 'BDC', password: 'testpass123', actorUserId,
+    })
+
+    await setActive(db, { userId, isActive: false, actorUserId })
+    let user = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, userId) })
+    expect(user?.isActive).toBe(false)
+
+    await setActive(db, { userId, isActive: true, actorUserId })
+    user = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, userId) })
+    expect(user?.isActive).toBe(true)
+  })
+
+  it('deactivating a REP also marks them INELIGIBLE for today, reactivating marks ELIGIBLE', async () => {
+    const email = `um-test-setactive-b-${Date.now()}@dealership.test`
+    const { userId } = await createAccount(db, {
+      email, displayName: 'Active Test B', role: 'REP', password: 'testpass123', actorUserId,
+    })
+    const rep = await db.query.salesRep.findFirst({ where: eq(schema.salesRep.userId, userId) })
+    const today = businessDate(new Date())
+
+    await setActive(db, { userId, isActive: false, actorUserId })
+    let status = await db.query.repDailyStatus.findFirst({
+      where: and(eq(schema.repDailyStatus.repId, rep!.id), eq(schema.repDailyStatus.businessDate, today)),
+    })
+    expect(status?.status).toBe('INELIGIBLE')
+    expect(status?.decidedBy).toBe('MANAGER_OVERRIDE')
+
+    await setActive(db, { userId, isActive: true, actorUserId })
+    status = await db.query.repDailyStatus.findFirst({
+      where: and(eq(schema.repDailyStatus.repId, rep!.id), eq(schema.repDailyStatus.businessDate, today)),
+    })
+    expect(status?.status).toBe('ELIGIBLE')
+  })
+
+  it('refuses self-deactivation', async () => {
+    const email = `um-test-setactive-c-${Date.now()}@dealership.test`
+    const { userId } = await createAccount(db, {
+      email, displayName: 'Active Test C', role: 'BDC', password: 'testpass123', actorUserId,
+    })
+
+    await expect(
+      setActive(db, { userId, isActive: false, actorUserId: userId }),
+    ).rejects.toThrow(/own account/)
+  })
+
+  it('refuses to deactivate the last active ADMIN', async () => {
+    const allAdmins = await db.select().from(schema.appUser).where(eq(schema.appUser.role, 'ADMIN'))
+    const activeAdmins = allAdmins.filter((a) => a.isActive)
+    const [survivor, ...rest] = activeAdmins
+
+    for (const admin of rest) {
+      await db.update(schema.appUser).set({ isActive: false }).where(eq(schema.appUser.id, admin.id))
+    }
+
+    const otherActor = rest[0] ?? survivor
+    try {
+      await expect(
+        setActive(db, { userId: survivor.id, isActive: false, actorUserId: otherActor.id }),
+      ).rejects.toThrow(/last active ADMIN/)
+    } finally {
+      for (const admin of rest) {
+        await db.update(schema.appUser).set({ isActive: true }).where(eq(schema.appUser.id, admin.id))
+      }
+    }
+  })
+})

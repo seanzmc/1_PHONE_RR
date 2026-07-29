@@ -151,3 +151,56 @@ export async function setRole(
     })
   })
 }
+
+export async function setActive(
+  db: DB,
+  input: { userId: string; isActive: boolean; actorUserId: string },
+): Promise<void> {
+  if (input.userId === input.actorUserId && !input.isActive) {
+    throw new Error('cannot deactivate your own account')
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
+
+    const user = await tx.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
+    if (!user) throw new Error('user not found')
+
+    if (user.role === 'ADMIN' && !input.isActive) {
+      const others = await tx
+        .select()
+        .from(schema.appUser)
+        .where(
+          and(
+            eq(schema.appUser.role, 'ADMIN'),
+            eq(schema.appUser.isActive, true),
+            ne(schema.appUser.id, input.userId),
+          ),
+        )
+      if (others.length === 0) throw new Error('cannot deactivate: this is the last active ADMIN account')
+    }
+
+    await tx.update(schema.appUser).set({ isActive: input.isActive }).where(eq(schema.appUser.id, input.userId))
+
+    if (user.role === 'REP') {
+      const rep = await tx.query.salesRep.findFirst({ where: eq(schema.salesRep.userId, input.userId) })
+      if (rep) {
+        await applyRepRotationStatus(
+          tx,
+          rep.id,
+          input.isActive ? 'ELIGIBLE' : 'INELIGIBLE',
+          input.isActive ? 'account reactivated' : 'account deactivated',
+        )
+      }
+    }
+
+    await tx.insert(schema.auditEvents).values({
+      actorUserId: input.actorUserId,
+      action: 'user.setActive',
+      entityType: 'app_user',
+      entityId: input.userId,
+      before: { isActive: user.isActive },
+      after: { isActive: input.isActive },
+    })
+  })
+}
