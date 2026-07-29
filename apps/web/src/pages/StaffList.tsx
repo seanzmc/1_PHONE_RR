@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { mutate, query } from '../lib/api'
+import { useBoardRealtime } from '../lib/useBoardRealtime'
 
 type RosterEntry = {
   repId: string
@@ -22,6 +23,7 @@ export function StaffList() {
   }
 
   useEffect(refresh, [])
+  useBoardRealtime(refresh)
 
   async function submitOverride() {
     if (!pendingRepId || !pendingStatus || !reasonNote.trim()) return

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { hasPermission } from '@phoneup/contracts'
 import { mutate, query } from '../lib/api'
+import { useBoardRealtime } from '../lib/useBoardRealtime'
 import { digitsOnly, useClipboardStore } from '../state/clipboardStore'
 import { useAuthStore } from '../state/authStore'
 
@@ -58,6 +59,8 @@ export function AssignScreen() {
   useEffect(() => {
     refreshRoster()
   }, [refreshRoster])
+
+  useBoardRealtime(refreshRoster)
 
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
