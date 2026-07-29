@@ -51,3 +51,103 @@ export async function createAccount(
     return { userId: user.id }
   })
 }
+
+async function applyRepRotationStatus(
+  tx: any,
+  repId: string,
+  status: 'ELIGIBLE' | 'INELIGIBLE',
+  reasonNote: string,
+): Promise<void> {
+  const today = businessDate(new Date())
+  const existing = await tx.query.repDailyStatus.findFirst({
+    where: and(eq(schema.repDailyStatus.repId, repId), eq(schema.repDailyStatus.businessDate, today)),
+  })
+
+  if (existing) {
+    await tx
+      .update(schema.repDailyStatus)
+      .set({ status, decidedBy: 'MANAGER_OVERRIDE', reason: reasonNote, updatedAt: new Date() })
+      .where(eq(schema.repDailyStatus.id, existing.id))
+  } else {
+    await tx.insert(schema.repDailyStatus).values({
+      repId,
+      businessDate: today,
+      status,
+      reason: reasonNote,
+      decidedBy: 'MANAGER_OVERRIDE',
+    })
+  }
+}
+
+async function ensureTodayShift(tx: any, repId: string): Promise<void> {
+  const today = businessDate(new Date())
+  const existing = await tx.query.repShift.findFirst({
+    where: and(eq(schema.repShift.repId, repId), eq(schema.repShift.businessDate, today)),
+  })
+  if (!existing) {
+    await tx.insert(schema.repShift).values({ repId, businessDate: today, kind: 'WORK' })
+  }
+}
+
+export async function setRole(
+  db: DB,
+  input: { userId: string; newRole: Role; actorUserId: string },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
+
+    const user = await tx.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
+    if (!user) throw new Error('user not found')
+
+    const oldRole = user.role as Role
+
+    if (oldRole === 'ADMIN' && input.newRole !== 'ADMIN') {
+      const others = await tx
+        .select()
+        .from(schema.appUser)
+        .where(
+          and(
+            eq(schema.appUser.role, 'ADMIN'),
+            eq(schema.appUser.isActive, true),
+            ne(schema.appUser.id, input.userId),
+          ),
+        )
+      if (others.length === 0) throw new Error('cannot change role: this is the last active ADMIN account')
+    }
+
+    await tx.update(schema.appUser).set({ role: input.newRole }).where(eq(schema.appUser.id, input.userId))
+
+    if (oldRole === 'REP' && input.newRole !== 'REP') {
+      const rep = await tx.query.salesRep.findFirst({ where: eq(schema.salesRep.userId, input.userId) })
+      if (rep) {
+        await applyRepRotationStatus(tx, rep.id, 'INELIGIBLE', `role changed to ${input.newRole}`)
+      }
+    } else if (oldRole !== 'REP' && input.newRole === 'REP') {
+      let rep = await tx.query.salesRep.findFirst({ where: eq(schema.salesRep.userId, input.userId) })
+      if (!rep) {
+        const today = businessDate(new Date())
+        const inserted = await tx
+          .insert(schema.salesRep)
+          .values({ userId: input.userId, displayName: user.displayName ?? user.email, hireDate: today })
+          .returning()
+        rep = inserted[0]
+      } else {
+        await tx
+          .update(schema.salesRep)
+          .set({ displayName: user.displayName ?? user.email })
+          .where(eq(schema.salesRep.id, rep.id))
+      }
+      await ensureTodayShift(tx, rep.id)
+      await applyRepRotationStatus(tx, rep.id, 'ELIGIBLE', 'role changed to REP')
+    }
+
+    await tx.insert(schema.auditEvents).values({
+      actorUserId: input.actorUserId,
+      action: 'user.setRole',
+      entityType: 'app_user',
+      entityId: input.userId,
+      before: { role: oldRole },
+      after: { role: input.newRole },
+    })
+  })
+}
