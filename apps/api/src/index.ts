@@ -28,6 +28,8 @@ await server.register(fastifyTRPCPlugin, {
   trpcOptions: { router: appRouter, createContext },
 })
 
+server.get('/health', () => ({ ok: true }))
+
 // Same-origin static hosting of the built web app, when present, so browser
 // requests to the API and the app share one origin — avoids cross-site
 // cookie config entirely. Absent in local dev (web runs on its own Vite server).
@@ -38,7 +40,7 @@ if (existsSync(webDist)) {
 
 const port = Number(process.env.PORT ?? 3000)
 
-server.listen({ port }, (err) => {
+server.listen({ port, host: '0.0.0.0' }, (err) => {
   if (err) {
     server.log.error(err)
     process.exit(1)

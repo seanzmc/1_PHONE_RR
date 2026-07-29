@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="_ds/industry-f245fcdb-4fae-47dc-8fc7-9e6b2c66e81f/styles.css">
+<script src="_ds/industry-f245fcdb-4fae-47dc-8fc7-9e6b2c66e81f/_ds_bundle.js"></script>
+<style>
+body { margin: 0; }
+a { color: var(--color-accent-700); }
+a:hover { color: var(--color-accent-900); }
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column;background:var(--color-bg);color:var(--color-text);font-size:16px;line-height:1.5">
+
+<sc-if value="{{ showLogin }}" hint-placeholder-val="{{ true }}">
+<div style="min-height:100vh;width:100%;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box">
+  <div class="card blueprint elev-md" style="width:min(440px,100%);padding:36px 30px;display:flex;flex-direction:column;gap:18px;background:var(--color-bg);box-sizing:border-box">
+    
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+      <img src="assets/stingray-logo.png" alt="Stingray Chevrolet" style="height:74px;width:auto;object-fit:contain" />
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <span style="font-family:var(--font-heading);font-weight:600;font-size:26px;line-height:1.15">PhoneUp Round&#8209;Robin</span>
+        <span style="font-size:14px;color:color-mix(in srgb, var(--color-text) 55%, transparent)">Plant City, FL &middot; Sign in to your account</span>
+      </div>
+    </div>
+    <div class="field"><label for="login-email">Email</label><input id="login-email" class="input" type="email" placeholder="you@stingraychevy.com" value="{{ loginEmail }}" onChange="{{ onLoginEmail }}" autoFocus /></div>
+    <div class="field"><label for="login-password">Password</label><input id="login-password" class="input" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" value="{{ loginPassword }}" onChange="{{ onLoginPassword }}" onKeyDown="{{ handleLoginKeyDown }}" /></div>
+    <sc-if value="{{ loginError }}" hint-placeholder-val="{{ false }}">
+      <p style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin:0;color:var(--color-neutral-900)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>{{ loginError }}</p>
+    </sc-if>
+    <button type="button" class="btn btn-primary btn-block blueprint" onClick="{{ handleLogin }}">Sign in<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:2px">
+      <div style="flex:1;height:1px;background:var(--color-divider)"></div>
+      <span style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:color-mix(in srgb, var(--color-text) 50%, transparent);white-space:nowrap">Quick demo sign-in</span>
+      <div style="flex:1;height:1px;background:var(--color-divider)"></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+      <button type="button" class="btn btn-secondary" style="font-size:13px" onClick="{{ quickSignInBDC }}">BDC Agent</button>
+      <button type="button" class="btn btn-secondary" style="font-size:13px" onClick="{{ quickSignInManager }}">Manager</button>
+      <button type="button" class="btn btn-secondary" style="font-size:13px" onClick="{{ quickSignInRep }}">Sales Rep</button>
+      <button type="button" class="btn btn-secondary" style="font-size:13px" onClick="{{ quickSignInAdmin }}">Admin</button>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ authed }}" hint-placeholder-val="{{ false }}">
+
+<nav class="nav" style="background:var(--color-surface);border-bottom:1px solid var(--color-divider);flex-wrap:wrap;position:sticky;top:0;z-index:20;padding:8px 20px;row-gap:8px">
+  <span class="nav-brand" style="display:flex;align-items:center;gap:10px;margin-right:24px">
+    <img src="assets/stingray-logo.png" alt="Stingray Chevrolet" style="height:30px;width:auto;object-fit:contain" />
+    <span style="width:1px;height:24px;background:var(--color-divider);display:inline-block"></span>
+    <span style="font-size:18px">PhoneUp</span>
+  </span>
+  <sc-if value="{{ canSeeAssign }}" hint-placeholder-val="{{ true }}"><a href="#" onClick="{{ goAssign }}" aria-current="{{ assignCurrent }}" style="font-size:15px;padding:6px 4px">Assign</a></sc-if>
+  <sc-if value="{{ canSeeStaff }}" hint-placeholder-val="{{ true }}"><a href="#" onClick="{{ goStaff }}" aria-current="{{ staffCurrent }}" style="font-size:15px;padding:6px 4px">Staff List</a></sc-if>
+  <sc-if value="{{ canSeeDashboard }}" hint-placeholder-val="{{ true }}"><a href="#" onClick="{{ goDashboard }}" aria-current="{{ dashboardCurrent }}" style="font-size:15px;padding:6px 4px">Dashboard</a></sc-if>
+  <sc-if value="{{ canSeeReactivation }}" hint-placeholder-val="{{ true }}"><a href="#" onClick="{{ goReactivation }}" aria-current="{{ reactivationCurrent }}" style="font-size:15px;padding:6px 4px">Reactivations</a></sc-if>
+  <sc-if value="{{ canSeeMyStatus }}" hint-placeholder-val="{{ false }}"><a href="#" onClick="{{ goMyStatus }}" aria-current="{{ mystatusCurrent }}" style="font-size:15px;padding:6px 4px">My Status</a></sc-if>
+  <sc-if value="{{ canSeeAdmin }}" hint-placeholder-val="{{ false }}"><a href="#" onClick="{{ goAdmin }}" aria-current="{{ adminCurrent }}" style="font-size:15px;padding:6px 4px">Admin</a></sc-if>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:12px">
+    <span class="tag tag-outline" style="font-size:12px;white-space:nowrap;flex-shrink:0">{{ currentUser.displayName }} &middot; {{ roleLabel }}</span>
+    <button type="button" class="btn btn-ghost btn-icon" aria-label="Log out" onClick="{{ logout }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+  </div>
+</nav>
+
+<main style="flex:1;padding:20px clamp(16px,3vw,32px) 40px;display:flex;flex-direction:column;gap:20px;max-width:1400px;width:100%;margin:0 auto;box-sizing:border-box">
+
+<sc-if value="{{ isAssignScreen }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+  <div style="flex:1 1 400px;min-width:320px;display:flex;flex-direction:column;gap:14px" onKeyDown="{{ handleFormKeyDown }}">
+    <h2 style="display:flex;align-items:center;gap:8px;margin:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384"/></svg>Assign Lead</h2>
+    <div class="field"><label for="lead-name">Customer name</label><input id="lead-name" class="input" value="{{ leadName }}" onChange="{{ onLeadName }}" onKeyDown="{{ handleNameKeyDown }}" autoFocus /></div>
+    <div class="field"><label for="lead-phone">Phone number</label><input id="lead-phone" class="input" placeholder="(813) 555-0142" value="{{ leadPhone }}" onChange="{{ onLeadPhone }}" onKeyDown="{{ handlePhoneKeyDown }}" /></div>
+    <div class="field"><label for="lead-notes">Notes (optional)</label><textarea id="lead-notes" class="input" rows="2" value="{{ leadNotes }}" onChange="{{ onLeadNotes }}"></textarea></div>
+    <sc-if value="{{ assignError }}" hint-placeholder-val="{{ false }}">
+      <p style="font-size:13px;font-weight:600;margin:0;display:flex;gap:6px;align-items:center;color:var(--color-neutral-900)">{{ assignError }}</p>
+    </sc-if>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button type="button" class="btn btn-primary blueprint" onClick="{{ handleAssign }}">Assign lead<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+      <span style="font-size:12px;color:color-mix(in srgb, var(--color-text) 55%, transparent)">Ctrl + Enter to submit</span>
+    </div>
+
+    <sc-if value="{{ hasLastResult }}" hint-placeholder-val="{{ false }}">
+      <div class="card blueprint elev-sm" style="padding:16px;display:flex;flex-direction:column;gap:10px;margin-top:4px">
+        
+        <div class="card-kicker">Just assigned</div>
+        <sc-if value="{{ showNoEligible }}" hint-placeholder-val="{{ false }}">
+          <p style="font-weight:600;font-size:14px;margin:0">No eligible rep available &mdash; lead queued as unassigned.</p>
+        </sc-if>
+        <sc-if value="{{ assignedOk }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:19px;font-weight:600;font-family:var(--font-heading)">{{ lastResultRepName }}</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:15px">{{ lastResultPhone }}</span>
+            <button type="button" class="btn btn-secondary" style="font-size:12px;padding:4px 10px" onClick="{{ copyPhone }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>Copy digits</button>
+            <sc-if value="{{ hasCopyFeedback }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:color-mix(in srgb, var(--color-text) 60%, transparent)">{{ copyFeedback }}</span></sc-if>
+          </div>
+          <sc-if value="{{ showDuplicateWarning }}" hint-placeholder-val="{{ false }}">
+            <p style="font-size:12px;font-weight:600;display:flex;gap:6px;align-items:center;margin:0;color:var(--color-neutral-900)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>This phone number already exists &mdash; verify before proceeding.</p>
+          </sc-if>
+          <sc-if value="{{ showVoidTrigger }}" hint-placeholder-val="{{ false }}">
+            <button type="button" class="btn btn-ghost" style="font-size:12px;width:fit-content;padding-inline:0" onClick="{{ openVoid }}">Void this assignment</button>
+          </sc-if>
+          <sc-if value="{{ showVoidForm }}" hint-placeholder-val="{{ false }}">
+            <div class="field" style="margin-top:4px"><label for="void-reason">Void reason (required)</label><input id="void-reason" class="input" value="{{ voidReason }}" onChange="{{ onVoidReason }}" /></div>
+            <sc-if value="{{ hasVoidError }}" hint-placeholder-val="{{ false }}"><p style="font-size:12px;font-weight:600;margin:0;color:var(--color-neutral-900)">{{ voidError }}</p></sc-if>
+            <div style="display:flex;gap:8px"><button type="button" class="btn btn-secondary" style="font-size:13px" onClick="{{ confirmVoid }}">Confirm void</button><button type="button" class="btn btn-ghost" style="font-size:13px" onClick="{{ cancelVoid }}">Cancel</button></div>
+          </sc-if>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="flex:1 1 380px;min-width:300px;display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;display:flex;align-items:center;gap:8px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Rotation</h2>
+    <sc-if value="{{ hasNextUp }}" hint-placeholder-val="{{ true }}">
+      <div class="card blueprint elev-md" style="padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        
+        <div><div class="card-kicker">Next up</div><div style="font-size:21px;font-weight:600;font-family:var(--font-heading)">{{ nextUpName }}</div></div>
+        <span class="tag tag-accent">{{ nextUpUps }} ups MTD</span>
+      </div>
+    </sc-if>
+    <div>
+      <h4 style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;opacity:0.6;margin:0 0 8px">On deck</h4>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <sc-for list="{{ onDeck }}" as="rep" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid var(--color-divider);font-size:14px">
+            <span>{{ rep.displayName }}</span><span style="opacity:0.65;font-size:13px">{{ rep.monthlyLoad }} ups</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    <div>
+      <h4 style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;opacity:0.6;margin:0 0 8px">Unavailable</h4>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <sc-for list="{{ unavailable }}" as="rep" hint-placeholder-count="3">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid var(--color-divider);font-size:14px;opacity:0.75;gap:8px;flex-wrap:wrap">
+            <span>{{ rep.displayName }}</span><span class="tag tag-neutral" style="font-size:11px">{{ rep.ineligibleReason }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isStaffScreen }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:16px">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <h2 style="margin:0;display:flex;align-items:center;gap:8px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Staff List</h2>
+    <span style="font-size:13px;opacity:0.65">{{ staffCount }} reps &middot; click a status action to override</span>
+  </div>
+  <sc-if value="{{ hasStaffError }}" hint-placeholder-val="{{ false }}"><p style="font-size:13px;font-weight:600;color:var(--color-neutral-900)">{{ staffError }}</p></sc-if>
+  <div class="card blueprint" style="padding:0;overflow:auto">
+    
+    <table class="table" style="min-width:680px">
+      <thead><tr><th>Rep</th><th>Status</th><th>Ups MTD</th><th>Action</th></tr></thead>
+      <tbody>
+        <sc-for list="{{ staffRoster }}" as="rep" hint-placeholder-count="8">
+          <tr>
+            <td style="font-weight:500">{{ rep.displayName }}</td>
+            <td><span class="{{ rep.statusTagClass }}">{{ rep.statusLabel }}</span></td>
+            <td>{{ rep.monthlyLoad }}</td>
+            <td>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button type="button" class="btn btn-secondary" style="font-size:12px;padding:4px 8px" onClick="{{ rep.forceActive }}">Force active</button>
+                <button type="button" class="btn btn-secondary" style="font-size:12px;padding:4px 8px" onClick="{{ rep.forceInactive }}">Force inactive</button>
+                <button type="button" class="btn btn-ghost" style="font-size:12px;padding:4px 8px" onClick="{{ rep.followSchedule }}">Follow schedule</button>
+              </div>
+            </td>
+          </tr>
+        </sc-for>
+      </tbody>
+    </table>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isDashboardScreen }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:16px">
+  <h2 style="margin:0;display:flex;gap:8px;align-items:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>Dashboard</h2>
+  <sc-if value="{{ importLate }}" hint-placeholder-val="{{ true }}">
+    <div class="card blueprint" style="padding:12px 16px;display:flex;gap:10px;align-items:center;font-size:13px">
+      
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--color-accent-700)"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span><strong>CRM import pending</strong> &mdash; yesterday's call activity hasn't been imported yet. Eligibility numbers may not reflect real activity.</span>
+    </div>
+  </sc-if>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px">
+    <div class="card blueprint elev-sm" style="padding:16px">
+      
+      <div class="card-kicker">Ups per rep &middot; this month</div>
+      <div style="display:flex;flex-direction:column;gap:7px;margin-top:10px">
+        <sc-for list="{{ upsPerRep }}" as="rep" hint-placeholder-count="6">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="width:120px;font-size:13px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ rep.displayName }}</span>
+            <div style="flex:1;background:var(--color-neutral-200);height:8px">
+              <div style="height:100%;background:var(--color-accent);width:{{ rep.barPct }}%"></div>
+            </div>
+            <span style="font-size:12px;width:22px;text-align:right">{{ rep.monthlyLoad }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    <div class="card blueprint elev-sm" style="padding:16px;display:flex;flex-direction:column;gap:6px">
+      
+      <div class="card-kicker">Current cycle progress</div>
+      <div style="font-size:34px;font-family:var(--font-heading);font-weight:600">{{ cycleServed }} / {{ cycleTotal }}</div>
+      <div style="font-size:13px;opacity:0.7">reps served this cycle</div>
+      <div style="background:var(--color-neutral-200);height:8px;margin-top:6px"><div style="height:100%;background:var(--color-accent);width:{{ cyclePct }}%"></div></div>
+    </div>
+    <div class="card blueprint elev-sm" style="padding:16px">
+      
+      <div class="card-kicker">Disqualified / unavailable</div>
+      <div style="font-size:34px;font-family:var(--font-heading);font-weight:600;margin-top:6px">{{ dqCount }}</div>
+      <div style="font-size:13px;opacity:0.7">reps currently ineligible</div>
+    </div>
+    <div class="card blueprint elev-sm" style="padding:16px">
+      
+      <div class="card-kicker">Manager overrides</div>
+      <div style="font-size:34px;font-family:var(--font-heading);font-weight:600;margin-top:6px">{{ overrideCount }}</div>
+      <div style="font-size:13px;opacity:0.7">this month</div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isReactivationScreen }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:16px;max-width:720px">
+  <h2 style="margin:0;display:flex;gap:8px;align-items:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Reactivation Queue</h2>
+  <sc-if value="{{ hasNoRequests }}" hint-placeholder-val="{{ false }}"><p style="opacity:0.6;font-size:14px">No pending requests.</p></sc-if>
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <sc-for list="{{ reactivationRequests }}" as="req" hint-placeholder-count="2">
+      <div class="card blueprint elev-sm" style="padding:16px;display:flex;flex-direction:column;gap:8px">
+        
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;row-gap:6px">
+          <div style="font-weight:600;font-family:var(--font-heading);font-size:18px;flex:1;min-width:160px">{{ req.repName }}</div>
+          <span class="tag tag-outline" style="white-space:nowrap;flex-shrink:0">{{ req.when }}</span>
+        </div>
+        <p style="margin:0;font-size:14px;opacity:0.85">{{ req.text }}</p>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button type="button" class="btn btn-primary blueprint" onClick="{{ req.approve }}">Approve<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+          <button type="button" class="btn btn-secondary blueprint" onClick="{{ req.deny }}">Deny</button>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isMyStatusScreen }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:16px;max-width:560px">
+  <h2 style="margin:0;display:flex;gap:8px;align-items:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>My Status</h2>
+  <div class="card blueprint elev-md" style="padding:20px;display:flex;flex-direction:column;gap:10px">
+    
+    <div class="card-kicker">{{ myStatusRepName }}</div>
+    <span class="{{ myStatusTagClass }}" style="width:fit-content">{{ myStatusLabel }}</span>
+    <sc-if value="{{ myStatusHasReason }}" hint-placeholder-val="{{ false }}"><p style="font-size:13px;opacity:0.75;margin:0">{{ myStatusReason }}</p></sc-if>
+    <p style="font-size:13px;opacity:0.6;margin:0">{{ myStatusUps }} ups this month</p>
+  </div>
+  <sc-if value="{{ myStatusEligible }}" hint-placeholder-val="{{ true }}">
+    <p style="font-size:13px;opacity:0.65">You're eligible and in today's rotation &mdash; nothing to do here.</p>
+  </sc-if>
+  <sc-if value="{{ myStatusIneligibleNotSubmitted }}" hint-placeholder-val="{{ false }}">
+    <div class="card blueprint" style="padding:16px;display:flex;flex-direction:column;gap:10px">
+      
+      <h4 style="margin:0">Request reactivation</h4>
+      <div class="field"><label for="reactivation-text">Tell your manager why you should be reactivated</label><textarea id="reactivation-text" class="input" rows="3" value="{{ reactivationText }}" onChange="{{ onReactivationText }}"></textarea></div>
+      <button type="button" class="btn btn-primary blueprint" style="width:fit-content" onClick="{{ submitReactivation }}">Submit request</button>
+    </div>
+  </sc-if>
+  <sc-if value="{{ reactivationSubmitted }}" hint-placeholder-val="{{ false }}">
+    <p style="font-size:13px;font-weight:600">Request submitted &mdash; your manager will review it.</p>
+  </sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ isAdminScreen }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:16px">
+  <h2 style="margin:0;display:flex;gap:8px;align-items:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>Admin</h2>
+  <div class="seg" role="radiogroup" aria-label="Admin section" style="width:fit-content">
+    <label class="seg-opt"><input type="radio" name="admintab" checked="{{ isAdminPolicy }}" onChange="{{ selectPolicy }}" />Policy</label>
+    <label class="seg-opt"><input type="radio" name="admintab" checked="{{ isAdminTeam }}" onChange="{{ selectTeam }}" />Team &amp; Roles</label>
+    <label class="seg-opt"><input type="radio" name="admintab" checked="{{ isAdminAudit }}" onChange="{{ selectAudit }}" />Audit Log</label>
+  </div>
+
+  <sc-if value="{{ isAdminPolicy }}" hint-placeholder-val="{{ true }}">
+    <div class="card blueprint elev-sm" style="padding:20px;display:flex;flex-direction:column;gap:16px;max-width:600px">
+      
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px">
+        <div class="field"><label for="p-mincalls">Min calls / day</label><input id="p-mincalls" class="input" type="number" value="{{ policyMinCalls }}" onChange="{{ onPolicyMinCalls }}" /></div>
+        <div class="field"><label for="p-hire">Grace days after hire</label><input id="p-hire" class="input" type="number" value="{{ policyGraceHire }}" onChange="{{ onPolicyGraceHire }}" /></div>
+        <div class="field"><label for="p-absence">Grace after absence (days)</label><input id="p-absence" class="input" type="number" value="{{ policyGraceAbsence }}" onChange="{{ onPolicyGraceAbsence }}" /></div>
+      </div>
+      <div class="field"><label id="p-mode-label">Enforcement mode</label>
+        <div class="seg" role="radiogroup" aria-labelledby="p-mode-label">
+          <label class="seg-opt"><input type="radio" name="mode" checked="{{ enforcementShadow }}" onChange="{{ setEnforcementShadow }}" />Shadow</label>
+          <label class="seg-opt"><input type="radio" name="mode" checked="{{ enforcementEnforce }}" onChange="{{ setEnforcementEnforce }}" />Enforce</label>
+        </div>
+      </div>
+      <p style="font-size:12px;opacity:0.65;margin:0">Shadow mode computes and logs disqualifications without enforcing them &mdash; thresholds still need real-world calibration before flipping to Enforce.</p>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isAdminTeam }}" hint-placeholder-val="{{ false }}">
+    <div class="card blueprint" style="padding:0;overflow:auto">
+      
+      <table class="table" style="min-width:680px">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>
+          <sc-for list="{{ accounts }}" as="acct" hint-placeholder-count="5">
+            <tr>
+              <td>{{ acct.displayName }}</td>
+              <td style="opacity:0.7">{{ acct.email }}</td>
+              <td><select class="input" style="min-height:32px;padding:2px 6px;font-size:13px;width:auto" value="{{ acct.role }}" onChange="{{ acct.onRole }}">
+                    <option value="ADMIN">ADMIN</option><option value="MANAGER">MANAGER</option><option value="BDC">BDC</option><option value="REP">REP</option>
+                  </select></td>
+              <td><span class="{{ acct.statusTagClass }}">{{ acct.statusLabel }}</span></td>
+              <td><button type="button" class="btn btn-ghost" style="font-size:12px" onClick="{{ acct.onToggleActive }}">{{ acct.toggleLabel }}</button></td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isAdminAudit }}" hint-placeholder-val="{{ false }}">
+    <div class="card blueprint" style="padding:0;overflow:auto">
+      
+      <table class="table" style="min-width:680px">
+        <thead><tr><th>When</th><th>Action</th><th>Detail</th><th>By</th></tr></thead>
+        <tbody>
+          <sc-for list="{{ auditLog }}" as="entry" hint-placeholder-count="5">
+            <tr><td style="white-space:nowrap;opacity:0.7;font-size:13px">{{ entry.when }}</td><td>{{ entry.action }}</td><td style="opacity:0.75">{{ entry.detail }}</td><td>{{ entry.by }}</td></tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+  </sc-if>
+</div>
+</sc-if>
+
+</main>
+
+<sc-if value="{{ overrideOpen }}" hint-placeholder-val="{{ false }}">
+  <div class="dialog-backdrop">
+    <div class="dialog blueprint" role="dialog" aria-modal="true" aria-labelledby="override-title" style="background:var(--color-bg)">
+      <div class="dialog-title" id="override-title">{{ overrideModalTitle }}</div>
+      <div class="dialog-body">Reason is required and will be visible on this rep's record.</div>
+      <div class="field"><label for="override-reason">Reason</label><textarea id="override-reason" class="input" rows="2" value="{{ overrideReason }}" onChange="{{ onOverrideReason }}"></textarea></div>
+      <sc-if value="{{ hasStaffError }}" hint-placeholder-val="{{ false }}"><p style="font-size:12px;font-weight:600;margin:0;color:var(--color-neutral-900)">{{ staffError }}</p></sc-if>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-secondary blueprint" onClick="{{ cancelOverride }}">Cancel</button>
+        <button type="button" class="btn btn-primary blueprint" onClick="{{ confirmOverride }}">Confirm</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ decisionOpen }}" hint-placeholder-val="{{ false }}">
+  <div class="dialog-backdrop">
+    <div class="dialog blueprint" role="dialog" aria-modal="true" aria-labelledby="decision-title" style="background:var(--color-bg)">
+      <div class="dialog-title" id="decision-title">{{ decisionModalTitle }}</div>
+      <div class="field"><label for="decision-reason">Reason</label><textarea id="decision-reason" class="input" rows="2" value="{{ decisionReason }}" onChange="{{ onDecisionReason }}"></textarea></div>
+      <sc-if value="{{ hasDecisionError }}" hint-placeholder-val="{{ false }}"><p style="font-size:12px;font-weight:600;margin:0;color:var(--color-neutral-900)">{{ decisionError }}</p></sc-if>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-secondary blueprint" onClick="{{ cancelDecision }}">Cancel</button>
+        <button type="button" class="btn btn-primary blueprint" onClick="{{ confirmDecision }}">Confirm</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+</sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    authed: false,
+    currentUser: null,
+    screen: 'login',
+    loginEmail: '',
+    loginPassword: '',
+    loginError: null,
+
+    leadName: '',
+    leadPhone: '',
+    leadNotes: '',
+    assignError: null,
+    lastResult: null,
+    voidOpen: false,
+    voidReason: '',
+    voidError: null,
+    copyFeedback: null,
+    knownPhones: ['8135550142'],
+
+    overrideModal: null,
+    overrideReason: '',
+    staffError: null,
+    overrideCount: 2,
+
+    decisionModal: null,
+    decisionReason: '',
+    decisionError: null,
+
+    reactivationText: '',
+    reactivationSubmitted: false,
+
+    adminTab: 'policy',
+    policy: { minCalls: 8, graceDaysHire: 5, graceAfterAbsence: 2, enforcementMode: 'SHADOW' },
+
+    accounts: [
+      { id: 'u1', displayName: 'J. Park', email: 'jpark@stingraychevy.com', role: 'ADMIN', isActive: true },
+      { id: 'u2', displayName: 'K. Alvarez', email: 'kalvarez@stingraychevy.com', role: 'MANAGER', isActive: true },
+      { id: 'u3', displayName: 'T. Nguyen', email: 'tnguyen@stingraychevy.com', role: 'BDC', isActive: true },
+      { id: 'u4', displayName: 'R. Ibarra', email: 'ribarra@stingraychevy.com', role: 'BDC', isActive: true },
+      { id: 'u5', displayName: 'Diego Marín', email: 'dmarin@stingraychevy.com', role: 'REP', isActive: true },
+      { id: 'u6', displayName: 'Marcus Delgado', email: 'mdelgado@stingraychevy.com', role: 'REP', isActive: false },
+    ],
+
+    auditLog: [
+      { id: 'seed1', when: 'Yesterday 5:42 PM', action: 'CRM import', detail: 'July 28 call activity imported (41 rows)', by: 'K. Alvarez' },
+      { id: 'seed2', when: 'Yesterday 9:03 AM', action: 'Status override', detail: 'Renee Castillo → FORCE_INACTIVE (leave of absence)', by: 'K. Alvarez' },
+      { id: 'seed3', when: '2 days ago', action: 'Lead assigned', detail: 'Wade Prentiss → Angelica Novak', by: 'T. Nguyen' },
+    ],
+
+    reactivationRequests: [
+      { id: 'req1', repId: 'r8', repName: 'Sam Whitcombe', text: 'Back from approved PTO as of Monday — ready to resume rotation.', when: 'Today 8:12 AM' },
+      { id: 'req2', repId: 'r9', repName: 'Renee Castillo', text: 'Leave of absence ended July 25th, requesting reactivation for phone-ups.', when: 'Yesterday 3:40 PM' },
+    ],
+
+    roster: [
+      { repId: 'r1', displayName: 'Marcus Delgado', isEligible: true, ineligibleReason: null, servedThisCycle: false, monthlyLoad: 14 },
+      { repId: 'r2', displayName: 'Priya Chandran', isEligible: true, ineligibleReason: null, servedThisCycle: false, monthlyLoad: 11 },
+      { repId: 'r3', displayName: 'Trevor Whitfield', isEligible: true, ineligibleReason: null, servedThisCycle: false, monthlyLoad: 9 },
+      { repId: 'r4', displayName: 'Dana Okafor', isEligible: true, ineligibleReason: null, servedThisCycle: false, monthlyLoad: 17 },
+      { repId: 'r5', displayName: 'Julian Ferreira', isEligible: true, ineligibleReason: null, servedThisCycle: true, monthlyLoad: 12 },
+      { repId: 'r6', displayName: 'Angelica Novak', isEligible: true, ineligibleReason: null, servedThisCycle: false, monthlyLoad: 15 },
+      { repId: 'r7', displayName: 'Beau Larkin', isEligible: true, ineligibleReason: null, servedThisCycle: false, monthlyLoad: 6 },
+      { repId: 'r8', displayName: 'Sam Whitcombe', isEligible: false, ineligibleReason: 'Not scheduled today', servedThisCycle: false, monthlyLoad: 8 },
+      { repId: 'r9', displayName: 'Renee Castillo', isEligible: false, ineligibleReason: 'Manager override — leave of absence', servedThisCycle: false, monthlyLoad: 10 },
+      { repId: 'r10', displayName: 'Diego Marín', isEligible: false, ineligibleReason: 'Manager override — extended leave', servedThisCycle: false, monthlyLoad: 5 },
+    ],
+  };
+
+  roleMeta = {
+    ADMIN: { displayName: 'J. Park', email: 'jpark@stingraychevy.com', label: 'Admin' },
+    MANAGER: { displayName: 'K. Alvarez', email: 'kalvarez@stingraychevy.com', label: 'Manager' },
+    BDC: { displayName: 'T. Nguyen', email: 'tnguyen@stingraychevy.com', label: 'BDC Agent' },
+    REP: { displayName: 'Diego Marín', email: 'dmarin@stingraychevy.com', label: 'Sales Rep' },
+  };
+
+  toDigits(phone) {
+    let d = phone.replace(/\D/g, '');
+    if (d.length === 11 && d.startsWith('1')) d = d.slice(1);
+    return d;
+  }
+
+  addAudit(action, detail) {
+    this.setState((s) => ({
+      auditLog: [
+        { id: 'a' + Date.now() + Math.random(), when: 'Just now', action, detail, by: (s.currentUser && s.currentUser.displayName) || 'System' },
+        ...s.auditLog,
+      ].slice(0, 30),
+    }));
+  }
+
+  quickSignIn(role) {
+    const m = this.roleMeta[role];
+    const screen = role === 'REP' ? 'mystatus' : 'assign';
+    this.setState({
+      authed: true,
+      currentUser: { displayName: m.displayName, email: m.email, role, roleLabel: m.label },
+      screen,
+      loginEmail: '',
+      loginPassword: '',
+      loginError: null,
+    });
+  }
+
+  doLogin() {
+    const email = this.state.loginEmail.trim();
+    if (!email || !this.state.loginPassword) {
+      this.setState({ loginError: 'Enter your email and password' });
+      return;
+    }
+    const lower = email.toLowerCase();
+    let role = 'BDC';
+    if (lower.includes('admin')) role = 'ADMIN';
+    else if (lower.includes('manager') || lower.includes('mgr')) role = 'MANAGER';
+    else if (lower.includes('rep')) role = 'REP';
+    this.quickSignIn(role);
+  }
+
+  logout() {
+    this.setState({ authed: false, currentUser: null, screen: 'login', loginEmail: '', loginPassword: '' });
+  }
+
+  handleAssign() {
+    const name = this.state.leadName.trim();
+    const phone = this.state.leadPhone.trim();
+    if (!name) { this.setState({ assignError: 'Customer name is required' }); return; }
+    if (!phone) { this.setState({ assignError: 'Phone number is required' }); return; }
+    const digits = this.toDigits(phone);
+    if (digits.length !== 10) { this.setState({ assignError: 'Enter a valid 10-digit phone number' }); return; }
+
+    const roster = this.state.roster;
+    const eligible = roster.filter((r) => r.isEligible);
+    const target = eligible.find((r) => !r.servedThisCycle) || null;
+    const duplicate = this.state.knownPhones.includes(digits);
+    let newRoster = roster;
+    let result;
+
+    if (target) {
+      newRoster = roster.map((r) => (r.repId === target.repId ? { ...r, servedThisCycle: true, monthlyLoad: r.monthlyLoad + 1 } : r));
+      const stillEligible = newRoster.filter((r) => r.isEligible);
+      if (stillEligible.length && stillEligible.every((r) => r.servedThisCycle)) {
+        newRoster = newRoster.map((r) => (r.isEligible ? { ...r, servedThisCycle: false } : r));
+      }
+      result = { assigned: true, noEligible: false, repId: target.repId, repName: target.displayName, phoneDigits: digits, duplicatePhone: duplicate };
+      this.addAudit('Lead assigned', `${name} \u2192 ${target.displayName}`);
+    } else {
+      result = { assigned: false, noEligible: true, repId: null, repName: null, phoneDigits: digits, duplicatePhone: duplicate };
+      this.addAudit('Lead unassigned', `${name} — no eligible rep, queued`);
+    }
+
+    if (navigator.clipboard) navigator.clipboard.writeText(digits).catch(() => {});
+
+    this.setState({
+      roster: newRoster,
+      lastResult: result,
+      leadName: '', leadPhone: '', leadNotes: '',
+      assignError: null,
+      voidOpen: false, voidReason: '', voidError: null,
+      copyFeedback: null,
+      knownPhones: [...this.state.knownPhones, digits],
+    });
+  }
+
+  handleVoid() {
+    if (!this.state.voidReason.trim()) { this.setState({ voidError: 'Reason is required' }); return; }
+    const lr = this.state.lastResult;
+    if (!lr || !lr.repId) return;
+    const newRoster = this.state.roster.map((r) => (r.repId === lr.repId ? { ...r, servedThisCycle: false, monthlyLoad: Math.max(0, r.monthlyLoad - 1) } : r));
+    this.addAudit('Assignment voided', `${lr.repName} — ${this.state.voidReason}`);
+    this.setState({ roster: newRoster, lastResult: null, voidOpen: false, voidReason: '', voidError: null });
+  }
+
+  copyPhone() {
+    const lr = this.state.lastResult;
+    if (!lr) return;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(lr.phoneDigits).then(() => this.setState({ copyFeedback: 'Copied ✓' })).catch(() => this.setState({ copyFeedback: 'Copy blocked' }));
+    }
+  }
+
+  openOverride(repId, status) {
+    this.setState({ overrideModal: { repId, status }, overrideReason: '', staffError: null });
+  }
+
+  handleOverride() {
+    const m = this.state.overrideModal;
+    if (!m) return;
+    if (!this.state.overrideReason.trim()) { this.setState({ staffError: 'Reason is required' }); return; }
+    const rep = this.state.roster.find((r) => r.repId === m.repId);
+    const roster = this.state.roster.map((r) => {
+      if (r.repId !== m.repId) return r;
+      if (m.status === 'FORCE_INACTIVE') return { ...r, isEligible: false, ineligibleReason: 'Manager override — ' + this.state.overrideReason };
+      return { ...r, isEligible: true, ineligibleReason: null };
+    });
+    this.addAudit('Status override', `${rep ? rep.displayName : ''} → ${m.status}`);
+    this.setState({ roster, overrideModal: null, overrideReason: '', staffError: null, overrideCount: this.state.overrideCount + 1 });
+  }
+
+  openDecision(id, decision) {
+    this.setState({ decisionModal: { id, decision }, decisionReason: '', decisionError: null });
+  }
+
+  handleDecision() {
+    const m = this.state.decisionModal;
+    if (!m) return;
+    if (m.decision === 'DENY' && !this.state.decisionReason.trim()) { this.setState({ decisionError: 'Reason is required to deny' }); return; }
+    const req = this.state.reactivationRequests.find((r) => r.id === m.id);
+    let roster = this.state.roster;
+    if (m.decision === 'APPROVE' && req) {
+      roster = roster.map((r) => (r.repId === req.repId ? { ...r, isEligible: true, ineligibleReason: null } : r));
+    }
+    const remaining = this.state.reactivationRequests.filter((r) => r.id !== m.id);
+    this.addAudit('Reactivation ' + (m.decision === 'APPROVE' ? 'approved' : 'denied'), req ? req.repName : '');
+    this.setState({ roster, reactivationRequests: remaining, decisionModal: null, decisionReason: '', decisionError: null });
+  }
+
+  submitReactivation() {
+    if (!this.state.reactivationText.trim()) return;
+    const rep = this.state.roster.find((r) => r.repId === 'r10');
+    const newReq = { id: 'req' + Date.now(), repId: 'r10', repName: rep ? rep.displayName : '', text: this.state.reactivationText, when: 'Just now' };
+    this.addAudit('Reactivation requested', rep ? rep.displayName : '');
+    this.setState({ reactivationRequests: [...this.state.reactivationRequests, newReq], reactivationSubmitted: true, reactivationText: '' });
+  }
+
+  updatePolicy(field, value) {
+    const num = Number(value);
+    this.setState((s) => ({ policy: { ...s.policy, [field]: isNaN(num) ? s.policy[field] : num } }));
+  }
+
+  setPolicyMode(mode) {
+    this.addAudit('Enforcement mode changed', mode);
+    this.setState((s) => ({ policy: { ...s.policy, enforcementMode: mode } }));
+  }
+
+  changeAccountRole(id, role) {
+    this.addAudit('Role changed', `${id} → ${role}`);
+    this.setState((s) => ({ accounts: s.accounts.map((a) => (a.id === id ? { ...a, role } : a)) }));
+  }
+
+  toggleAccountActive(id, active) {
+    this.addAudit(active ? 'Account reactivated' : 'Account deactivated', id);
+    this.setState((s) => ({ accounts: s.accounts.map((a) => (a.id === id ? { ...a, isActive: active } : a)) }));
+  }
+
+  handleFormKeyDown(e) {
+    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); this.handleAssign(); }
+  }
+  handleNameKeyDown(e) {
+    if (e.key === 'Enter' && !e.ctrlKey) { e.preventDefault(); }
+  }
+  handlePhoneKeyDown(e) {
+    if (e.key === 'Enter' && !e.ctrlKey) { e.preventDefault(); this.handleAssign(); }
+  }
+  handleLoginKeyDown(e) {
+    if (e.key === 'Enter') { e.preventDefault(); this.doLogin(); }
+  }
+
+  renderVals() {
+    const s = this.state;
+    const role = s.currentUser ? s.currentUser.role : null;
+
+    const eligible = s.roster.filter((r) => r.isEligible);
+    const nextUp = eligible.find((r) => !r.servedThisCycle) || null;
+    const onDeck = eligible.filter((r) => !nextUp || r.repId !== nextUp.repId);
+    const unavailable = s.roster.filter((r) => !r.isEligible);
+    const servedCount = eligible.filter((r) => r.servedThisCycle).length;
+    const cyclePct = eligible.length ? Math.round((servedCount / eligible.length) * 100) : 0;
+
+    const maxUps = Math.max(1, ...s.roster.map((r) => r.monthlyLoad));
+    const upsPerRep = [...s.roster].sort((a, b) => b.monthlyLoad - a.monthlyLoad).map((r) => ({ ...r, barPct: Math.round((r.monthlyLoad / maxUps) * 100) }));
+
+    const lr = s.lastResult;
+    const hasLastResult = !!lr;
+    const assignedOk = !!(lr && lr.assigned);
+    const showNoEligible = !!(lr && lr.noEligible);
+    const showDuplicateWarning = !!(lr && lr.duplicatePhone);
+    const showVoidTrigger = assignedOk && !s.voidOpen;
+    const showVoidForm = assignedOk && s.voidOpen;
+
+    const staffRoster = s.roster.map((r) => ({
+      ...r,
+      statusTagClass: r.isEligible ? 'tag tag-accent' : 'tag tag-neutral',
+      statusLabel: r.isEligible ? 'Eligible' : `Ineligible — ${r.ineligibleReason || 'n/a'}`,
+      forceActive: () => this.openOverride(r.repId, 'FORCE_ACTIVE'),
+      forceInactive: () => this.openOverride(r.repId, 'FORCE_INACTIVE'),
+      followSchedule: () => this.openOverride(r.repId, 'FOLLOW_SCHEDULE'),
+    }));
+
+    const accounts = s.accounts.map((a) => ({
+      ...a,
+      statusTagClass: a.isActive ? 'tag tag-accent' : 'tag tag-neutral',
+      statusLabel: a.isActive ? 'Active' : 'Inactive',
+      toggleLabel: a.isActive ? 'Deactivate' : 'Reactivate',
+      onRole: (e) => this.changeAccountRole(a.id, e.target.value),
+      onToggleActive: () => this.toggleAccountActive(a.id, !a.isActive),
+    }));
+
+    const reactivationRequests = s.reactivationRequests.map((r) => ({
+      ...r,
+      approve: () => this.openDecision(r.id, 'APPROVE'),
+      deny: () => this.openDecision(r.id, 'DENY'),
+    }));
+
+    const myRep = s.roster.find((r) => r.repId === 'r10');
+
+    const om = s.overrideModal;
+    const dm = s.decisionModal;
+
+    return {
+      showLogin: !s.authed,
+      authed: s.authed,
+      currentUser: s.currentUser,
+      roleLabel: s.currentUser ? s.currentUser.roleLabel : '',
+
+      loginEmail: s.loginEmail,
+      loginPassword: s.loginPassword,
+      onLoginEmail: (e) => this.setState({ loginEmail: e.target.value }),
+      onLoginPassword: (e) => this.setState({ loginPassword: e.target.value }),
+      loginError: s.loginError,
+      handleLogin: () => this.doLogin(),
+      handleLoginKeyDown: (e) => this.handleLoginKeyDown(e),
+      quickSignInBDC: () => this.quickSignIn('BDC'),
+      quickSignInManager: () => this.quickSignIn('MANAGER'),
+      quickSignInRep: () => this.quickSignIn('REP'),
+      quickSignInAdmin: () => this.quickSignIn('ADMIN'),
+
+      canSeeAssign: role === 'BDC' || role === 'MANAGER' || role === 'ADMIN',
+      canSeeStaff: role === 'MANAGER' || role === 'ADMIN',
+      canSeeDashboard: role === 'MANAGER' || role === 'ADMIN',
+      canSeeReactivation: role === 'MANAGER' || role === 'ADMIN',
+      canSeeMyStatus: role === 'REP',
+      canSeeAdmin: role === 'ADMIN',
+
+      isAssignScreen: s.screen === 'assign',
+      isStaffScreen: s.screen === 'staff',
+      isDashboardScreen: s.screen === 'dashboard',
+      isReactivationScreen: s.screen === 'reactivation',
+      isMyStatusScreen: s.screen === 'mystatus',
+      isAdminScreen: s.screen === 'admin',
+
+      assignCurrent: s.screen === 'assign' ? 'page' : 'false',
+      staffCurrent: s.screen === 'staff' ? 'page' : 'false',
+      dashboardCurrent: s.screen === 'dashboard' ? 'page' : 'false',
+      reactivationCurrent: s.screen === 'reactivation' ? 'page' : 'false',
+      mystatusCurrent: s.screen === 'mystatus' ? 'page' : 'false',
+      adminCurrent: s.screen === 'admin' ? 'page' : 'false',
+
+      goAssign: (e) => { e.preventDefault(); this.setState({ screen: 'assign' }); },
+      goStaff: (e) => { e.preventDefault(); this.setState({ screen: 'staff' }); },
+      goDashboard: (e) => { e.preventDefault(); this.setState({ screen: 'dashboard' }); },
+      goReactivation: (e) => { e.preventDefault(); this.setState({ screen: 'reactivation' }); },
+      goMyStatus: (e) => { e.preventDefault(); this.setState({ screen: 'mystatus' }); },
+      goAdmin: (e) => { e.preventDefault(); this.setState({ screen: 'admin' }); },
+      logout: () => this.logout(),
+
+      leadName: s.leadName,
+      leadPhone: s.leadPhone,
+      leadNotes: s.leadNotes,
+      onLeadName: (e) => this.setState({ leadName: e.target.value }),
+      onLeadPhone: (e) => this.setState({ leadPhone: e.target.value }),
+      onLeadNotes: (e) => this.setState({ leadNotes: e.target.value }),
+      assignError: s.assignError,
+      handleAssign: () => this.handleAssign(),
+      handleFormKeyDown: (e) => this.handleFormKeyDown(e),
+      handleNameKeyDown: (e) => this.handleNameKeyDown(e),
+      handlePhoneKeyDown: (e) => this.handlePhoneKeyDown(e),
+
+      hasLastResult, assignedOk, showNoEligible, showDuplicateWarning, showVoidTrigger, showVoidForm,
+      lastResultRepName: lr ? lr.repName : '',
+      lastResultPhone: lr ? lr.phoneDigits : '',
+      hasCopyFeedback: !!s.copyFeedback,
+      copyFeedback: s.copyFeedback,
+      copyPhone: () => this.copyPhone(),
+      openVoid: () => this.setState({ voidOpen: true }),
+      cancelVoid: () => this.setState({ voidOpen: false, voidReason: '', voidError: null }),
+      confirmVoid: () => this.handleVoid(),
+      voidReason: s.voidReason,
+      onVoidReason: (e) => this.setState({ voidReason: e.target.value }),
+      hasVoidError: !!s.voidError,
+      voidError: s.voidError,
+
+      hasNextUp: !!nextUp,
+      nextUpName: nextUp ? nextUp.displayName : '',
+      nextUpUps: nextUp ? nextUp.monthlyLoad : 0,
+      onDeck, unavailable,
+
+      staffCount: s.roster.length,
+      staffRoster,
+      hasStaffError: !!s.staffError,
+      staffError: s.staffError,
+      overrideOpen: !!om,
+      overrideModalTitle: om ? `Set ${(s.roster.find((r) => r.repId === om.repId) || {}).displayName || ''} to ${om.status.replace(/_/g, ' ')}` : '',
+      overrideReason: s.overrideReason,
+      onOverrideReason: (e) => this.setState({ overrideReason: e.target.value }),
+      cancelOverride: () => this.setState({ overrideModal: null, overrideReason: '', staffError: null }),
+      confirmOverride: () => this.handleOverride(),
+
+      hasNoRequests: reactivationRequests.length === 0,
+      reactivationRequests,
+      decisionOpen: !!dm,
+      decisionModalTitle: dm ? (dm.decision === 'APPROVE' ? 'Approve reactivation' : 'Deny reactivation') : '',
+      decisionReason: s.decisionReason,
+      onDecisionReason: (e) => this.setState({ decisionReason: e.target.value }),
+      hasDecisionError: !!s.decisionError,
+      decisionError: s.decisionError,
+      cancelDecision: () => this.setState({ decisionModal: null, decisionReason: '', decisionError: null }),
+      confirmDecision: () => this.handleDecision(),
+
+      myStatusRepName: myRep ? myRep.displayName : '',
+      myStatusTagClass: myRep && myRep.isEligible ? 'tag tag-accent' : 'tag tag-neutral',
+      myStatusLabel: myRep && myRep.isEligible ? 'Eligible' : 'Ineligible',
+      myStatusHasReason: !!(myRep && !myRep.isEligible && myRep.ineligibleReason),
+      myStatusReason: myRep ? myRep.ineligibleReason : '',
+      myStatusUps: myRep ? myRep.monthlyLoad : 0,
+      myStatusEligible: !!(myRep && myRep.isEligible),
+      myStatusIneligibleNotSubmitted: !!(myRep && !myRep.isEligible && !s.reactivationSubmitted),
+      reactivationText: s.reactivationText,
+      onReactivationText: (e) => this.setState({ reactivationText: e.target.value }),
+      submitReactivation: () => this.submitReactivation(),
+      reactivationSubmitted: s.reactivationSubmitted,
+
+      upsPerRep, maxUps,
+      cycleServed: servedCount,
+      cycleTotal: eligible.length,
+      cyclePct,
+      dqCount: unavailable.length,
+      overrideCount: s.overrideCount,
+      importLate: true,
+
+      adminTab: s.adminTab,
+      isAdminPolicy: s.adminTab === 'policy',
+      isAdminTeam: s.adminTab === 'team',
+      isAdminAudit: s.adminTab === 'audit',
+      selectPolicy: () => this.setState({ adminTab: 'policy' }),
+      selectTeam: () => this.setState({ adminTab: 'team' }),
+      selectAudit: () => this.setState({ adminTab: 'audit' }),
+      policyMinCalls: s.policy.minCalls,
+      onPolicyMinCalls: (e) => this.updatePolicy('minCalls', e.target.value),
+      policyGraceHire: s.policy.graceDaysHire,
+      onPolicyGraceHire: (e) => this.updatePolicy('graceDaysHire', e.target.value),
+      policyGraceAbsence: s.policy.graceAfterAbsence,
+      onPolicyGraceAbsence: (e) => this.updatePolicy('graceAfterAbsence', e.target.value),
+      enforcementShadow: s.policy.enforcementMode === 'SHADOW',
+      enforcementEnforce: s.policy.enforcementMode === 'ENFORCE',
+      setEnforcementShadow: () => this.setPolicyMode('SHADOW'),
+      setEnforcementEnforce: () => this.setPolicyMode('ENFORCE'),
+      accounts,
+      auditLog: s.auditLog,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

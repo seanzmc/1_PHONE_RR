@@ -8,3 +8,5 @@ dist/
 coverage/
 .playwright-mcp/
 Name Email Role.tsv
+docs/build-logs.txt
+*.zip
