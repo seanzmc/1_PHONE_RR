@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
+import { hasPermission } from '@phoneup/contracts'
 import { useAuthStore } from './state/authStore'
 import { Login } from './pages/Login'
 import { AssignScreen } from './pages/AssignScreen'
 import { StaffList } from './pages/StaffList'
 import { Dashboard } from './pages/Dashboard'
+import { UserManagement } from './pages/UserManagement'
 
-type Page = 'assign' | 'staff' | 'dashboard'
+type Page = 'assign' | 'staff' | 'dashboard' | 'users'
 
 function App() {
   const { session, loading, refresh, logout } = useAuthStore()
@@ -28,6 +30,7 @@ function App() {
             <button onClick={() => setPage('dashboard')}>Dashboard</button>
           </>
         )}
+        {hasPermission(session.role, 'user.manage') && <button onClick={() => setPage('users')}>Users</button>}
         <span style={{ marginLeft: 'auto' }}>
           {session.email} ({session.role})
         </span>
@@ -37,6 +40,7 @@ function App() {
       {page === 'assign' && <AssignScreen />}
       {page === 'staff' && <StaffList />}
       {page === 'dashboard' && <Dashboard />}
+      {page === 'users' && <UserManagement />}
     </div>
   )
 }
