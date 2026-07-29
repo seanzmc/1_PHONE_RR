@@ -204,3 +204,27 @@ export async function setActive(
     })
   })
 }
+
+export async function resetPassword(
+  db: DB,
+  input: { userId: string; newPassword: string; actorUserId: string },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const user = await tx.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
+    if (!user) throw new Error('user not found')
+
+    await tx
+      .update(schema.appUser)
+      .set({ passwordHash: hashPassword(input.newPassword) })
+      .where(eq(schema.appUser.id, input.userId))
+
+    await tx.insert(schema.auditEvents).values({
+      actorUserId: input.actorUserId,
+      action: 'user.resetPassword',
+      entityType: 'app_user',
+      entityId: input.userId,
+      before: null,
+      after: { passwordReset: true },
+    })
+  })
+}

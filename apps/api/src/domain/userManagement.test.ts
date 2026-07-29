@@ -218,3 +218,37 @@ describe('setActive', () => {
     }
   })
 })
+
+import { resetPassword } from './userManagement'
+import { verifyPassword } from '../auth/password'
+
+describe('resetPassword', () => {
+  it('replaces the password hash so only the new password verifies', async () => {
+    const email = `um-test-resetpw-${Date.now()}@dealership.test`
+    const { userId } = await createAccount(db, {
+      email, displayName: 'Reset Test', role: 'BDC', password: 'oldpass123', actorUserId,
+    })
+
+    await resetPassword(db, { userId, newPassword: 'newpass456', actorUserId })
+
+    const user = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, userId) })
+    expect(verifyPassword('newpass456', user!.passwordHash)).toBe(true)
+    expect(verifyPassword('oldpass123', user!.passwordHash)).toBe(false)
+  })
+
+  it('logs an audit event without the password value', async () => {
+    const email = `um-test-resetpw-audit-${Date.now()}@dealership.test`
+    const { userId } = await createAccount(db, {
+      email, displayName: 'Reset Audit Test', role: 'BDC', password: 'oldpass123', actorUserId,
+    })
+
+    await resetPassword(db, { userId, newPassword: 'supersecretnew789', actorUserId })
+
+    const audit = await db.query.auditEvents.findFirst({
+      where: and(eq(schema.auditEvents.entityType, 'app_user'), eq(schema.auditEvents.entityId, userId), eq(schema.auditEvents.action, 'user.resetPassword')),
+    })
+    expect(audit?.action).toBe('user.resetPassword')
+    expect(JSON.stringify(audit?.after)).not.toContain('supersecretnew789')
+    expect(JSON.stringify(audit?.before)).not.toContain('oldpass123')
+  })
+})
