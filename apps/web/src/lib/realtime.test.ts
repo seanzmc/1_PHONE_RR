@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { connectBoardSocket } from './realtime'
+import { connectBoardSocket, resolveBoardSocketUrl } from './realtime'
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = []
@@ -96,5 +96,19 @@ describe('connectBoardSocket', () => {
     expect(FakeWebSocket.instances).toHaveLength(1)
     expect(FakeWebSocket.instances[0].closeCalls).toBe(1)
     vi.useRealTimers()
+  })
+})
+
+describe('resolveBoardSocketUrl', () => {
+  it('resolves a same-origin API path to a secure WebSocket URL', () => {
+    expect(resolveBoardSocketUrl('/trpc', 'https://rr.stingraychevroletcorvette.com')).toBe(
+      'wss://rr.stingraychevroletcorvette.com/ws/board',
+    )
+  })
+
+  it('preserves an absolute local-development API host', () => {
+    expect(resolveBoardSocketUrl('http://localhost:3000/trpc', 'http://localhost:5173')).toBe(
+      'ws://localhost:3000/ws/board',
+    )
   })
 })

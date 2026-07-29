@@ -1,5 +1,12 @@
 export type BoardSocketHandle = { close: () => void }
 
+export function resolveBoardSocketUrl(apiBase: string, pageOrigin: string): string {
+  const url = new URL(apiBase, pageOrigin)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  url.pathname = url.pathname.replace(/\/trpc\/?$/, '/ws/board')
+  return url.toString()
+}
+
 export function connectBoardSocket({
   url,
   onAssignment,

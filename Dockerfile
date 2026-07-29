@@ -6,6 +6,7 @@ WORKDIR /app
 COPY . .
 
 RUN pnpm install --frozen-lockfile
+ARG VITE_API_BASE=/trpc
 RUN pnpm --filter @phoneup/web build
 
 EXPOSE 3000

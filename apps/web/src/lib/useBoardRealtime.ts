@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { connectBoardSocket } from './realtime'
+import { connectBoardSocket, resolveBoardSocketUrl } from './realtime'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:3000/trpc'
-const WS_BASE = API_BASE.replace(/^http/, 'ws').replace(/\/trpc$/, '')
 
 export function useBoardRealtime(onAssignment: () => void): void {
   const callbackRef = useRef(onAssignment)
@@ -10,7 +9,7 @@ export function useBoardRealtime(onAssignment: () => void): void {
 
   useEffect(() => {
     const handle = connectBoardSocket({
-      url: `${WS_BASE}/ws/board`,
+      url: resolveBoardSocketUrl(API_BASE, window.location.origin),
       onAssignment: () => callbackRef.current(),
     })
     return () => handle.close()
