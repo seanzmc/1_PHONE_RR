@@ -160,9 +160,11 @@ export function AssignScreen() {
   function handleVoidReasonKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') {
       e.preventDefault()
+      e.stopPropagation()
       handleVoid()
     } else if (e.key === 'Escape') {
       e.preventDefault()
+      e.stopPropagation()
       setVoidReasonOpen(false)
       setVoidReason('')
       setVoidError(null)
