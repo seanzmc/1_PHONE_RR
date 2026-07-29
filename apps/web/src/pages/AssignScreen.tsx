@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { hasPermission } from '@phoneup/contracts'
 import { mutate, query } from '../lib/api'
 import { digitsOnly, useClipboardStore } from '../state/clipboardStore'
+import { useAuthStore } from '../state/authStore'
 
 type RosterEntry = {
   repId: string
@@ -30,6 +32,7 @@ function toE164(phone: string): string {
 }
 
 export function AssignScreen() {
+  const { session } = useAuthStore()
   const [roster, setRoster] = useState<RosterEntry[]>([])
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -37,9 +40,15 @@ export function AssignScreen() {
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
   const [lastResult, setLastResult] = useState<AssignResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [voidReasonOpen, setVoidReasonOpen] = useState(false)
+  const [voidReason, setVoidReason] = useState('')
+  const [voidError, setVoidError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
+  const voidReasonRef = useRef<HTMLInputElement>(null)
   const { lastCopiedPhone, setLastCopiedPhone } = useClipboardStore()
+
+  const canVoid = session ? hasPermission(session.role, 'lead.void') : false
 
   const refreshRoster = useCallback(() => {
     loadRoster().then(setRoster).catch(() => {})
@@ -60,10 +69,30 @@ export function AssignScreen() {
   }, [lastCopiedPhone])
 
   useEffect(() => {
+    function onKeydown(e: KeyboardEvent) {
+      if (e.altKey && e.key.toLowerCase() === 'v' && lastResult?.assignedRepId && canVoid) {
+        e.preventDefault()
+        setVoidReasonOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKeydown)
+    return () => window.removeEventListener('keydown', onKeydown)
+  }, [lastResult, canVoid])
+
+  useEffect(() => {
     if (lastResult?.assignedRepId) {
       nameRef.current?.focus()
     }
+    setVoidReasonOpen(false)
+    setVoidReason('')
+    setVoidError(null)
   }, [lastResult])
+
+  useEffect(() => {
+    if (voidReasonOpen) {
+      voidReasonRef.current?.focus()
+    }
+  }, [voidReasonOpen])
 
   async function handleAssign() {
     setError(null)
@@ -113,6 +142,30 @@ export function AssignScreen() {
   function handleCopyClick() {
     if (lastCopiedPhone) {
       navigator.clipboard.writeText(lastCopiedPhone).catch(() => {})
+    }
+  }
+
+  async function handleVoid() {
+    if (!lastResult) return
+    setVoidError(null)
+    try {
+      await mutate('assignment.void', { leadId: lastResult.leadId, reasonNote: voidReason })
+      setLastResult(null)
+      refreshRoster()
+    } catch (err) {
+      setVoidError(err instanceof Error ? err.message : 'void failed')
+    }
+  }
+
+  function handleVoidReasonKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleVoid()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setVoidReasonOpen(false)
+      setVoidReason('')
+      setVoidError(null)
     }
   }
 
@@ -166,6 +219,28 @@ export function AssignScreen() {
               <>
                 <p>Assigned to: {nameById.get(lastResult.assignedRepId) ?? lastResult.assignedRepId}</p>
                 <button onClick={handleCopyClick}>Copy phone (digits only)</button>
+                {canVoid && (
+                  <div style={{ marginTop: 8 }}>
+                    {voidReasonOpen ? (
+                      <div>
+                        <label>
+                          Void reason
+                          <input
+                            ref={voidReasonRef}
+                            value={voidReason}
+                            onChange={(e) => setVoidReason(e.target.value)}
+                            onKeyDown={handleVoidReasonKeyDown}
+                            style={{ display: 'block', width: '100%' }}
+                          />
+                        </label>
+                        <p style={{ fontSize: 12, color: '#666' }}>Enter to confirm void, Esc to cancel</p>
+                        {voidError && <p style={{ color: 'red' }}>{voidError}</p>}
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: 12, color: '#666' }}>Alt+V to void this assignment</p>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <p>No eligible rep — lead queued as unassigned.</p>
