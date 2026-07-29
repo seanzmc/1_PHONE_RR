@@ -1,6 +1,10 @@
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+import { existsSync } from 'node:fs'
 import Fastify from 'fastify'
 import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
+import staticPlugin from '@fastify/static'
 import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify'
 import { db } from '@phoneup/db'
 import { appRouter } from './appRouter'
@@ -8,6 +12,8 @@ import { createContext } from './trpc/context'
 import { attachRealtimeServer } from './realtime/server'
 import { scheduleEligibilityJob } from './jobs/eligibility'
 import { scheduleReconciliationJob } from './jobs/reconciliation'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const server = Fastify({ logger: true })
 
@@ -21,6 +27,14 @@ await server.register(fastifyTRPCPlugin, {
   prefix: '/trpc',
   trpcOptions: { router: appRouter, createContext },
 })
+
+// Same-origin static hosting of the built web app, when present, so browser
+// requests to the API and the app share one origin — avoids cross-site
+// cookie config entirely. Absent in local dev (web runs on its own Vite server).
+const webDist = join(__dirname, '../../web/dist')
+if (existsSync(webDist)) {
+  await server.register(staticPlugin, { root: webDist })
+}
 
 const port = Number(process.env.PORT ?? 3000)
 

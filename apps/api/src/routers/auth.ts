@@ -22,6 +22,7 @@ export const authRouter = router({
     ;(ctx.res as any).setCookie('sid', session.id, {
       httpOnly: true,
       sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
       path: '/',
       expires: session.expiresAt,
     })
@@ -32,7 +33,7 @@ export const authRouter = router({
   logout: publicProcedure.mutation(async ({ ctx }) => {
     const sid = (ctx.req as any).cookies?.sid as string | undefined
     if (sid) await destroySession(sid)
-    ;(ctx.res as any).clearCookie('sid', { path: '/' })
+    ;(ctx.res as any).clearCookie('sid', { path: '/', secure: process.env.NODE_ENV === 'production' })
     return { ok: true }
   }),
 

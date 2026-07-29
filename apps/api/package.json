@@ -6,29 +6,31 @@
   "main": "./src/index.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "start": "NODE_ENV=production tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@phoneup/core": "workspace:*",
-    "@phoneup/contracts": "workspace:*",
-    "@phoneup/db": "workspace:*",
-    "@trpc/server": "^11.0.0-rc.677",
     "@fastify/cookie": "^11.0.1",
     "@fastify/cors": "^10.0.1",
     "@fastify/multipart": "^9.0.1",
-    "fastify": "^5.1.0",
-    "ws": "^8.18.0",
-    "node-cron": "^3.0.3",
+    "@fastify/static": "^10.1.2",
+    "@phoneup/contracts": "workspace:*",
+    "@phoneup/core": "workspace:*",
+    "@phoneup/db": "workspace:*",
+    "@trpc/server": "^11.0.0-rc.677",
     "drizzle-orm": "^0.36.4",
+    "fastify": "^5.1.0",
+    "node-cron": "^3.0.3",
+    "ws": "^8.18.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "tsx": "^4.19.2",
-    "vitest": "^2.1.5",
-    "typescript": "^5.7.2",
-    "@types/ws": "^8.5.13",
     "@types/node": "^22.10.1",
-    "@types/node-cron": "^3.0.11"
+    "@types/node-cron": "^3.0.11",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.5"
   }
 }
