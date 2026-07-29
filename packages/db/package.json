@@ -11,7 +11,8 @@
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
     "seed": "tsx src/seed.ts",
-    "import-roster": "tsx src/importRoster.ts"
+    "import-roster": "tsx src/importRoster.ts",
+    "backfill-display-names": "tsx src/backfillDisplayNames.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.36.4",
