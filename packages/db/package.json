@@ -10,7 +10,8 @@
     "test:watch": "vitest",
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "import-roster": "tsx src/importRoster.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.36.4",

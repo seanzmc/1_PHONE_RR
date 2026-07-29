@@ -7,3 +7,4 @@ dist/
 .DS_Store
 coverage/
 .playwright-mcp/
+Name Email Role.tsv

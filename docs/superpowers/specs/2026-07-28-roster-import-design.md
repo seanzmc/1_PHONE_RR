@@ -4,9 +4,9 @@
 
 Phase 1 (core loop) is done and merged. Before going live (target: within a day), the app needs the real dealership staff loaded in place of the fake demo seed data (`Alex Rep`/`Bailey Rep`/`Casey Rep`).
 
-Source data: `Name Email Role.tsv` at repo root — 37 real staff rows (24 `Sales`, 6 `Manager`, 7 `BDC`), tab-separated `Name\tEmail\tRole`, header row present. Contains real employee PII (names, work emails) — must never be committed to git.
+Source data: `Name Email Role.tsv` at repo root — 38 real staff rows (25 `Sales`, 6 `Manager`, 7 `BDC`), tab-separated `Name\tEmail\tRole`, header row present. Contains real employee PII (names, work emails) — must never be committed to git.
 
-This is one of five sub-projects identified in this session (roster import, permission refinements, CRM-import name-matching, assign-screen UX overhaul, dashboard metric respec). This spec covers **roster import only**; the other four are queued separately and untouched here.
+This is one of six sub-projects identified in this session (roster import, permission refinements, CRM-import name-matching, assign-screen UX overhaul, dashboard metric respec, frontend user management). This spec covers **roster import only**; the other five are queued separately and untouched here.
 
 ## Decisions
 
@@ -39,7 +39,7 @@ This is one of five sub-projects identified in this session (roster import, perm
 
 ## Testing
 
-- Manual: run against a fresh local Postgres DB, verify row counts (37 `app_user` + 1 admin, 24 `sales_rep`, correct role split), spot-check a few names/emails, confirm re-running against the same DB aborts cleanly via the guard rather than partially inserting.
+- Manual: run against a fresh local Postgres DB, verify row counts (38 `app_user` + 1 admin, 25 `sales_rep`, correct role split), spot-check a few names/emails, confirm re-running against the same DB aborts cleanly via the guard rather than partially inserting.
 - No unit tests planned — this is a one-shot operational script, not app logic. If the guard/parsing logic proves fiddly in practice, a table-driven test for the TSV parser alone is cheap to add, but not required up front.
 
 ## Out of scope (queued separately, not this spec)
@@ -48,4 +48,5 @@ This is one of five sub-projects identified in this session (roster import, perm
 - CRM import matching by name instead of email
 - Assign-screen UX overhaul (keyboard-first, spreadsheet-feel)
 - Dashboard metric respec (assignments, reassignments, times deactivated, total sales from a sales log; converted sales pinned/deferred)
+- **Frontend user management (sub-project 6, gap identified 2026-07-28)**: no UI exists to add/deactivate `app_user` accounts, change role, or reset a password after this one-time import. Today that's raw SQL only. Needed before this import's shared `changeme` password is a viable launch state — ADMIN/MANAGER need a screen to force a per-user reset. Not designed yet; queued as its own spec.
 - Hosting/deployment (remote push, prod environment) — flagged as urgent given the go-live timeline, but not part of this script
