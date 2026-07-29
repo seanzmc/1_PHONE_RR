@@ -5,6 +5,7 @@ import { repRouter } from './routers/rep'
 import { adminRouter } from './routers/admin'
 import { authRouter } from './routers/auth'
 import { boardRouter } from './routers/board'
+import { userManagementRouter } from './routers/userManagement'
 
 export const appRouter = router({
   health: healthQuery,
@@ -13,6 +14,7 @@ export const appRouter = router({
   admin: adminRouter,
   auth: authRouter,
   board: boardRouter,
+  userManagement: userManagementRouter,
 })
 
 export type AppRouter = typeof appRouter
