@@ -1,4 +1,5 @@
-Design
+# Design
+
 A. Rotation correctness (the only core-loop item)
 
 Void today is broken three ways (assignment.ts:33-59): no advisory lock, leaves the rr_cycle_assignments row, leaves lastAssignedAt/upsToday stale. Fix: move void into apps/api/src/domain/voidLead.ts, mirroring assignLead:
@@ -22,9 +23,42 @@ D. Rep drill-down — click a rep name (roster or staff list) → drill-down vie
 
 E. Modals + keyboard — one Modal component (focus trap, Esc closes, Enter submits single-line, Ctrl+Enter submits textarea) + one useSubmitOnEnter hook. Migrate: deactivate-reason (StaffList), password reset, add account, void reason. Existing Alt+C / Alt+V / Ctrl+Enter on AssignScreen stay as-is.
 
-F. Styling — copy design-system/_ds/industry-*/styles.css tokens into apps/web/src/styles/tokens.css, add a thin ui/ layer (Button, Table, Card, Badge, Modal, Field) using those vars, strip inline styles from the 5 pages. Barlow / Barlow Condensed self-hosted, not CDN.
+F. Styling — copy design-system/\_ds/industry-\*/styles.css tokens into apps/web/src/styles/tokens.css, add a thin ui/ layer (Button, Table, Card, Badge, Modal, Field) using those vars, strip inline styles from the 5 pages. Barlow / Barlow Condensed self-hosted, not CDN.
 
 G. Admin view-as — client-only. Admin picks a role in the nav; authStore gets viewAsRole, hasPermission reads effective role, persistent banner with "Exit". Server unaffected — real permissions unchanged, so it shows layout, not data-level access. Flagging: an admin viewing-as-REP still sees admin data on any screen that isn't role-filtered.
 
 Order: A → C → B → E → D → F → G. A is the only thing touching the core loop; it ships and gets verified alone.
-I have some more notes to add to this list. Apply them where applicable. The manual upload of activity report. Trying to figure out if automation is possible. Export format is csv- ex attached.  and it has a ton of columns with two rows of headers. but the only columns that are relevant for the app are column N, header in row 2: "Calls" which should be logged as a daily metric per rep (name is column A) Then column AA (Sold) which should be a cumulative metric added to each rep's monthly total. So if the previous working day's activity is less than 10 calls/day then they  Deactivate for the rest of the week. So we need to Build a field for the rep profiles with their scheduled day off so days off are not counted as non activity. This is an  example of how it should work: if a rep is off on Wednesday, their status would be set on wednesday morning with everyone else based on tuesdays activity. So if they got their calls then they will be eligible, but the day off marks them inactive for the day, then the next day their eligibility will be preserved because the last day they worked they achieved their activity minimum. Deactivations reset every Monday. Reps can be Reactivated manually by a manager or higher role. Reason field will be required. Manual deactivations should last all week as well unless manually reinstated. All active reps are subject to the daily activity qualifier. The drill down section for a rep should contain a calendar shaped table of the month's activity- Each day should display the calls activity from the upload, how many ups assigned to them, how many times an up was assigned to them then reassigned.. There should be a rep specific dash of the assigned leads with the notes as stated, total monthly sales, and times deactivated. These totals should be monthly.
+
+I have some more notes to add to this list. Apply them where applicable.
+
+- Manual upload activity report.
+  Export format is csv- {file link}.
+  The top two rows are headers.
+  Columns to pull data from:
+  - Column N, "Calls"
+    Log as a daily metric per rep (match by 'name': col A)
+  - Column AA, "Sold"
+    Cumulative metric added throughout the month.
+    - Managers and admin can modify these metrics if needed, after import, always logged in the audit log.
+
+**Minimum activity requirement: 10 calls/day**
+
+- Less than 10 calls/day = deactivate for the rest of the week.
+- Days off are not counted as non activity.
+  - Need a field in the rep profiles for scheduled day off
+- Example of how it should work:
+  Rep A is off on Wednesday. On Tuesday they make 10 calls. On Wednesday morning, that activity is logged to their profile but they will be ineligible only because it is their day off. On Thursday, when the activity report is imported, they will register 0 calls but because they were off the day before, their activity would be based on the activity of the last day they worked.
+- Deactivations reset every Monday.
+- Reps can be Reactivated manually by a manager or higher role.
+  - Reason field will be required and everything is logged to the audit log.
+- All deactivation and reactivation should be treated the same way on the daily activity report, meaning manual switches should not have any different rules or behavior. All active reps are subject to the daily activity qualifier.
+
+Rep Dashboard: **rep specific**
+
+- Table of the month's assigned leads through the app
+  - Date, name, number with quick copy, assigned by, and notes
+- total ups assigned this month
+- total calls made this month
+- total monthly sales
+- times deactivated this month
+- Days inactive this month
