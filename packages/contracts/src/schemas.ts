@@ -20,6 +20,32 @@ export const statusOverrideInputSchema = z.object({
   reasonNote: z.string().min(1),
 })
 
+export const createAccountInputSchema = z.object({
+  email: z.string().email(),
+  displayName: z.string().min(1),
+  role: z.enum(['ADMIN', 'MANAGER', 'BDC', 'REP']),
+  password: z.string().min(8),
+})
+
+export const setRoleInputSchema = z.object({
+  userId: z.string().uuid(),
+  newRole: z.enum(['ADMIN', 'MANAGER', 'BDC', 'REP']),
+})
+
+export const setActiveInputSchema = z.object({
+  userId: z.string().uuid(),
+  isActive: z.boolean(),
+})
+
+export const resetPasswordInputSchema = z.object({
+  userId: z.string().uuid(),
+  newPassword: z.string().min(8),
+})
+
 export type AssignLeadInput = z.infer<typeof assignLeadInputSchema>
 export type VoidLeadInput = z.infer<typeof voidLeadInputSchema>
 export type StatusOverrideInput = z.infer<typeof statusOverrideInputSchema>
+export type CreateAccountInput = z.infer<typeof createAccountInputSchema>
+export type SetRoleInput = z.infer<typeof setRoleInputSchema>
+export type SetActiveInput = z.infer<typeof setActiveInputSchema>
+export type ResetPasswordInput = z.infer<typeof resetPasswordInputSchema>

@@ -6,7 +6,7 @@ describe('hasPermission', () => {
     const all = [
       'board.view', 'lead.assign', 'lead.void', 'lead.assign.override',
       'rep.override', 'schedule.manage', 'activity.self', 'reactivation.review',
-      'reactivation.self', 'audit.view', 'admin.*',
+      'reactivation.self', 'audit.view', 'user.manage', 'admin.*',
     ] as const
     for (const p of all) expect(hasPermission('ADMIN', p)).toBe(true)
   })
@@ -15,6 +15,13 @@ describe('hasPermission', () => {
     expect(hasPermission('MANAGER', 'lead.assign.override')).toBe(true)
     expect(hasPermission('MANAGER', 'rep.override')).toBe(true)
     expect(hasPermission('MANAGER', 'admin.*')).toBe(false)
+  })
+
+  it('MANAGER and ADMIN can manage user accounts, BDC and REP cannot', () => {
+    expect(hasPermission('ADMIN', 'user.manage')).toBe(true)
+    expect(hasPermission('MANAGER', 'user.manage')).toBe(true)
+    expect(hasPermission('BDC', 'user.manage')).toBe(false)
+    expect(hasPermission('REP', 'user.manage')).toBe(false)
   })
 
   it('BDC can assign/void but not override or rep status', () => {
