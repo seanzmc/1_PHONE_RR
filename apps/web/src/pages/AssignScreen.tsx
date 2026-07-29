@@ -22,6 +22,10 @@ function loadRoster(): Promise<RosterEntry[]> {
   return query<RosterEntry[]>('board.roster')
 }
 
+function toE164(phone: string): string {
+  return phone.startsWith('+') ? phone : `+1${phone}`
+}
+
 export function AssignScreen() {
   const [roster, setRoster] = useState<RosterEntry[]>([])
   const [name, setName] = useState('')
@@ -30,7 +34,8 @@ export function AssignScreen() {
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
   const [lastResult, setLastResult] = useState<AssignResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const copyButtonRef = useRef<HTMLButtonElement>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const phoneRef = useRef<HTMLInputElement>(null)
   const { lastCopiedPhone, setLastCopiedPhone } = useClipboardStore()
 
   const refreshRoster = useCallback(() => {
@@ -44,7 +49,7 @@ export function AssignScreen() {
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
       if (e.altKey && e.key.toLowerCase() === 'c' && lastCopiedPhone) {
-        navigator.clipboard.writeText(lastCopiedPhone)
+        navigator.clipboard.writeText(lastCopiedPhone).catch(() => {})
       }
     }
     window.addEventListener('keydown', onKeydown)
@@ -53,21 +58,23 @@ export function AssignScreen() {
 
   useEffect(() => {
     if (lastResult?.assignedRepId) {
-      copyButtonRef.current?.focus()
-      const t = setTimeout(() => copyButtonRef.current?.blur(), 5000)
-      return () => clearTimeout(t)
+      nameRef.current?.focus()
     }
   }, [lastResult])
 
   async function handleAssign() {
     setError(null)
+    const phoneE164 = toE164(phone)
     try {
       const result = await mutate<AssignResult>('assignment.assign', {
         idempotencyKey,
         customerName: name,
-        customerPhoneE164: phone,
+        customerPhoneE164: phoneE164,
         notes: notes || undefined,
       })
+      const digits = digitsOnly(phoneE164)
+      setLastCopiedPhone(digits)
+      navigator.clipboard.writeText(digits).catch(() => {})
       setLastResult(result)
       setName('')
       setPhone('')
@@ -86,6 +93,26 @@ export function AssignScreen() {
     }
   }
 
+  function handleNameKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' && !e.ctrlKey) {
+      e.preventDefault()
+      phoneRef.current?.focus()
+    }
+  }
+
+  function handlePhoneKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' && !e.ctrlKey) {
+      e.preventDefault()
+      handleAssign()
+    }
+  }
+
+  function handleCopyClick() {
+    if (lastCopiedPhone) {
+      navigator.clipboard.writeText(lastCopiedPhone).catch(() => {})
+    }
+  }
+
   const nameById = new Map(roster.map((r) => [r.repId, r.displayName]))
   const nextUp = roster.find((r) => r.isEligible && !r.servedThisCycle)
   const onDeck = roster.filter((r) => r.isEligible && r.repId !== nextUp?.repId)
@@ -98,13 +125,26 @@ export function AssignScreen() {
         <div style={{ marginBottom: 8 }}>
           <label>
             Name
-            <input value={name} onChange={(e) => setName(e.target.value)} style={{ display: 'block', width: '100%' }} autoFocus />
+            <input
+              ref={nameRef}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={handleNameKeyDown}
+              style={{ display: 'block', width: '100%' }}
+              autoFocus
+            />
           </label>
         </div>
         <div style={{ marginBottom: 8 }}>
           <label>
-            Phone (+1XXXXXXXXXX)
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} style={{ display: 'block', width: '100%' }} />
+            Phone (10 digits, or +1XXXXXXXXXX)
+            <input
+              ref={phoneRef}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              onKeyDown={handlePhoneKeyDown}
+              style={{ display: 'block', width: '100%' }}
+            />
           </label>
         </div>
         <div style={{ marginBottom: 8 }}>
@@ -122,12 +162,7 @@ export function AssignScreen() {
             {lastResult.assignedRepId ? (
               <>
                 <p>Assigned to: {nameById.get(lastResult.assignedRepId) ?? lastResult.assignedRepId}</p>
-                <button
-                  ref={copyButtonRef}
-                  onClick={() => setLastCopiedPhone(digitsOnly(phone))}
-                >
-                  Copy phone (digits only)
-                </button>
+                <button onClick={handleCopyClick}>Copy phone (digits only)</button>
               </>
             ) : (
               <p>No eligible rep — lead queued as unassigned.</p>
