@@ -43,6 +43,7 @@ export function AssignScreen() {
   const [voidReasonOpen, setVoidReasonOpen] = useState(false)
   const [voidReason, setVoidReason] = useState('')
   const [voidError, setVoidError] = useState<string | null>(null)
+  const [copyFailed, setCopyFailed] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
   const voidReasonRef = useRef<HTMLInputElement>(null)
@@ -60,7 +61,7 @@ export function AssignScreen() {
 
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
-      if (e.altKey && e.key.toLowerCase() === 'c' && lastCopiedPhone) {
+      if (e.altKey && e.code === 'KeyC' && lastCopiedPhone) {
         navigator.clipboard.writeText(lastCopiedPhone).catch(() => {})
       }
     }
@@ -70,7 +71,7 @@ export function AssignScreen() {
 
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
-      if (e.altKey && e.key.toLowerCase() === 'v' && lastResult?.assignedRepId && canVoid) {
+      if (e.altKey && e.code === 'KeyV' && lastResult?.assignedRepId && canVoid) {
         e.preventDefault()
         setVoidReasonOpen(true)
       }
@@ -96,6 +97,7 @@ export function AssignScreen() {
 
   async function handleAssign() {
     setError(null)
+    setCopyFailed(false)
     const phoneE164 = toE164(phone)
     try {
       const result = await mutate<AssignResult>('assignment.assign', {
@@ -106,7 +108,7 @@ export function AssignScreen() {
       })
       const digits = digitsOnly(phoneE164)
       setLastCopiedPhone(digits)
-      navigator.clipboard.writeText(digits).catch(() => {})
+      navigator.clipboard.writeText(digits).catch(() => setCopyFailed(true))
       setLastResult(result)
       setName('')
       setPhone('')
@@ -148,10 +150,15 @@ export function AssignScreen() {
   async function handleVoid() {
     if (!lastResult) return
     setVoidError(null)
+    if (!voidReason.trim()) {
+      setVoidError('Reason is required')
+      return
+    }
     try {
       await mutate('assignment.void', { leadId: lastResult.leadId, reasonNote: voidReason })
       setLastResult(null)
       refreshRoster()
+      nameRef.current?.focus()
     } catch (err) {
       setVoidError(err instanceof Error ? err.message : 'void failed')
     }
@@ -221,6 +228,7 @@ export function AssignScreen() {
               <>
                 <p>Assigned to: {nameById.get(lastResult.assignedRepId) ?? lastResult.assignedRepId}</p>
                 <button onClick={handleCopyClick}>Copy phone (digits only)</button>
+                {copyFailed && <p style={{ color: 'orange' }}>Auto-copy blocked — press Alt+C or click Copy phone</p>}
                 {canVoid && (
                   <div style={{ marginTop: 8 }}>
                     {voidReasonOpen ? (
