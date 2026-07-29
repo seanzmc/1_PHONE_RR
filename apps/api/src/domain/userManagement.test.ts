@@ -125,6 +125,23 @@ describe('setRole', () => {
     expect(reps[0].hireDate).toBe(originalRep!.hireDate)
   })
 
+  it('deactivated account changed to REP lands INELIGIBLE, not ELIGIBLE', async () => {
+    const email = `um-test-setrole-inactive-${Date.now()}@dealership.test`
+    const { userId } = await createAccount(db, {
+      email, displayName: 'Role Test Inactive', role: 'BDC', password: 'testpass123', actorUserId,
+    })
+
+    await setActive(db, { userId, isActive: false, actorUserId })
+    await setRole(db, { userId, newRole: 'REP', actorUserId })
+
+    const rep = await db.query.salesRep.findFirst({ where: eq(schema.salesRep.userId, userId) })
+    const today = businessDate(new Date())
+    const status = await db.query.repDailyStatus.findFirst({
+      where: and(eq(schema.repDailyStatus.repId, rep!.id), eq(schema.repDailyStatus.businessDate, today)),
+    })
+    expect(status?.status).toBe('INELIGIBLE')
+  })
+
   it('refuses to change the last active ADMIN to a non-ADMIN role', async () => {
     const allAdmins = await db.select().from(schema.appUser).where(eq(schema.appUser.role, 'ADMIN'))
     const activeAdmins = allAdmins.filter((a) => a.isActive)
@@ -250,5 +267,23 @@ describe('resetPassword', () => {
     expect(audit?.action).toBe('user.resetPassword')
     expect(JSON.stringify(audit?.after)).not.toContain('supersecretnew789')
     expect(JSON.stringify(audit?.before)).not.toContain('oldpass123')
+  })
+
+  it('invalidates existing sessions for the account', async () => {
+    const email = `um-test-resetpw-session-${Date.now()}@dealership.test`
+    const { userId } = await createAccount(db, {
+      email, displayName: 'Reset Session Test', role: 'BDC', password: 'oldpass123', actorUserId,
+    })
+
+    await db.insert(schema.session).values({
+      id: `test-session-${Date.now()}`,
+      userId,
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 12),
+    })
+
+    await resetPassword(db, { userId, newPassword: 'newpass456', actorUserId })
+
+    const session = await db.query.session.findFirst({ where: eq(schema.session.userId, userId) })
+    expect(session).toBeUndefined()
   })
 })

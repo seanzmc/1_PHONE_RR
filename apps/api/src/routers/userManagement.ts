@@ -1,9 +1,12 @@
+import { eq } from 'drizzle-orm'
+import { TRPCError } from '@trpc/server'
 import { db, schema } from '@phoneup/db'
 import {
   createAccountInputSchema,
   setRoleInputSchema,
   setActiveInputSchema,
   resetPasswordInputSchema,
+  hasPermission,
 } from '@phoneup/contracts'
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
@@ -33,6 +36,19 @@ export const userManagementRouter = router({
     .use(requirePerm('user.manage'))
     .input(setRoleInputSchema)
     .mutation(async ({ ctx, input }) => {
+      const isAdminCaller = hasPermission(ctx.session.role, 'admin.*')
+
+      if (input.newRole === 'ADMIN' && !isAdminCaller) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'only an ADMIN can grant the ADMIN role' })
+      }
+
+      if (!isAdminCaller) {
+        const target = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
+        if (target?.role === 'ADMIN') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'only an ADMIN can grant the ADMIN role' })
+        }
+      }
+
       await setRole(db, { ...input, actorUserId: ctx.session.userId })
       return { ok: true }
     }),
@@ -49,6 +65,13 @@ export const userManagementRouter = router({
     .use(requirePerm('user.manage'))
     .input(resetPasswordInputSchema)
     .mutation(async ({ ctx, input }) => {
+      if (!hasPermission(ctx.session.role, 'admin.*')) {
+        const target = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
+        if (target?.role === 'ADMIN') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'only an ADMIN can grant the ADMIN role' })
+        }
+      }
+
       await resetPassword(db, { ...input, actorUserId: ctx.session.userId })
       return { ok: true }
     }),

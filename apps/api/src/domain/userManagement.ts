@@ -11,6 +11,8 @@ export async function createAccount(
   db: DB,
   input: { email: string; displayName: string; role: Role; password: string; actorUserId: string },
 ): Promise<{ userId: string }> {
+  const passwordHash = hashPassword(input.password)
+
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
 
@@ -19,7 +21,7 @@ export async function createAccount(
       .values({
         email: input.email,
         displayName: input.displayName,
-        passwordHash: hashPassword(input.password),
+        passwordHash,
         role: input.role,
       })
       .returning()
@@ -138,7 +140,12 @@ export async function setRole(
           .where(eq(schema.salesRep.id, rep.id))
       }
       await ensureTodayShift(tx, rep.id)
-      await applyRepRotationStatus(tx, rep.id, 'ELIGIBLE', 'role changed to REP')
+      await applyRepRotationStatus(
+        tx,
+        rep.id,
+        user.isActive ? 'ELIGIBLE' : 'INELIGIBLE',
+        user.isActive ? 'role changed to REP' : 'role changed to REP (account inactive)',
+      )
     }
 
     await tx.insert(schema.auditEvents).values({
@@ -209,14 +216,18 @@ export async function resetPassword(
   db: DB,
   input: { userId: string; newPassword: string; actorUserId: string },
 ): Promise<void> {
+  const passwordHash = hashPassword(input.newPassword)
+
   await db.transaction(async (tx) => {
     const user = await tx.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
     if (!user) throw new Error('user not found')
 
     await tx
       .update(schema.appUser)
-      .set({ passwordHash: hashPassword(input.newPassword) })
+      .set({ passwordHash })
       .where(eq(schema.appUser.id, input.userId))
+
+    await tx.delete(schema.session).where(eq(schema.session.userId, input.userId))
 
     await tx.insert(schema.auditEvents).values({
       actorUserId: input.actorUserId,
