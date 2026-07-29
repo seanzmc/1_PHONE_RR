@@ -23,6 +23,9 @@ function loadRoster(): Promise<RosterEntry[]> {
 }
 
 function toE164(phone: string): string {
+  const digits = phone.replace(/\D/g, '')
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`
+  if (digits.length === 10) return `+1${digits}`
   return phone.startsWith('+') ? phone : `+1${phone}`
 }
 
