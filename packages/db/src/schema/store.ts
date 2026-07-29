@@ -26,6 +26,7 @@ export const storeClosure = pgTable('store_closure', {
 export const appUser = pgTable('app_user', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
+  displayName: text('display_name'),
   passwordHash: text('password_hash').notNull(),
   totpSecret: text('totp_secret'),
   role: text('role', { enum: ['ADMIN', 'MANAGER', 'BDC', 'REP'] }).notNull(),
