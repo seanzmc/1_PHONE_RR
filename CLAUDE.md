@@ -54,3 +54,21 @@ Assign a phone-up lead to the correct next rep, correctly, in under a few second
 ## When in doubt
 
 Re-read `plans/v1-plan.md`. If a request would expand scope beyond it, flag that explicitly before building rather than quietly absorbing it.
+
+## Accounts & passwords
+
+- **No shared passwords, ever.** `importRoster.ts` issues a unique short temporary password per account and prints a distribution list once. There is no default password to guess.
+- Any admin-issued password (roster import, `issueTempPassword`, manual reset, new account) sets `app_user.must_change_password`. While that flag is set, `requirePerm` rejects **every** route with `PASSWORD_CHANGE_REQUIRED` — only `auth.changePassword` is reachable. The gate is server-side; do not weaken it to a UI-only check.
+- Temp passwords are deliberately short and speakable (`word-word-NNN`, no `0`/`1`) because they are single-use. That is only safe alongside the login throttle in `auth/loginThrottle.ts` (8 failures per email/IP, then a 15-minute lockout) — do not remove one without reconsidering the other.
+- Plaintext passwords are never stored. A lost temp password means issuing another from the Users page.
+
+## Operational scripts
+
+Run with `DATABASE_URL` pointed at the target DB:
+
+- `pnpm --filter @phoneup/api materialize-shifts [days]` — generate `rep_shift` rows ahead (default 14). Needed after a roster import, else eligibility writes `CONFIGURATION_ERROR`. Idempotent; never rewrites past dates.
+- `pnpm --filter @phoneup/api import-activity <file.csv> [YYYY-MM-DD]` — import the CRM daily activity export. Date comes from the filename or the argument, never the clock. The Import Activity screen is the normal path.
+- `pnpm --filter @phoneup/api rotate-passwords [--commit]` — one-off remediation; dry-run by default.
+- `pnpm --filter @phoneup/db backfill-display-names [file.tsv]` — fill `app_user.display_name` from the roster TSV.
+
+Prod runs `pnpm --filter @phoneup/db migrate` on container start (see `Dockerfile`), so a deploy applies pending migrations automatically.
