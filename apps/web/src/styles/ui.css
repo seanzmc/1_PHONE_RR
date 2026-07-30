@@ -358,6 +358,19 @@ textarea.ui-input {
   padding: var(--space-3);
 }
 
+/* — temporary password display — */
+.ui-temppw {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 26px;
+  letter-spacing: 0.04em;
+  text-align: center;
+  padding: var(--space-3);
+  margin: 0;
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
+  user-select: all;
+}
+
 /* — modal — */
 .ui-modal-backdrop {
   position: fixed;

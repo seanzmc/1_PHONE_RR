@@ -4,19 +4,43 @@ import { eq } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { verifyPassword } from '../auth/password'
 import { createSession, destroySession } from '../auth/session'
+import { isThrottled, recordFailure, recordSuccess } from '../auth/loginThrottle'
 import { publicProcedure, router } from '../trpc/router'
+import { requireAuth } from '../trpc/requirePerm'
+import { changeOwnPassword } from '../domain/userManagement'
 
 const loginInputSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 })
 
+const changePasswordInputSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8),
+})
+
 export const authRouter = router({
   login: publicProcedure.input(loginInputSchema).mutation(async ({ ctx, input }) => {
+    // Throttle before touching the DB: temporary passwords are short by design, so
+    // rate limiting is what keeps the small keyspace from being swept.
+    const email = input.email.toLowerCase()
+    const ip = (ctx.req as any).ip ?? 'unknown'
+    const keys = [`email:${email}`, `ip:${ip}`]
+
+    const { throttled, retryAfter } = isThrottled(keys)
+    if (throttled) {
+      throw new TRPCError({
+        code: 'TOO_MANY_REQUESTS',
+        message: `too many failed attempts — try again in ${Math.ceil(retryAfter / 60)} minute(s)`,
+      })
+    }
+
     const user = await db.query.appUser.findFirst({ where: eq(schema.appUser.email, input.email) })
     if (!user || !user.isActive || !verifyPassword(input.password, user.passwordHash)) {
+      recordFailure(keys)
       throw new TRPCError({ code: 'UNAUTHORIZED', message: 'invalid credentials' })
     }
+    recordSuccess(keys)
 
     const session = await createSession(user.id)
     ;(ctx.res as any).setCookie('sid', session.id, {
@@ -27,7 +51,8 @@ export const authRouter = router({
       expires: session.expiresAt,
     })
 
-    return { role: user.role, email: user.email }
+    // the client routes straight to the change-password screen when this is true
+    return { role: user.role, email: user.email, mustChangePassword: user.mustChangePassword }
   }),
 
   logout: publicProcedure.mutation(async ({ ctx }) => {
@@ -36,6 +61,24 @@ export const authRouter = router({
     ;(ctx.res as any).clearCookie('sid', { path: '/', secure: process.env.NODE_ENV === 'production' })
     return { ok: true }
   }),
+
+  /**
+   * Any logged-in user sets their own password. Deliberately uses requireAuth, not
+   * requirePerm, so an account holding a temporary password can still reach it — it is
+   * the only route a flagged account can use.
+   */
+  changePassword: publicProcedure
+    .use(requireAuth)
+    .input(changePasswordInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      await changeOwnPassword(db, {
+        userId: ctx.session.userId,
+        currentPassword: input.currentPassword,
+        newPassword: input.newPassword,
+        keepSessionId: ctx.session.sessionId,
+      })
+      return { ok: true }
+    }),
 
   me: publicProcedure.query(async ({ ctx }) => {
     if (!ctx.session) return null
@@ -46,6 +89,7 @@ export const authRouter = router({
       role: user.role,
       email: user.email,
       displayName: user.displayName,
+      mustChangePassword: user.mustChangePassword,
     }
   }),
 })

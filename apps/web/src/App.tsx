@@ -8,9 +8,10 @@ import { Dashboard } from './pages/Dashboard'
 import { UserManagement } from './pages/UserManagement'
 import { RepDetail } from './pages/RepDetail'
 import { ActivityImport } from './pages/ActivityImport'
+import { ChangePassword } from './pages/ChangePassword'
 import { Button, Select } from './ui'
 
-type Page = 'assign' | 'staff' | 'dashboard' | 'users' | 'me' | 'rep' | 'import'
+type Page = 'assign' | 'staff' | 'dashboard' | 'users' | 'me' | 'rep' | 'import' | 'password'
 
 const VIEW_AS_ROLES: Role[] = ['ADMIN', 'MANAGER', 'BDC', 'REP']
 
@@ -26,6 +27,10 @@ function App() {
 
   if (loading) return <div className="ui-page">Loading…</div>
   if (!session) return <Login />
+
+  // A temporary password blocks every other route server-side, so gate the whole app
+  // rather than render screens that would only return PASSWORD_CHANGE_REQUIRED.
+  if (session.mustChangePassword) return <ChangePassword forced />
 
   const role = effectiveRole()
   const isRealAdmin = session.role === 'ADMIN'
@@ -119,6 +124,9 @@ function App() {
         <span className="ui-hint">
           {session.displayName ?? session.email} ({role})
         </span>
+        <Button size="sm" onClick={() => setPage('password')}>
+          Change password
+        </Button>
         <Button onClick={() => logout()}>Log out</Button>
       </nav>
 
@@ -142,6 +150,9 @@ function App() {
       {activePage === 'users' && <UserManagement />}
       {activePage === 'import' && <ActivityImport />}
       {activePage === 'me' && <RepDetail />}
+      {activePage === 'password' && (
+        <ChangePassword onDone={() => setPage(canAssign ? 'assign' : 'me')} />
+      )}
       {activePage === 'rep' && openRepId && (
         <RepDetail repId={openRepId} onBack={() => setPage(canAssign ? 'assign' : 'me')} />
       )}

@@ -12,14 +12,21 @@ export async function createSession(userId: string): Promise<{ id: string; expir
   return { id, expiresAt }
 }
 
-export async function loadSession(sessionId: string): Promise<{ userId: string; role: Role } | null> {
+export async function loadSession(
+  sessionId: string,
+): Promise<{ userId: string; role: Role; mustChangePassword: boolean; sessionId: string } | null> {
   const row = await db.query.session.findFirst({ where: eq(schema.session.id, sessionId) })
   if (!row || row.expiresAt.getTime() < Date.now()) return null
 
   const user = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, row.userId) })
   if (!user || !user.isActive) return null
 
-  return { userId: user.id, role: user.role as Role }
+  return {
+    userId: user.id,
+    role: user.role as Role,
+    mustChangePassword: user.mustChangePassword,
+    sessionId,
+  }
 }
 
 export async function destroySession(sessionId: string): Promise<void> {

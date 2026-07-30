@@ -31,6 +31,10 @@ export const appUser = pgTable('app_user', {
   totpSecret: text('totp_secret'),
   role: text('role', { enum: ['ADMIN', 'MANAGER', 'BDC', 'REP'] }).notNull(),
   isActive: boolean('is_active').notNull().default(true),
+  // Forces a password change before the account can do anything else. Set on any
+  // admin-issued temporary password and cleared only by the user choosing their own.
+  // Enforced server-side in requirePerm, not just in the UI.
+  mustChangePassword: boolean('must_change_password').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

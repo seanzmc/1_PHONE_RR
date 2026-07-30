@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { eq } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { db, schema } from '@phoneup/db'
@@ -11,6 +12,7 @@ import {
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
 import { createAccount, setRole, setActive, resetPassword } from '../domain/userManagement'
+import { generateTempPassword } from '../auth/tempPassword'
 
 export const userManagementRouter = router({
   list: publicProcedure.use(requirePerm('user.manage')).query(async () => {
@@ -21,6 +23,7 @@ export const userManagementRouter = router({
       displayName: u.displayName,
       role: u.role,
       isActive: u.isActive,
+      mustChangePassword: u.mustChangePassword,
       createdAt: u.createdAt.toISOString(),
     }))
   }),
@@ -74,5 +77,33 @@ export const userManagementRouter = router({
 
       await resetPassword(db, { ...input, actorUserId: ctx.session.userId })
       return { ok: true }
+    }),
+
+  /**
+   * The easy path: generate a short speakable temp password, force a change on next
+   * login, and hand it back once so the manager can read it to the user. Not stored
+   * anywhere in plaintext — if it's lost, generate another.
+   */
+  issueTempPassword: publicProcedure
+    .use(requirePerm('user.manage'))
+    .input(z.object({ userId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      if (!hasPermission(ctx.session.role, 'admin.*')) {
+        const target = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
+        if (target?.role === 'ADMIN') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'only an ADMIN can reset an ADMIN password' })
+        }
+      }
+
+      const tempPassword = generateTempPassword()
+      await resetPassword(db, {
+        userId: input.userId,
+        newPassword: tempPassword,
+        actorUserId: ctx.session.userId,
+        mustChangePassword: true,
+      })
+
+      // returned once, for the admin to relay; never persisted in the clear
+      return { tempPassword }
     }),
 })

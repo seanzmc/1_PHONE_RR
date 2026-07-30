@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production tsx src/index.ts",
     "materialize-shifts": "tsx src/materializeShifts.ts",
     "import-activity": "tsx src/importActivity.ts",
+    "rotate-passwords": "tsx src/rotatePasswords.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

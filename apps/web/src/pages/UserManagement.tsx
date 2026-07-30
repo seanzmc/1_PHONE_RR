@@ -13,6 +13,7 @@ type Account = {
   displayName: string | null
   role: Role
   isActive: boolean
+  mustChangePassword: boolean
   createdAt: string
 }
 
@@ -31,6 +32,11 @@ export function UserManagement() {
 
   const [resetTargetId, setResetTargetId] = useState<string | null>(null)
   const [resetValue, setResetValue] = useState('')
+
+  // one-click reset: the server generates a short speakable password and returns it once
+  const [issuedFor, setIssuedFor] = useState<Account | null>(null)
+  const [issuedPassword, setIssuedPassword] = useState('')
+  const [issuedCopied, setIssuedCopied] = useState(false)
 
   function refresh() {
     query<Account[]>('userManagement.list').then(setAccounts).catch(() => {})
@@ -101,6 +107,26 @@ export function UserManagement() {
     setResetValue('')
   }
 
+  async function issueTempPassword(account: Account) {
+    setError(null)
+    try {
+      const res = await mutate<{ tempPassword: string }>('userManagement.issueTempPassword', {
+        userId: account.id,
+      })
+      setIssuedFor(account)
+      setIssuedPassword(res.tempPassword)
+      setIssuedCopied(false)
+      refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'could not issue a temporary password')
+    }
+  }
+
+  function copyIssued() {
+    navigator.clipboard.writeText(issuedPassword).catch(() => {})
+    setIssuedCopied(true)
+  }
+
   const onAddKeyDown = useSubmitOnEnter(createAccount, { disabled: !addValid })
   const onResetKeyDown = useSubmitOnEnter(submitReset, { disabled: resetValue.length < 8 })
 
@@ -143,15 +169,21 @@ export function UserManagement() {
                 </Select>
               </td>
               <td>
-                <Badge tone={a.isActive ? 'ok' : 'danger'}>{a.isActive ? 'ACTIVE' : 'INACTIVE'}</Badge>
+                <div className="ui-row">
+                  <Badge tone={a.isActive ? 'ok' : 'danger'}>{a.isActive ? 'ACTIVE' : 'INACTIVE'}</Badge>
+                  {a.mustChangePassword && <Badge tone="warn">TEMP PASSWORD</Badge>}
+                </div>
               </td>
               <td>
                 <div className="ui-row">
                   <Button size="sm" onClick={() => toggleActive(a.id, !a.isActive)}>
                     {a.isActive ? 'Deactivate' : 'Reactivate'}
                   </Button>
-                  <Button size="sm" onClick={() => setResetTargetId(a.id)}>
+                  <Button size="sm" variant="primary" onClick={() => issueTempPassword(a)}>
                     Reset password
+                  </Button>
+                  <Button size="sm" onClick={() => setResetTargetId(a.id)}>
+                    Set manually
                   </Button>
                 </div>
               </td>
@@ -159,6 +191,27 @@ export function UserManagement() {
           )
         })}
       </Table>
+
+      <Modal
+        open={!!issuedFor}
+        title={`Temporary password — ${issuedFor?.displayName ?? issuedFor?.email ?? ''}`}
+        onClose={() => setIssuedFor(null)}
+        submitLabel="Done"
+        onSubmit={() => setIssuedFor(null)}
+        cancelLabel="Close"
+        hint="Shown once — generate another if it's lost."
+      >
+        <p>Read this to them, or copy it:</p>
+        <p className="ui-temppw">{issuedPassword}</p>
+        <div className="ui-row">
+          <Button onClick={copyIssued}>{issuedCopied ? 'Copied' : 'Copy'}</Button>
+        </div>
+        <p className="ui-hint">
+          They must choose their own password the first time they sign in — until they do, this
+          account can't use anything else. It isn't stored anywhere in readable form, so if it's
+          lost just reset again.
+        </p>
+      </Modal>
 
       <Modal
         open={addOpen}

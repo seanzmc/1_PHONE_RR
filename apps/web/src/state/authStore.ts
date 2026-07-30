@@ -7,6 +7,8 @@ type Session = {
   role: Role
   email: string
   displayName: string | null
+  /** Holding an admin-issued temporary password: every screen is blocked until changed. */
+  mustChangePassword: boolean
 } | null
 
 type AuthState = {
@@ -26,6 +28,7 @@ type AuthState = {
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -69,5 +72,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } finally {
       set({ loading: false })
     }
+  },
+
+  changePassword: async (currentPassword, newPassword) => {
+    await mutate('auth.changePassword', { currentPassword, newPassword })
+    // re-read the session so mustChangePassword clears and the app unlocks
+    await get().refresh()
   },
 }))

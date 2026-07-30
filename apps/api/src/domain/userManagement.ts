@@ -3,7 +3,7 @@ import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
 import type { Role } from '@phoneup/contracts'
-import { hashPassword } from '../auth/password'
+import { hashPassword, verifyPassword } from '../auth/password'
 
 const ADVISORY_LOCK_KEY = 42_100_1 // same key as assignLead/overrideStatus — this touches rotation ordering too
 
@@ -23,6 +23,8 @@ export async function createAccount(
         displayName: input.displayName,
         passwordHash,
         role: input.role,
+        // the admin picked this password, so the new user must replace it on first login
+        mustChangePassword: true,
       })
       .returning()
 
@@ -214,9 +216,12 @@ export async function setActive(
 
 export async function resetPassword(
   db: DB,
-  input: { userId: string; newPassword: string; actorUserId: string },
+  input: { userId: string; newPassword: string; actorUserId: string; mustChangePassword?: boolean },
 ): Promise<void> {
   const passwordHash = hashPassword(input.newPassword)
+  // An admin-issued password is temporary by default: the user must replace it on next
+  // login before they can use anything else.
+  const mustChange = input.mustChangePassword ?? true
 
   await db.transaction(async (tx) => {
     const user = await tx.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
@@ -224,7 +229,7 @@ export async function resetPassword(
 
     await tx
       .update(schema.appUser)
-      .set({ passwordHash })
+      .set({ passwordHash, mustChangePassword: mustChange })
       .where(eq(schema.appUser.id, input.userId))
 
     await tx.delete(schema.session).where(eq(schema.session.userId, input.userId))
@@ -234,8 +239,56 @@ export async function resetPassword(
       action: 'user.resetPassword',
       entityType: 'app_user',
       entityId: input.userId,
-      before: null,
-      after: { passwordReset: true },
+      before: { mustChangePassword: user.mustChangePassword },
+      after: { passwordReset: true, mustChangePassword: mustChange },
+    })
+  })
+}
+
+/**
+ * A user setting their OWN password. Requires the current password, which is what makes
+ * this safe to expose to every role, and clears mustChangePassword — the flag can only be
+ * cleared by the user choosing a secret nobody else has seen.
+ *
+ * Other sessions for the account are revoked; the caller's own session is kept so the
+ * forced-change flow doesn't bounce them back to the login screen.
+ */
+export async function changeOwnPassword(
+  db: DB,
+  input: { userId: string; currentPassword: string; newPassword: string; keepSessionId?: string },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const user = await tx.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
+    if (!user) throw new Error('user not found')
+
+    if (!verifyPassword(input.currentPassword, user.passwordHash)) {
+      throw new Error('current password is incorrect')
+    }
+    if (verifyPassword(input.newPassword, user.passwordHash)) {
+      throw new Error('new password must be different from the current one')
+    }
+
+    await tx
+      .update(schema.appUser)
+      .set({ passwordHash: hashPassword(input.newPassword), mustChangePassword: false })
+      .where(eq(schema.appUser.id, input.userId))
+
+    // revoke every other session for this account
+    await tx
+      .delete(schema.session)
+      .where(
+        input.keepSessionId
+          ? and(eq(schema.session.userId, input.userId), ne(schema.session.id, input.keepSessionId))
+          : eq(schema.session.userId, input.userId),
+      )
+
+    await tx.insert(schema.auditEvents).values({
+      actorUserId: input.userId,
+      action: 'user.changeOwnPassword',
+      entityType: 'app_user',
+      entityId: input.userId,
+      before: { mustChangePassword: user.mustChangePassword },
+      after: { mustChangePassword: false },
     })
   })
 }
