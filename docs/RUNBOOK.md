@@ -15,8 +15,17 @@ rotation queue, one solo maintainer. Scope rules live in `CLAUDE.md`; the build 
 | `WEB_ORIGIN` | no | CORS origin. Only needed when the browser app is on a different origin than the API (local dev, Vite on `:5173`). In production the API serves `apps/web/dist` itself, so leave unset. |
 | `NODE_ENV` | no | Set to `production` by the API `start` script. Drives `secure` session cookies and blocks the dev seed. |
 | `ADMIN_EMAIL` | no | Email of the first ADMIN account created by the roster import. Defaults to the maintainer's address. |
+| `TEST_DATABASE_URL` | no | Test database, default `postgresql://localhost/phoneup_test`. Separate from `DATABASE_URL` on purpose — an exported `DATABASE_URL` must never be able to point the destructive test suite at a real database. The suite also refuses any database whose name lacks `test`. |
 
 See `.env.example`. Copy it to `.env` for local work; in production set them as platform variables.
+
+## 1.1 Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request: install,
+migrate a throwaway Postgres 16, `pnpm typecheck`, `pnpm -r test`, `pnpm -r build`.
+
+The typecheck step matters more than it looks: the API ships via `tsx`, which strips types
+without checking them, so CI is the only thing standing between a type error and production.
 
 ---
 
@@ -210,12 +219,8 @@ so a null or wrong name shows up as an unmatched import row.
 Open items that affect operating this, tracked so they are not rediscovered in production:
 
 - **No automated backups.** The `assignment_events` ledger is the truth model and lives on
-  one Postgres instance. Enable platform backups and do one restore drill.
-- **`/ws/board` accepts unauthenticated connections.** The realtime board feed does not
-  check a session. Payload is IDs plus rotation state — no customer PII — but it is open.
-- **No CI.** 117 tests exist; nothing runs them on push. `pnpm -r test` before deploying.
-- **API is not typechecked in the build.** It ships via `tsx`, which strips types without
-  checking them. `apps/api` currently has 6 type errors, all in test files.
+  one Postgres instance. Enable platform backups and do one restore drill. This is the
+  largest remaining operational risk.
 - **No shadow-mode report.** Nothing renders "who would have been disqualified", so the
   calibration window that gates §4.4 produces no reviewable output yet.
 - **No policy UI.** Enforcement mode is flipped by the API call in §4.4.

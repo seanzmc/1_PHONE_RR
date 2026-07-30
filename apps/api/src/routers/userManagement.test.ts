@@ -4,14 +4,23 @@ import { db, schema } from '@phoneup/db'
 import { t } from '../trpc/router'
 import { userManagementRouter } from './userManagement'
 import type { Context } from '../trpc/context'
+import type { Role } from '@phoneup/contracts'
 import { createAccount } from '../domain/userManagement'
 
 const fakeReqRes = { req: {} as Context['req'], res: {} as Context['res'] }
 
+/**
+ * A complete session, so these callers exercise the same shape the real context builds —
+ * a partial literal here type-errored and let the password-change gate go untested.
+ */
+function fakeSession(userId: string, role: Role): NonNullable<Context['session']> {
+  return { userId, role, mustChangePassword: false, sessionId: `test-session-${userId}` }
+}
+
 describe('userManagementRouter', () => {
   it('rejects BDC', async () => {
     const caller = t.createCallerFactory(userManagementRouter)({
-      session: { userId: 'u1', role: 'BDC' },
+      session: fakeSession('u1', 'BDC'),
       ...fakeReqRes,
     })
     await expect(caller.list()).rejects.toThrow(/FORBIDDEN/)
@@ -19,7 +28,7 @@ describe('userManagementRouter', () => {
 
   it('rejects REP', async () => {
     const caller = t.createCallerFactory(userManagementRouter)({
-      session: { userId: 'u1', role: 'REP' },
+      session: fakeSession('u1', 'REP'),
       ...fakeReqRes,
     })
     await expect(caller.list()).rejects.toThrow(/FORBIDDEN/)
@@ -27,7 +36,7 @@ describe('userManagementRouter', () => {
 
   it('allows MANAGER to list accounts', async () => {
     const caller = t.createCallerFactory(userManagementRouter)({
-      session: { userId: 'u1', role: 'MANAGER' },
+      session: fakeSession('u1', 'MANAGER'),
       ...fakeReqRes,
     })
     await expect(caller.list()).resolves.toBeInstanceOf(Array)
@@ -35,7 +44,7 @@ describe('userManagementRouter', () => {
 
   it('allows ADMIN to list accounts', async () => {
     const caller = t.createCallerFactory(userManagementRouter)({
-      session: { userId: 'u1', role: 'ADMIN' },
+      session: fakeSession('u1', 'ADMIN'),
       ...fakeReqRes,
     })
     await expect(caller.list()).resolves.toBeInstanceOf(Array)
@@ -82,14 +91,14 @@ describe('userManagementRouter — ADMIN-gating on setRole/resetPassword', () =>
 
   function managerCaller() {
     return t.createCallerFactory(userManagementRouter)({
-      session: { userId: 'manager-1', role: 'MANAGER' },
+      session: fakeSession('manager-1', 'MANAGER'),
       ...fakeReqRes,
     })
   }
 
   function adminCaller() {
     return t.createCallerFactory(userManagementRouter)({
-      session: { userId: actorUserId, role: 'ADMIN' },
+      session: fakeSession(actorUserId, 'ADMIN'),
       ...fakeReqRes,
     })
   }

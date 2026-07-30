@@ -34,6 +34,9 @@ importers:
       '@trpc/server':
         specifier: ^11.0.0-rc.677
         version: 11.18.0(typescript@5.9.3)
+      cookie:
+        specifier: ^2.0.1
+        version: 2.0.1
       csv-parse:
         specifier: ^7.0.1
         version: 7.0.1

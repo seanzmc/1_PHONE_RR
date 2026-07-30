@@ -1,4 +1,7 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:3000/trpc'
+// Relative in both environments: production serves the app from the API's own origin, and
+// development proxies /trpc through Vite (see vite.config.ts). Same-origin everywhere means
+// the session cookie is always sent and there is no CORS or cross-site cookie config.
+const API_BASE = import.meta.env.VITE_API_BASE ?? '/trpc'
 
 async function handle(res: Response) {
   const body = await res.json()

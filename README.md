@@ -49,9 +49,13 @@ For a real deployment use `import-roster` — see the runbook.
 ## Checks
 
 ```sh
-pnpm -r test     # 117 tests; apps/api needs a reachable postgresql://localhost/phoneup_test
+pnpm typecheck   # the only thing that typechecks the API — it ships via tsx
+pnpm -r test     # 125 tests; apps/api needs a reachable postgresql://localhost/phoneup_test
 pnpm -r build
 ```
+
+CI (`.github/workflows/ci.yml`) runs all three on every push to `main` and every PR,
+against a throwaway Postgres 16.
 
 ## Correctness rules that must not be quietly changed
 
@@ -66,3 +70,5 @@ pnpm -r build
   branches in the algorithm.
 - No shared passwords. Every admin-issued password is unique, single-use, and forces a
   change at next sign-in.
+- The board WebSocket applies the same three checks as `requirePerm` (session, password-change
+  gate, `board.view`). It streams board data, so it cannot be the one door without a lock.

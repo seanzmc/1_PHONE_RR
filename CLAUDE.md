@@ -65,6 +65,18 @@ Re-read `plans/v1-plan.md`. If a request would expand scope beyond it, flag that
 - **One generator: `generateTempPassword` in `packages/core`.** The roster importer, the dev seed and `issueTempPassword` all call it. Do not add a second copy — a local copy is how a shared default sneaks back in.
 - `seed.ts` is a dev fixture and enforces that: it refuses to run against a non-local `DATABASE_URL` or with `NODE_ENV=production`, refuses an already-initialised database, and issues a unique temp password per account. Real deployments use `import-roster`.
 
+## Auth surfaces
+
+Every path that serves board data applies the same three checks, in the same order: session present → `mustChangePassword` rejected → role holds the permission. `requirePerm` does it for tRPC; `authorizeBoardSocket` (`realtime/server.ts`) does it for the `/ws/board` upgrade. **Do not add a data-carrying transport without that check** — the socket shipped without one and streamed rotation state to anonymous clients.
+
+Because the session cookie is `sameSite=lax` and a WebSocket handshake is not a top-level navigation, the socket only works same-origin. Production is same-origin already; development proxies `/trpc` and `/ws/board` through Vite (`apps/web/vite.config.ts`) to match. The web client's API base is relative (`/trpc`) in both — do not make it absolute again.
+
+## Checks
+
+`pnpm typecheck` is the only thing that typechecks `apps/api` — it ships via `tsx`, which strips types without checking them. CI (`.github/workflows/ci.yml`) runs typecheck, tests and build on every push to `main` and every PR against a throwaway Postgres.
+
+The api suite reads `TEST_DATABASE_URL`, never `DATABASE_URL`, and refuses any database whose name lacks `test`. It writes destructively; do not "simplify" that to read `DATABASE_URL`.
+
 ## Environment
 
 `DATABASE_URL` has **no fallback** — `packages/db/src/client.ts` and `drizzle.config.ts` both throw without it, and `/health` round-trips a real query so a bad connection fails the platform healthcheck. Both were added because a default of `postgresql://localhost/phoneup_dev` let a misconfigured deploy boot green and serve an empty database. Do not reintroduce a default. Full table in `.env.example`.

@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { connectBoardSocket, resolveBoardSocketUrl } from './realtime'
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:3000/trpc'
+// see api.ts — relative in both environments so the session cookie reaches the socket
+const API_BASE = import.meta.env.VITE_API_BASE ?? '/trpc'
 
 export function useBoardRealtime(onAssignment: () => void): void {
   const callbackRef = useRef(onAssignment)
