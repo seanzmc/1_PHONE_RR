@@ -12,7 +12,8 @@
     "rotate-passwords": "tsx src/rotatePasswords.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "reconcile": "tsx src/reconcile.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.1",

@@ -12,3 +12,6 @@ Name Email Role.tsv
 Standard-Daily Activity*.csv
 docs/build-logs.txt
 *.zip
+
+# database dumps — real employee and customer data, never committed
+backups/

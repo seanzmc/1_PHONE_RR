@@ -176,7 +176,58 @@ curl -X POST https://<host>/trpc/admin.setPolicy \
 Audit-logged as `policy.set` with before/after. Read `admin.policy` first to see current
 values. Do not flip this until the shadow data has been reviewed — see Known gaps.
 
-### 4.5 Password remediation
+### 4.5 Backups and the restore drill
+
+**Railway's own volume backups are not available on the current plan.** Verified against the
+API: the workspace limit is `maxBackupsCount: 0`, and both `volumeInstanceBackupCreate` and
+`volumeInstanceBackupScheduleUpdate` return `Not Authorized`. There are zero backups and
+zero schedules on the production volume. Upgrading the Railway plan would enable native
+daily/weekly/monthly snapshots — that is a billing decision, not a technical one.
+
+Until then `pg_dump` is not a supplement to a backup, it **is** the backup. The
+`assignment_events` ledger is the truth model and cannot be reconstructed from anywhere
+else.
+
+**Take a backup:**
+
+```
+DATABASE_URL=<prod> pnpm --filter @phoneup/db backup
+```
+
+Writes `backups/phoneup-<timestamp>.dump` (custom format) plus a `.manifest.json` of
+per-table row counts. It refuses to run if the local `pg_dump` is older than the server,
+and verifies the archive is readable with `pg_restore --list` before reporting success.
+`backups/` is gitignored — dumps hold real employee and customer data and must never be
+committed, or pushed anywhere they would leave the machine unencrypted.
+
+**Verify the backup actually restores:**
+
+```
+DATABASE_URL=<any host you can create databases on> pnpm --filter @phoneup/db restore-drill
+```
+
+Restores the newest dump into a scratch database (`phoneup_restore_drill`, dropped and
+recreated each run; the name must contain `drill`) and asserts three things in order:
+
+1. `pg_restore` completes;
+2. every table's row count matches the manifest taken at dump time;
+3. `pnpm --filter @phoneup/api reconcile` passes **on the restored copy** — the ledger and
+   its projection still agree, so what came back is the truth model and not just rows.
+
+Exits non-zero on any failure. Pass `--keep` to leave the scratch database for inspection.
+
+**Cadence.** Weekly at minimum, and always immediately before a migration deploy or a
+roster import. Run the drill on at least one dump a month — a backup nobody has restored is
+a guess. Copy dumps somewhere off the machine that produced them; a backup living only on
+the laptop that would be lost with it is not an off-site backup.
+
+**Reconciliation on demand**, independent of the drill and of the 02:00 cron:
+
+```
+DATABASE_URL=<prod> pnpm --filter @phoneup/api reconcile
+```
+
+### 4.6 Password remediation
 
 ```
 DATABASE_URL=<prod> pnpm --filter @phoneup/api rotate-passwords            # dry run
@@ -186,7 +237,7 @@ DATABASE_URL=<prod> pnpm --filter @phoneup/api rotate-passwords --commit   # app
 Reissues a fresh temp password for every account and prints the distribution list. One-off
 tool for a suspected exposure, not routine hygiene.
 
-### 4.6 Fixing display names
+### 4.7 Fixing display names
 
 ```
 DATABASE_URL=<prod> pnpm --filter @phoneup/db backfill-display-names ./Name\ Email\ Role.tsv
@@ -218,9 +269,11 @@ so a null or wrong name shows up as an unmatched import row.
 
 Open items that affect operating this, tracked so they are not rediscovered in production:
 
-- **No automated backups.** The `assignment_events` ledger is the truth model and lives on
-  one Postgres instance. Enable platform backups and do one restore drill. This is the
-  largest remaining operational risk.
+- **Backups are manual.** `pnpm --filter @phoneup/db backup` and `restore-drill` exist and
+  are verified (§4.5), but nothing runs them on a schedule — someone has to remember. Railway's
+  native scheduled snapshots need a plan upgrade (`maxBackupsCount: 0` on the current plan);
+  until then a missed week is a real week of exposure, and dumps live wherever the operator
+  put them. This remains the largest operational risk.
 - **No shadow-mode report.** Nothing renders "who would have been disqualified", so the
   calibration window that gates §4.4 produces no reviewable output yet.
 - **No policy UI.** Enforcement mode is flipped by the API call in §4.4.

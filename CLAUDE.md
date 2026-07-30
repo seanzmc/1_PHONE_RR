@@ -91,6 +91,9 @@ Run with `DATABASE_URL` pointed at the target DB:
 - `pnpm --filter @phoneup/db backfill-display-names [file.tsv]` — fill `app_user.display_name` from the roster TSV.
 
 - `pnpm --filter @phoneup/db import-roster [file.tsv]` — one-shot first-run bootstrap (store, hours, policy, first cycle, ADMIN + all accounts). Refuses if a store row exists. First admin email comes from `ADMIN_EMAIL`.
+- `pnpm --filter @phoneup/db backup [outDir]` — pg_dump + row-count manifest. **This is the backup**, not a supplement to one: Railway's volume backups are unavailable on the current plan (`maxBackupsCount: 0`). Output goes to gitignored `backups/` — dumps hold real employee and customer data.
+- `pnpm --filter @phoneup/db restore-drill [dump] [--keep]` — restores into a scratch DB and asserts row counts match the manifest **and** that reconciliation passes on the restored copy. Exits non-zero on failure. A backup nobody has restored is a guess.
+- `pnpm --filter @phoneup/api reconcile` — run the ledger/counter check on demand; exits non-zero on drift. The drill shells out to this rather than re-implementing the invariant — keep it that way, two definitions of the invariant would let the drill lie.
 
 Prod runs `pnpm --filter @phoneup/db migrate` on container start (see `Dockerfile`), so a deploy applies pending migrations automatically.
 
