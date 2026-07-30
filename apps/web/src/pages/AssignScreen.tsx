@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { hasPermission } from '@phoneup/contracts'
 import { mutate, query } from '../lib/api'
 import { useBoardRealtime } from '../lib/useBoardRealtime'
 import { digitsOnly, useClipboardStore } from '../state/clipboardStore'
 import { useAuthStore } from '../state/authStore'
+import { Badge, Button, Card, Field, Input, Textarea } from '../ui'
+import { Modal } from '../ui/Modal'
+import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
 
 type RosterEntry = {
   repId: string
@@ -32,8 +34,28 @@ function toE164(phone: string): string {
   return phone.startsWith('+') ? phone : `+1${phone}`
 }
 
-export function AssignScreen() {
-  const { session } = useAuthStore()
+/**
+ * Four buckets, non-leaky — every rep appears in exactly one (design pass §B):
+ *   nextUp   : the single rep the next lead goes to
+ *   onDeck   : eligible AND unserved this cycle, numbered from 2
+ *   served   : eligible but already served this cycle (with their ups count)
+ *   unavailable: not eligible (with reason)
+ * Pure display partition — the ranking itself is untouched.
+ */
+export function bucketRoster(roster: RosterEntry[]) {
+  const eligible = roster.filter((r) => r.isEligible)
+  const unserved = eligible.filter((r) => !r.servedThisCycle)
+  const [nextUp, ...onDeck] = unserved
+  return {
+    nextUp: nextUp ?? null,
+    onDeck,
+    served: eligible.filter((r) => r.servedThisCycle),
+    unavailable: roster.filter((r) => !r.isEligible),
+  }
+}
+
+export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => void }) {
+  const { hasPermission } = useAuthStore()
   const [roster, setRoster] = useState<RosterEntry[]>([])
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -47,10 +69,9 @@ export function AssignScreen() {
   const [copyFailed, setCopyFailed] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
-  const voidReasonRef = useRef<HTMLInputElement>(null)
   const { lastCopiedPhone, setLastCopiedPhone } = useClipboardStore()
 
-  const canVoid = session ? hasPermission(session.role, 'lead.void') : false
+  const canVoid = hasPermission('lead.void')
 
   const refreshRoster = useCallback(() => {
     loadRoster().then(setRoster).catch(() => {})
@@ -62,6 +83,7 @@ export function AssignScreen() {
 
   useBoardRealtime(refreshRoster)
 
+  // Alt+C — re-copy the last assigned phone (existing shortcut, unchanged)
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
       if (e.altKey && e.code === 'KeyC' && lastCopiedPhone) {
@@ -72,6 +94,7 @@ export function AssignScreen() {
     return () => window.removeEventListener('keydown', onKeydown)
   }, [lastCopiedPhone])
 
+  // Alt+V — open the void prompt (existing shortcut, unchanged)
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
       if (e.altKey && e.code === 'KeyV' && lastResult?.assignedRepId && canVoid) {
@@ -91,12 +114,6 @@ export function AssignScreen() {
     setVoidReason('')
     setVoidError(null)
   }, [lastResult])
-
-  useEffect(() => {
-    if (voidReasonOpen) {
-      voidReasonRef.current?.focus()
-    }
-  }, [voidReasonOpen])
 
   async function handleAssign() {
     setError(null)
@@ -123,6 +140,7 @@ export function AssignScreen() {
     }
   }
 
+  // Ctrl+Enter anywhere in the form submits (existing behaviour, unchanged)
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.ctrlKey && e.key === 'Enter') {
       e.preventDefault()
@@ -167,126 +185,167 @@ export function AssignScreen() {
     }
   }
 
-  function handleVoidReasonKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      e.stopPropagation()
-      handleVoid()
-    } else if (e.key === 'Escape') {
-      e.preventDefault()
-      e.stopPropagation()
-      setVoidReasonOpen(false)
-      setVoidReason('')
-      setVoidError(null)
-    }
-  }
+  const onVoidKeyDown = useSubmitOnEnter(handleVoid, { disabled: !voidReason.trim() })
 
   const nameById = new Map(roster.map((r) => [r.repId, r.displayName]))
-  const nextUp = roster.find((r) => r.isEligible && !r.servedThisCycle)
-  const onDeck = roster.filter((r) => r.isEligible && r.repId !== nextUp?.repId)
-  const unavailable = roster.filter((r) => !r.isEligible)
+  const { nextUp, onDeck, served, unavailable } = bucketRoster(roster)
+
+  function repName(entry: RosterEntry) {
+    if (!onOpenRep) return <>{entry.displayName}</>
+    return (
+      <button type="button" className="ui-linkbtn" onClick={() => onOpenRep(entry.repId)}>
+        {entry.displayName}
+      </button>
+    )
+  }
 
   return (
-    <div style={{ display: 'flex', gap: 24, padding: 24 }} onKeyDown={handleKeyDown}>
-      <div style={{ flex: 1 }}>
+    <div className="ui-page ui-split" onKeyDown={handleKeyDown}>
+      <div>
         <h2>Assign Lead</h2>
-        <div style={{ marginBottom: 8 }}>
-          <label>
-            Name
-            <input
+        <div className="ui-stack">
+          <Field label="Name">
+            <Input
               ref={nameRef}
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={handleNameKeyDown}
-              style={{ display: 'block', width: '100%' }}
               autoFocus
             />
-          </label>
-        </div>
-        <div style={{ marginBottom: 8 }}>
-          <label>
-            Phone (10 digits, or +1XXXXXXXXXX)
-            <input
+          </Field>
+          <Field label="Phone" hint="10 digits, or +1XXXXXXXXXX">
+            <Input
               ref={phoneRef}
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               onKeyDown={handlePhoneKeyDown}
-              style={{ display: 'block', width: '100%' }}
             />
-          </label>
+          </Field>
+          <Field label="Notes (optional)">
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
+          {error && <p className="ui-error">{error}</p>}
+          <Button variant="primary" onClick={handleAssign}>
+            Assign (Ctrl+Enter)
+          </Button>
         </div>
-        <div style={{ marginBottom: 8 }}>
-          <label>
-            Notes (optional)
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ display: 'block', width: '100%' }} />
-          </label>
-        </div>
-        {error && <p style={{ color: 'red' }}>{error}</p>}
-        <button onClick={handleAssign}>Assign (Ctrl+Enter)</button>
 
         {lastResult && (
-          <div style={{ marginTop: 24, border: '1px solid #ccc', padding: 12 }}>
-            <h3>Just Assigned</h3>
+          <Card title="Just Assigned" className="ui-stack">
             {lastResult.assignedRepId ? (
               <>
-                <p>Assigned to: {nameById.get(lastResult.assignedRepId) ?? lastResult.assignedRepId}</p>
-                <button onClick={handleCopyClick}>Copy phone (digits only)</button>
-                {copyFailed && <p style={{ color: 'orange' }}>Auto-copy blocked — press Alt+C or click Copy phone</p>}
-                {canVoid && (
-                  <div style={{ marginTop: 8 }}>
-                    {voidReasonOpen ? (
-                      <div>
-                        <label>
-                          Void reason
-                          <input
-                            ref={voidReasonRef}
-                            value={voidReason}
-                            onChange={(e) => setVoidReason(e.target.value)}
-                            onKeyDown={handleVoidReasonKeyDown}
-                            style={{ display: 'block', width: '100%' }}
-                          />
-                        </label>
-                        <p style={{ fontSize: 12, color: '#666' }}>Enter to confirm void, Esc to cancel</p>
-                        {voidError && <p style={{ color: 'red' }}>{voidError}</p>}
-                      </div>
-                    ) : (
-                      <p style={{ fontSize: 12, color: '#666' }}>Alt+V to void this assignment</p>
-                    )}
-                  </div>
-                )}
+                <p>
+                  Assigned to <strong>{nameById.get(lastResult.assignedRepId) ?? lastResult.assignedRepId}</strong>
+                </p>
+                <div className="ui-row">
+                  <Button onClick={handleCopyClick}>Copy phone (digits only)</Button>
+                  {canVoid && (
+                    <Button variant="danger" onClick={() => setVoidReasonOpen(true)}>
+                      Void (Alt+V)
+                    </Button>
+                  )}
+                </div>
+                {copyFailed && <p className="ui-warn">Auto-copy blocked — press Alt+C or click Copy phone</p>}
               </>
             ) : (
               <p>No eligible rep — lead queued as unassigned.</p>
             )}
-            {lastResult.duplicatePhone && <p style={{ color: 'orange' }}>Warning: this phone number already exists.</p>}
-          </div>
+            {lastResult.duplicatePhone && <p className="ui-warn">Warning: this phone number already exists.</p>}
+          </Card>
         )}
       </div>
 
-      <div style={{ flex: 1 }}>
+      <div>
         <h2>Roster</h2>
-        {nextUp && (
-          <div style={{ fontWeight: 'bold', marginBottom: 8 }}>
-            Next Up: {nextUp.displayName}
+
+        <div className="ui-bucket">
+          <div className="ui-bucket-head">
+            <h5>Next Up</h5>
           </div>
-        )}
-        <h4>On Deck</h4>
-        <ul>
-          {onDeck.map((r) => (
-            <li key={r.repId}>
-              {r.displayName} — {r.monthlyLoad} ups this month
-            </li>
-          ))}
-        </ul>
-        <h4>Unavailable</h4>
-        <ul>
-          {unavailable.map((r) => (
-            <li key={r.repId}>
-              {r.displayName} — {r.ineligibleReason ?? 'ineligible'}
-            </li>
-          ))}
-        </ul>
+          {nextUp ? (
+            <div className="ui-nextup">{nextUp.displayName}</div>
+          ) : (
+            <p className="ui-muted">No eligible unserved rep — the next lead queues as unassigned.</p>
+          )}
+        </div>
+
+        <div className="ui-bucket">
+          <div className="ui-bucket-head">
+            <h5>On Deck</h5>
+            <span className="ui-muted">{onDeck.length}</span>
+          </div>
+          {onDeck.length === 0 ? (
+            <p className="ui-muted">Nobody else is unserved this cycle.</p>
+          ) : (
+            <ul className="ui-list">
+              {onDeck.map((r, i) => (
+                <li key={r.repId}>
+                  {/* numbered from 2 — Next Up is 1 */}
+                  <span className="ui-list-rank">{i + 2}</span>
+                  {repName(r)}
+                  <span className="ui-muted">{r.monthlyLoad} ups MTD</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="ui-bucket">
+          <div className="ui-bucket-head">
+            <h5>Served This Cycle</h5>
+            <span className="ui-muted">{served.length}</span>
+          </div>
+          {served.length === 0 ? (
+            <p className="ui-muted">Nobody served yet this cycle.</p>
+          ) : (
+            <ul className="ui-list">
+              {served.map((r) => (
+                <li key={r.repId}>
+                  {repName(r)}
+                  <Badge tone="accent">{r.monthlyLoad} ups MTD</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="ui-bucket">
+          <div className="ui-bucket-head">
+            <h5>Unavailable</h5>
+            <span className="ui-muted">{unavailable.length}</span>
+          </div>
+          {unavailable.length === 0 ? (
+            <p className="ui-muted">Everyone is available.</p>
+          ) : (
+            <ul className="ui-list">
+              {unavailable.map((r) => (
+                <li key={r.repId}>
+                  {repName(r)}
+                  <Badge tone="warn">{r.ineligibleReason ?? 'ineligible'}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
+
+      <Modal
+        open={voidReasonOpen}
+        title="Void this assignment"
+        onClose={() => {
+          setVoidReasonOpen(false)
+          setVoidReason('')
+          setVoidError(null)
+        }}
+        onSubmit={handleVoid}
+        submitDisabled={!voidReason.trim()}
+        submitLabel="Void"
+      >
+        <Field label="Void reason" error={voidError}>
+          <Input value={voidReason} onChange={(e) => setVoidReason(e.target.value)} onKeyDown={onVoidKeyDown} />
+        </Field>
+        <p className="ui-hint">The up goes straight back to this rep — they become Next Up again.</p>
+      </Modal>
     </div>
   )
 }
