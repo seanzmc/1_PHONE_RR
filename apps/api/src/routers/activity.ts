@@ -2,11 +2,17 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { eq, and, gte, lte, sql } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
-import { activityImportInputSchema, setMetricInputSchema, hasPermission } from '@phoneup/contracts'
+import {
+  activityImportPreviewInputSchema,
+  activityImportCommitInputSchema,
+  setMetricInputSchema,
+  hasPermission,
+} from '@phoneup/contracts'
 import { businessDate, periodKey } from '@phoneup/core'
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
-import { importDailyActivity, setActivityMetric } from '../jobs/activityImport'
+import { setActivityMetric } from '../jobs/activityImport'
+import { previewDailyActivity, commitDailyActivity } from '../jobs/activityImportDecision'
 
 const byRepInputSchema = z.object({
   repId: z.string().uuid().optional(),
@@ -26,12 +32,46 @@ function periodBounds(pKey: string): { start: string; end: string } {
 }
 
 export const activityRouter = router({
-  /** ADMIN/MANAGER-only upload of the CRM daily activity export (design pass §H). */
-  import: publicProcedure
+  /**
+   * ADMIN/MANAGER-only, side-effect-free review of a CRM report.
+   * Nothing is saved here — this is why "Cancel entirely" is truthful.
+   */
+  preview: publicProcedure
     .use(requirePerm('activity.import'))
-    .input(activityImportInputSchema)
+    .input(activityImportPreviewInputSchema)
+    .mutation(async ({ input }) => {
+      return previewDailyActivity(db, input.csv, input.businessDate, {
+        statusDate: businessDate(new Date()),
+      })
+    }),
+
+  /**
+   * Commit the exact preview as either metrics-only or metrics + weekly DQ status writes.
+   * The preview token is recomputed in the transaction, so a stale Yes can never apply
+   * after a manual correction, policy change, or manager override.
+   */
+  commit: publicProcedure
+    .use(requirePerm('activity.import'))
+    .input(activityImportCommitInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return importDailyActivity(db, input.csv, input.businessDate, { actorUserId: ctx.session.userId })
+      if (input.statusDate !== businessDate(new Date())) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'eligibility preview expired at the end of the business day; process the report again',
+        })
+      }
+      try {
+        return await commitDailyActivity(db, { ...input, actorUserId: ctx.session.userId })
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (error.message.startsWith('PREVIEW_STALE') ||
+            error.message.startsWith('PREVIEW_ALREADY_COMMITTED'))
+        ) {
+          throw new TRPCError({ code: 'CONFLICT', message: error.message })
+        }
+        throw error
+      }
     }),
 
   /** Manager/admin correction of an imported metric (design pass §J). */

@@ -1,8 +1,10 @@
 import cron from 'node-cron'
-import { eq, and, inArray, gte } from 'drizzle-orm'
+import { eq, and, inArray, gte, sql } from 'drizzle-orm'
 import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
+
+const ADVISORY_LOCK_KEY = 42_100_1
 
 export function shiftDate(dateStr: string, deltaDays: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`)
@@ -52,6 +54,8 @@ async function findPreviousWorkday(
 
 export async function evaluateRepEligibility(db: DB, input: EvaluateInput): Promise<void> {
   await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
+
     // override always wins — never overwrite a manager-decided status
     const existing = await tx.query.repDailyStatus.findFirst({
       where: and(eq(schema.repDailyStatus.repId, input.repId), eq(schema.repDailyStatus.businessDate, input.businessDate)),
@@ -200,65 +204,65 @@ export async function materializeShifts(
   db: DB,
   opts: { fromDate?: string; days?: number; repIds?: string[] } = {},
 ): Promise<{ inserted: number; updated: number }> {
-  const fromDate = opts.fromDate ?? businessDate(new Date())
-  const days = opts.days ?? 14
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
 
-  const reps = opts.repIds?.length
-    ? await db.select().from(schema.salesRep).where(inArray(schema.salesRep.id, opts.repIds))
-    : await db.select().from(schema.salesRep)
-  if (reps.length === 0) return { inserted: 0, updated: 0 }
+    const fromDate = opts.fromDate ?? businessDate(new Date())
+    const days = opts.days ?? 14
+    const reps = opts.repIds?.length
+      ? await tx.select().from(schema.salesRep).where(inArray(schema.salesRep.id, opts.repIds))
+      : await tx.select().from(schema.salesRep)
+    if (reps.length === 0) return { inserted: 0, updated: 0 }
 
-  const repIds = reps.map((r: any) => r.id)
-  const daysOff = await db
-    .select()
-    .from(schema.repRecurringDayOff)
-    .where(inArray(schema.repRecurringDayOff.repId, repIds))
-  const offByRep = new Map<string, Set<number>>()
-  for (const row of daysOff) {
-    if (!offByRep.has(row.repId)) offByRep.set(row.repId, new Set())
-    offByRep.get(row.repId)!.add(row.dayOfWeek)
-  }
-
-  const dates = Array.from({ length: days }, (_, i) => shiftDate(fromDate, i))
-  const closures = await db
-    .select()
-    .from(schema.storeClosure)
-    .where(inArray(schema.storeClosure.closureDate, dates))
-  const closureDates = new Set(closures.map((c: any) => c.closureDate))
-
-  const existing = await db
-    .select()
-    .from(schema.repShift)
-    .where(and(inArray(schema.repShift.repId, repIds), gte(schema.repShift.businessDate, fromDate)))
-  const existingByKey = new Map(existing.map((s: any) => [`${s.repId}:${s.businessDate}`, s]))
-
-  let inserted = 0
-  let updated = 0
-
-  for (const rep of reps) {
-    const repOff = offByRep.get(rep.id) ?? new Set<number>()
-    for (const date of dates) {
-      const dow = dayOfWeek(date)
-      // Sunday is closed for everyone — hardcoded, no config surface, and it must not
-      // consume one of a rep's recurring day-off entries.
-      const isOff = dow === 0 || repOff.has(dow) || closureDates.has(date)
-      const kind = isOff ? 'OFF' : 'WORK'
-
-      const prior = existingByKey.get(`${rep.id}:${date}`)
-      if (!prior) {
-        await db.insert(schema.repShift).values({ repId: rep.id, businessDate: date, kind })
-        inserted++
-        continue
-      }
-      // a manually-set PTO/SICK/TRAINING/SUSPENDED row survives re-materialization
-      if (!GENERATED_KINDS.has(prior.kind)) continue
-      if (prior.kind === kind) continue
-      await db.update(schema.repShift).set({ kind }).where(eq(schema.repShift.id, prior.id))
-      updated++
+    const repIds = reps.map((r: any) => r.id)
+    const daysOff = await tx
+      .select()
+      .from(schema.repRecurringDayOff)
+      .where(inArray(schema.repRecurringDayOff.repId, repIds))
+    const offByRep = new Map<string, Set<number>>()
+    for (const row of daysOff) {
+      if (!offByRep.has(row.repId)) offByRep.set(row.repId, new Set())
+      offByRep.get(row.repId)!.add(row.dayOfWeek)
     }
-  }
 
-  return { inserted, updated }
+    const dates = Array.from({ length: days }, (_, i) => shiftDate(fromDate, i))
+    const closures = await tx
+      .select()
+      .from(schema.storeClosure)
+      .where(inArray(schema.storeClosure.closureDate, dates))
+    const closureDates = new Set(closures.map((c: any) => c.closureDate))
+    const existing = await tx
+      .select()
+      .from(schema.repShift)
+      .where(and(inArray(schema.repShift.repId, repIds), gte(schema.repShift.businessDate, fromDate)))
+    const existingByKey = new Map(existing.map((s: any) => [`${s.repId}:${s.businessDate}`, s]))
+
+    let inserted = 0
+    let updated = 0
+    for (const rep of reps) {
+      const repOff = offByRep.get(rep.id) ?? new Set<number>()
+      for (const date of dates) {
+        const dow = dayOfWeek(date)
+        // Sunday is closed for everyone — hardcoded, no config surface, and it must not
+        // consume one of a rep's recurring day-off entries.
+        const isOff = dow === 0 || repOff.has(dow) || closureDates.has(date)
+        const kind = isOff ? 'OFF' : 'WORK'
+        const prior = existingByKey.get(`${rep.id}:${date}`)
+        if (!prior) {
+          await tx.insert(schema.repShift).values({ repId: rep.id, businessDate: date, kind })
+          inserted++
+          continue
+        }
+        // a manually-set PTO/SICK/TRAINING/SUSPENDED row survives re-materialization
+        if (!GENERATED_KINDS.has(prior.kind)) continue
+        if (prior.kind === kind) continue
+        await tx.update(schema.repShift).set({ kind }).where(eq(schema.repShift.id, prior.id))
+        updated++
+      }
+    }
+
+    return { inserted, updated }
+  })
 }
 
 export async function runEligibilityJob(db: DB): Promise<void> {

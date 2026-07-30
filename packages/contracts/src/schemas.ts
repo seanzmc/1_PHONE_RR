@@ -44,21 +44,42 @@ export const resetPasswordInputSchema = z.object({
 
 /* ── activity (design pass §H, §J) ───────────────────────────────────────── */
 
-export const activityImportInputSchema = z.object({
-  csv: z.string().min(1),
+const isoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00Z`)
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+  }, 'invalid calendar date')
+
+const postgresNonNegativeIntegerSchema = z.number().int().min(0).max(2_147_483_647)
+
+export const activityImportPreviewInputSchema = z.object({
+  csv: z.string().min(1).max(5_000_000),
   /**
    * The business date the report covers — normally the PRIOR day, since the export is
    * yesterday's activity imported this morning. Always explicit; never inferred from now().
    */
-  businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  businessDate: isoDateSchema,
+})
+
+/** Backward-compatible name used by the CLI/direct import path. */
+export const activityImportInputSchema = activityImportPreviewInputSchema
+
+export const activityImportCommitInputSchema = activityImportPreviewInputSchema.extend({
+  /** Status/rotation date shown in the preview. Server rejects a stale day. */
+  statusDate: isoDateSchema,
+  /** One-time nonce + HMAC-SHA-256 authentication tag returned by preview. */
+  previewToken: z.string().length(128).regex(/^[a-f0-9]{128}$/),
+  decision: z.enum(['LOG_ONLY', 'LOG_AND_DEACTIVATE']),
 })
 
 export const setMetricInputSchema = z
   .object({
     repId: z.string().uuid(),
-    businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    calls: z.number().int().min(0).optional(),
-    sold: z.number().int().min(0).optional(),
+    businessDate: isoDateSchema,
+    calls: postgresNonNegativeIntegerSchema.optional(),
+    sold: postgresNonNegativeIntegerSchema.optional(),
     reasonNote: z.string().min(1),
   })
   .refine((v) => v.calls !== undefined || v.sold !== undefined, {
@@ -88,6 +109,8 @@ export type SetRoleInput = z.infer<typeof setRoleInputSchema>
 export type SetActiveInput = z.infer<typeof setActiveInputSchema>
 export type ResetPasswordInput = z.infer<typeof resetPasswordInputSchema>
 export type ActivityImportInput = z.infer<typeof activityImportInputSchema>
+export type ActivityImportPreviewInput = z.infer<typeof activityImportPreviewInputSchema>
+export type ActivityImportCommitInput = z.infer<typeof activityImportCommitInputSchema>
 export type SetMetricInput = z.infer<typeof setMetricInputSchema>
 export type SetLeadNoteInput = z.infer<typeof setLeadNoteInputSchema>
 export type SetDaysOffInput = z.infer<typeof setDaysOffInputSchema>

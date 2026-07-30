@@ -85,6 +85,40 @@ describe('parseActivityCsv', () => {
     expect(rows[0].sold).toBe(3)
   })
 
+  it('rejects a file whose expected CRM headers are missing', () => {
+    const malformed = buildCsv([{ user: 'Only Rep', calls: 7, sold: 2 }]).replace('"Calls"', '"Visits"')
+    expect(() => parseActivityCsv(malformed)).toThrow(/expected column N.*Calls/i)
+  })
+
+  it('rejects malformed or negative activity numbers instead of silently treating them as zero', () => {
+    expect(() => parseActivityCsv(buildCsv([{ user: 'Only Rep', calls: 'not-a-number', sold: 2 }]))).toThrow(
+      /invalid Calls/i,
+    )
+    expect(() => parseActivityCsv(buildCsv([{ user: 'Only Rep', calls: '-1', sold: 2 }]))).toThrow(
+      /invalid Calls/i,
+    )
+  })
+
+  it('rejects activity values outside the PostgreSQL integer range', () => {
+    expect(() =>
+      parseActivityCsv(buildCsv([{ user: 'Only Rep', calls: '2147483648', sold: 2 }])),
+    ).toThrow(/Calls.*too large/i)
+    expect(() =>
+      parseActivityCsv(buildCsv([{ user: 'Only Rep', calls: 2, sold: '2147483648' }])),
+    ).toThrow(/Sold.*too large/i)
+  })
+
+  it('rejects duplicate rep names instead of silently taking the last row', () => {
+    expect(() =>
+      parseActivityCsv(
+        buildCsv([
+          { user: 'Duplicate Rep', calls: 4, sold: 0 },
+          { user: ' Duplicate   Rep ', calls: 8, sold: 0 },
+        ]),
+      ),
+    ).toThrow(/duplicate user/i)
+  })
+
   it('survives a rep name containing a comma — the hand-rolled split could not', () => {
     const rows = parseActivityCsv(buildCsv([{ user: 'Smith, Jr', calls: 4, sold: 1 }]))
     expect(rows.length).toBe(1)
@@ -141,6 +175,39 @@ describe('importDailyActivity', () => {
     expect(summary.unmatchedNames).toEqual([])
   })
 
+  it('rejects an ambiguous roster whose display names normalize to the same value', async () => {
+    const [user] = await db
+      .insert(schema.appUser)
+      .values({
+        email: `activity-collision-${stamp}-${Math.random().toString(36).slice(2, 8)}@test.invalid`,
+        passwordHash: 'x:y',
+        role: 'REP',
+      })
+      .returning()
+    const [duplicate] = await db
+      .insert(schema.salesRep)
+      .values({
+        userId: user.id,
+        displayName: `  ${repA.displayName.toUpperCase()}  `,
+        hireDate: '2020-01-01',
+      })
+      .returning()
+
+    try {
+      await expect(
+        importDailyActivity(
+          db,
+          buildCsv([{ user: repA.displayName, calls: 9, sold: 0 }]),
+          BUSINESS_DATE,
+        ),
+      ).rejects.toThrow(/ambiguous roster display names/i)
+    } finally {
+      await db.delete(schema.repDailyActivity).where(eq(schema.repDailyActivity.repId, duplicate.id))
+      await db.delete(schema.salesRep).where(eq(schema.salesRep.id, duplicate.id))
+      await db.delete(schema.appUser).where(eq(schema.appUser.id, user.id))
+    }
+  })
+
   it('reports an unmatched name instead of guessing at a rep', async () => {
     const csv = buildCsv([
       { user: repA.displayName, calls: 5, sold: 0 },
@@ -155,6 +222,24 @@ describe('importDailyActivity', () => {
       where: eq(schema.repDailyActivity.businessDate, BUSINESS_DATE),
     })
     expect(all.every((r: any) => r.calls !== 40)).toBe(true)
+  })
+
+  it('rejects a report when fewer than half of its rows match the roster', async () => {
+    const csv = buildCsv([
+      { user: repA.displayName, calls: 5, sold: 0 },
+      { user: 'Wrong Report One', calls: 40, sold: 9 },
+      { user: 'Wrong Report Two', calls: 40, sold: 9 },
+    ])
+
+    await expect(importDailyActivity(db, csv, BUSINESS_DATE)).rejects.toThrow(/match rate/i)
+    expect(
+      await db.query.repDailyActivity.findFirst({
+        where: and(
+          eq(schema.repDailyActivity.repId, repA.id),
+          eq(schema.repDailyActivity.businessDate, BUSINESS_DATE),
+        ),
+      }),
+    ).toBeUndefined()
   })
 
   it('is idempotent: re-importing the same day overwrites and never duplicates', async () => {
@@ -172,7 +257,31 @@ describe('importDailyActivity', () => {
     expect(rows[0].sold).toBe(2)
   })
 
-  it('re-import preserves a MANUAL correction and reports it as skipped', async () => {
+  it('re-importing a file that omits a prior rep replaces the stale imported total with zero', async () => {
+    await importDailyActivity(
+      db,
+      buildCsv([
+        { user: repA.displayName, calls: 8, sold: 1 },
+        { user: repB.displayName, calls: 12, sold: 2 },
+      ]),
+      BUSINESS_DATE,
+    )
+    await importDailyActivity(
+      db,
+      buildCsv([{ user: repA.displayName, calls: 9, sold: 1 }]),
+      BUSINESS_DATE,
+    )
+
+    const omitted = await db.query.repDailyActivity.findFirst({
+      where: and(
+        eq(schema.repDailyActivity.repId, repB.id),
+        eq(schema.repDailyActivity.businessDate, BUSINESS_DATE),
+      ),
+    })
+    expect(omitted).toMatchObject({ calls: 0, sold: 0, source: 'IMPORT' })
+  })
+
+  it('re-import preserves an omitted MANUAL correction and reports it as missing and skipped', async () => {
     await importDailyActivity(db, buildCsv([{ user: repA.displayName, calls: 5, sold: 0 }]), BUSINESS_DATE)
     await setActivityMetric(db, {
       repId: repA.id,
@@ -184,11 +293,12 @@ describe('importDailyActivity', () => {
 
     const summary = await importDailyActivity(
       db,
-      buildCsv([{ user: repA.displayName, calls: 5, sold: 0 }]),
+      buildCsv([{ user: repB.displayName, calls: 5, sold: 0 }]),
       BUSINESS_DATE,
     )
 
     expect(summary.manualRowsPreserved).toContain(repA.displayName)
+    expect(summary.repsMissingFromFile).toContain(repA.displayName)
     const row = await db.query.repDailyActivity.findFirst({
       where: and(
         eq(schema.repDailyActivity.repId, repA.id),
@@ -207,14 +317,14 @@ describe('importDailyActivity', () => {
     )
     expect(summary.repsMissingFromFile).toContain(repB.displayName)
 
-    // absent means no row, which eligibility reads as 0 — not as missing data
+    // Persist the zero explicitly so a re-import cannot leave a stale nonzero total behind.
     const rowB = await db.query.repDailyActivity.findFirst({
       where: and(
         eq(schema.repDailyActivity.repId, repB.id),
         eq(schema.repDailyActivity.businessDate, BUSINESS_DATE),
       ),
     })
-    expect(rowB).toBeUndefined()
+    expect(rowB).toMatchObject({ calls: 0, sold: 0, source: 'IMPORT' })
   })
 
   it('matches a rep whose name contains a comma', async () => {
@@ -234,16 +344,28 @@ describe('importDailyActivity', () => {
   })
 
   it('audit-logs one activity.import event carrying the summary counts', async () => {
+    const beforeIds = new Set(
+      (
+        await db.query.auditEvents.findMany({
+          where: eq(schema.auditEvents.action, 'activity.import'),
+        })
+      ).map((event) => event.id),
+    )
     await importDailyActivity(db, buildCsv([{ user: repA.displayName, calls: 3, sold: 0 }]), BUSINESS_DATE, {
       actorUserId: adminUserId,
     })
     const events = await db.query.auditEvents.findMany({
       where: eq(schema.auditEvents.action, 'activity.import'),
     })
-    expect(events.length).toBeGreaterThan(0)
-    const latest = events[events.length - 1]
-    expect((latest.after as any).businessDate).toBe(BUSINESS_DATE)
-    expect((latest.after as any).repsMatched).toBeGreaterThan(0)
+    const ownEvent = events.find(
+      (event) =>
+        !beforeIds.has(event.id) &&
+        event.actorUserId === adminUserId &&
+        (event.after as any).businessDate === BUSINESS_DATE,
+    )
+    expect(ownEvent).toBeDefined()
+    expect((ownEvent!.after as any).businessDate).toBe(BUSINESS_DATE)
+    expect((ownEvent!.after as any).repsMatched).toBeGreaterThan(0)
   })
 })
 

@@ -1,8 +1,10 @@
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
+
+const ADVISORY_LOCK_KEY = 42_100_1
 
 const setPolicyInputSchema = z.object({
   minCalls: z.number().int().min(0).optional(),
@@ -30,15 +32,15 @@ export const adminRouter = router({
     .use(requirePerm('admin.*'))
     .input(setPolicyInputSchema)
     .mutation(async ({ ctx, input }) => {
-      const policy = await db.query.workRequirementPolicy.findFirst()
-      if (!policy) throw new Error('no work_requirement_policy row configured')
+      return db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
 
-      const next = {
-        minCalls: input.minCalls ?? policy.minCalls,
-        enforcementMode: input.enforcementMode ?? policy.enforcementMode,
-      }
-
-      await db.transaction(async (tx) => {
+        const policy = await tx.query.workRequirementPolicy.findFirst()
+        if (!policy) throw new Error('no work_requirement_policy row configured')
+        const next = {
+          minCalls: input.minCalls ?? policy.minCalls,
+          enforcementMode: input.enforcementMode ?? policy.enforcementMode,
+        }
         await tx
           .update(schema.workRequirementPolicy)
           .set(next)
@@ -51,8 +53,7 @@ export const adminRouter = router({
           before: { minCalls: policy.minCalls, enforcementMode: policy.enforcementMode },
           after: next,
         })
+        return next
       })
-
-      return next
     }),
 })

@@ -414,3 +414,56 @@ textarea.ui-input {
   justify-content: flex-end;
   gap: var(--space-2);
 }
+
+/* — daily activity preview / decision — */
+.ui-section-gap,
+.ui-import-progress,
+.ui-import-decision,
+.ui-import-complete {
+  margin-top: var(--space-6);
+}
+.ui-import-progress .ui-row { justify-content: space-between; }
+.ui-progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+  color: var(--color-accent);
+  accent-color: var(--color-accent);
+  background: var(--color-neutral-100);
+}
+.ui-progress::-webkit-progress-bar { background: var(--color-neutral-100); }
+.ui-progress::-webkit-progress-value { background: var(--color-accent); }
+.ui-progress::-moz-progress-bar { background: var(--color-accent); }
+.ui-import-decision {
+  border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-divider));
+  gap: var(--space-3);
+}
+.ui-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  padding-top: var(--space-2);
+}
+.ui-import-rep-list .ui-table-scroll {
+  max-height: 360px;
+  overflow: auto;
+  border-block: 1px solid var(--color-divider);
+}
+.ui-import-rep-list .ui-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-bg);
+}
+.ui-import-complete {
+  border-color: color-mix(in srgb, var(--color-ok) 45%, var(--color-divider));
+}
+
+@media (max-width: 640px) {
+  .ui-import-actions { align-items: stretch; }
+  .ui-import-actions .ui-btn { width: 100%; }
+}
