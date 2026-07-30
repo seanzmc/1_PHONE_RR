@@ -20,6 +20,9 @@ export const lead = pgTable('lead', {
   businessDate: text('business_date').notNull(),
   periodKey: text('period_key').notNull(),
   createdBy: uuid('created_by').notNull(),
+  // free-text follow-up note on the lead, written from the rep drill-down (design pass §D).
+  // MANAGER/ADMIN on any lead, BDC on their own; every write is audit-logged.
+  managerNote: text('manager_note'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

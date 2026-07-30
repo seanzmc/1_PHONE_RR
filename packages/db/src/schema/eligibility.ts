@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, unique } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, integer, timestamp, unique, smallint } from 'drizzle-orm/pg-core'
 import { salesRep } from './store'
 
 export const workRequirementPolicy = pgTable('work_requirement_policy', {
@@ -48,3 +48,37 @@ export const statusOverride = pgTable('status_override', {
   businessDate: text('business_date').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+/**
+ * One row per rep per business date — the aggregate the CRM "Standard-Daily Activity"
+ * export actually produces (design pass §H). Replaces per-call `lead_activity` rows as
+ * the eligibility input; `lead_activity` remains for optional note context only.
+ *
+ * `source` guards manager corrections: a re-import overwrites 'IMPORT' rows and skips
+ * 'MANUAL' ones, and the unique (rep_id, business_date) key + upsert is what keeps
+ * SUM(sold) over a period honest under repeated imports.
+ */
+export const repDailyActivity = pgTable('rep_daily_activity', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  repId: uuid('rep_id').notNull().references(() => salesRep.id),
+  businessDate: text('business_date').notNull(), // YYYY-MM-DD
+  calls: integer('calls').notNull().default(0),
+  sold: integer('sold').notNull().default(0),
+  source: text('source', { enum: ['IMPORT', 'MANUAL'] }).notNull().default('IMPORT'),
+  importedAt: timestamp('imported_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  repDateUnique: unique('rep_daily_activity_rep_date_unique').on(table.repId, table.businessDate),
+}))
+
+/**
+ * Recurring weekly day off (design pass §I). A table, not a column: a rep can have
+ * more than one, and an array column can't be joined cleanly.
+ * 0=Sunday..6=Saturday, matching store_hours.day_of_week.
+ */
+export const repRecurringDayOff = pgTable('rep_recurring_day_off', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  repId: uuid('rep_id').notNull().references(() => salesRep.id),
+  dayOfWeek: smallint('day_of_week').notNull(),
+}, (table) => ({
+  repDayUnique: unique('rep_recurring_day_off_rep_day_unique').on(table.repId, table.dayOfWeek),
+}))
