@@ -1,51 +1,60 @@
 import { useEffect, useState } from 'react'
 import { query } from '../lib/api'
+import { Card, MetricCard } from '../ui'
 
 type Summary = {
-  upsPerRep: Array<{ repName: string; ups: number }>
+  upsPerRep: Array<{ repId: string | null; repName: string; ups: number }>
   cycleProgress: { served: number; totalReps: number }
   disqualifiedCount: number
   overrideCount: number
 }
 
-export function Dashboard() {
+export function Dashboard({ onOpenRep }: { onOpenRep?: (repId: string) => void }) {
   const [summary, setSummary] = useState<Summary | null>(null)
 
   useEffect(() => {
     query<Summary>('board.dashboardSummary').then(setSummary).catch(() => {})
   }, [])
 
-  if (!summary) return <div style={{ padding: 24 }}>Loading…</div>
+  if (!summary) return <div className="ui-page">Loading…</div>
 
   return (
-    <div style={{ padding: 24 }}>
+    <div className="ui-page">
       <h2>Dashboard</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, maxWidth: 700 }}>
-        <div style={{ border: '1px solid #ccc', padding: 12 }}>
-          <h4>Ups Per Rep (this month)</h4>
-          <ul>
-            {summary.upsPerRep.map((r) => (
-              <li key={r.repName}>
-                {r.repName}: {r.ups}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div style={{ border: '1px solid #ccc', padding: 12 }}>
-          <h4>Current Cycle Progress</h4>
-          <p>
-            {summary.cycleProgress.served} / {summary.cycleProgress.totalReps} reps served
-          </p>
-        </div>
-        <div style={{ border: '1px solid #ccc', padding: 12 }}>
-          <h4>Disqualification Count</h4>
-          <p>{summary.disqualifiedCount}</p>
-        </div>
-        <div style={{ border: '1px solid #ccc', padding: 12 }}>
-          <h4>Override Count</h4>
-          <p>{summary.overrideCount}</p>
-        </div>
+
+      <div className="ui-card-grid">
+        <MetricCard
+          label="Cycle progress"
+          value={`${summary.cycleProgress.served} / ${summary.cycleProgress.totalReps}`}
+          hint="Reps served this cycle"
+        />
+        <MetricCard label="Ineligible today" value={summary.disqualifiedCount} />
+        <MetricCard label="Overrides today" value={summary.overrideCount} />
       </div>
+
+      <Card title="Ups per rep (this month)" className="ui-stack">
+        {summary.upsPerRep.length === 0 ? (
+          <p className="ui-muted">No ups assigned yet this month.</p>
+        ) : (
+          <ul className="ui-list">
+            {[...summary.upsPerRep]
+              .sort((a, b) => b.ups - a.ups)
+              .map((r) => (
+                <li key={r.repId ?? r.repName}>
+                  {onOpenRep && r.repId ? (
+                    <button type="button" className="ui-linkbtn" onClick={() => onOpenRep(r.repId!)}>
+                      {r.repName}
+                    </button>
+                  ) : (
+                    r.repName
+                  )}
+                  <span className="ui-toolbar-spacer" />
+                  <strong>{r.ups}</strong>
+                </li>
+              ))}
+          </ul>
+        )}
+      </Card>
     </div>
   )
 }
