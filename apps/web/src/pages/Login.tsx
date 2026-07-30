@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuthStore } from '../state/authStore'
+import { Button, Card, Field, Input } from '../ui'
 
 export function Login() {
   const login = useAuthStore((s) => s.login)
@@ -18,35 +19,22 @@ export function Login() {
   }
 
   return (
-    <div style={{ maxWidth: 320, margin: '80px auto' }}>
+    <div className="ui-page ui-login">
       <h1>PhoneUp Round-Robin</h1>
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: 12 }}>
-          <label>
-            Email
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{ display: 'block', width: '100%' }}
-              autoFocus
-            />
-          </label>
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{ display: 'block', width: '100%' }}
-            />
-          </label>
-        </div>
-        {error && <p style={{ color: 'red' }}>{error}</p>}
-        <button type="submit">Log in</button>
-      </form>
+      <Card>
+        <form onSubmit={handleSubmit} className="ui-stack">
+          <Field label="Email">
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+          </Field>
+          <Field label="Password">
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </Field>
+          {error && <p className="ui-error">{error}</p>}
+          <Button type="submit" variant="primary" block>
+            Log in
+          </Button>
+        </form>
+      </Card>
     </div>
   )
 }
