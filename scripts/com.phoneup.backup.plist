@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Weekly production backup to Google Drive.
+
+  Install:   cp scripts/com.phoneup.backup.plist ~/Library/LaunchAgents/
+             launchctl load ~/Library/LaunchAgents/com.phoneup.backup.plist
+  Run now:   launchctl kickstart -k gui/$(id -u)/com.phoneup.backup
+  Status:    launchctl list | grep phoneup
+  Stop:      launchctl unload ~/Library/LaunchAgents/com.phoneup.backup.plist
+
+  Sunday 09:00 rather than overnight: this runs on a laptop, and a job scheduled for 02:00
+  only fires if the machine happens to be awake. launchd runs a missed job once the machine
+  wakes, so a mid-morning slot on a day the laptop is usually opened misses fewer weeks.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.phoneup.backup</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/seandm/Projects/1_PHONE_RR/scripts/backup-to-drive.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>0</integer>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/phoneup-backup.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/phoneup-backup.err.log</string>
+</dict>
+</plist>

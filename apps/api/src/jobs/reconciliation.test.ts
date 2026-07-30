@@ -69,6 +69,48 @@ describe('reconcile', () => {
     expect(mismatch?.actual).toBe(1)
   })
 
+  /**
+   * Regression: found by the restore drill against real production data. A voided lead
+   * leaves its ASSIGN event in the append-only ledger and appends a VOID with
+   * credit_delta -1, while voidLead decrements the counter. Counting ASSIGN rows reported
+   * those reps as permanently drifted — a false alarm that never cleared.
+   */
+  it('does not flag a voided lead, whose ASSIGN and VOID net to zero', async () => {
+    const [user] = await db
+      .insert(schema.appUser)
+      .values({ email: `recon-void-${Date.now()}@dealership.test`, passwordHash: 'x:y', role: 'REP' })
+      .returning()
+    const [rep] = await db
+      .insert(schema.salesRep)
+      .values({ userId: user.id, displayName: 'Void Rep', hireDate: '2020-01-01' })
+      .returning()
+
+    const leadId = await createLeadFor(rep.id, pKey)
+    await db.insert(schema.assignmentEvents).values({
+      leadId,
+      repId: rep.id,
+      eventType: 'ASSIGN',
+      cycleNo: cycleId,
+      creditDelta: 1,
+      queueSnapshot: [],
+      idempotencyKey: randomUUID(),
+    })
+    await db.insert(schema.assignmentEvents).values({
+      leadId,
+      repId: rep.id,
+      eventType: 'VOID',
+      cycleNo: cycleId,
+      creditDelta: -1,
+      queueSnapshot: [],
+      idempotencyKey: randomUUID(),
+    })
+    // voidLead rolls the counter back to zero, which is correct and must not be flagged
+    await db.insert(schema.repMonthCounters).values({ repId: rep.id, periodKey: pKey, upsMtd: 0 })
+
+    const result = await reconcile(db)
+    expect(result.mismatches.find((m) => m.repId === rep.id)).toBeUndefined()
+  })
+
   it('reports no mismatch when ledger and counters agree', async () => {
     const [user] = await db
       .insert(schema.appUser)

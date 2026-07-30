@@ -188,7 +188,29 @@ Until then `pg_dump` is not a supplement to a backup, it **is** the backup. The
 `assignment_events` ledger is the truth model and cannot be reconstructed from anywhere
 else.
 
-**Take a backup:**
+**Client version matters.** Production runs **Postgres 18.4**; a v16 `pg_dump` cannot dump it.
+The v18 client is installed at `/opt/homebrew/opt/postgresql@18/bin` and must come first on
+`PATH`. `backup` refuses to run on a version mismatch rather than writing a broken archive.
+
+**Automatic weekly backup (installed).** `scripts/backup-to-drive.sh`, driven by the
+`com.phoneup.backup` LaunchAgent, runs Sundays at 09:00 and writes to
+`~/Library/CloudStorage/GoogleDrive-…/My Drive/PhoneUp Backups/`, which Google Drive syncs
+off the machine. It keeps the 8 most recent dumps and prunes older ones.
+
+The production password is never stored on disk: the script fetches `DATABASE_PUBLIC_URL`
+from the Railway CLI at run time. (`DATABASE_URL` points at `postgres.railway.internal`,
+which only resolves inside Railway's network — it does not work from a laptop.)
+
+On failure it writes `BACKUP-FAILED.txt` into the Drive folder, because a scheduled job that
+silently stops running looks exactly like one with nothing to do. **If you ever see that
+file, backups have stopped.** Progress is appended to `backup.log` in the same folder.
+
+```
+launchctl list | grep phoneup                      # is it scheduled
+launchctl kickstart -k gui/$(id -u)/com.phoneup.backup   # run it now
+```
+
+**Take a backup by hand:**
 
 ```
 DATABASE_URL=<prod> pnpm --filter @phoneup/db backup
@@ -203,8 +225,14 @@ committed, or pushed anywhere they would leave the machine unencrypted.
 **Verify the backup actually restores:**
 
 ```
-DATABASE_URL=<any host you can create databases on> pnpm --filter @phoneup/db restore-drill
+PATH="/opt/homebrew/opt/postgresql@18/bin:$PATH" \
+DATABASE_URL=postgresql://localhost:5433/postgres \
+pnpm --filter @phoneup/db restore-drill "$HOME/Library/CloudStorage/GoogleDrive-seanzmc9613@gmail.com/My Drive/PhoneUp Backups/<newest>.dump"
 ```
+
+Port **5433** is the local Postgres 18 instance (`brew services start postgresql@18`),
+installed for this purpose. The v16 server on 5432 cannot restore a v18 dump — it fails on
+`transaction_timeout`, a parameter that did not exist before v17.
 
 Restores the newest dump into a scratch database (`phoneup_restore_drill`, dropped and
 recreated each run; the name must contain `drill`) and asserts three things in order:
@@ -216,10 +244,14 @@ recreated each run; the name must contain `drill`) and asserts three things in o
 
 Exits non-zero on any failure. Pass `--keep` to leave the scratch database for inspection.
 
-**Cadence.** Weekly at minimum, and always immediately before a migration deploy or a
-roster import. Run the drill on at least one dump a month — a backup nobody has restored is
-a guess. Copy dumps somewhere off the machine that produced them; a backup living only on
-the laptop that would be lost with it is not an off-site backup.
+**Cadence.** The weekly job covers the routine case. Take an extra manual backup immediately
+before a migration deploy or a roster import. Run the drill on at least one dump a month — a
+backup nobody has restored is a guess.
+
+**What this does not cover.** The schedule only fires when the laptop is awake, and the
+dumps hold real employee and customer data sitting unencrypted in a personal Google Drive.
+Both are accepted trade-offs of not having Railway's native snapshots; revisit if the plan
+is ever upgraded.
 
 **Reconciliation on demand**, independent of the drill and of the 02:00 cron:
 
@@ -269,11 +301,13 @@ so a null or wrong name shows up as an unmatched import row.
 
 Open items that affect operating this, tracked so they are not rediscovered in production:
 
-- **Backups are manual.** `pnpm --filter @phoneup/db backup` and `restore-drill` exist and
-  are verified (§4.5), but nothing runs them on a schedule — someone has to remember. Railway's
-  native scheduled snapshots need a plan upgrade (`maxBackupsCount: 0` on the current plan);
-  until then a missed week is a real week of exposure, and dumps live wherever the operator
-  put them. This remains the largest operational risk.
+- **Backups depend on a laptop being awake.** The weekly job (§4.5) runs on this Mac, not on
+  a server, so a week with the machine closed on Sunday is a week with no new backup — check
+  the Drive folder's dates now and then. Railway's native snapshots would remove the
+  dependency entirely but need a plan upgrade (`maxBackupsCount: 0` on Hobby).
+- **Dumps are unencrypted in a personal Google Drive.** They contain employee emails and
+  customer names and phone numbers. Acceptable while the Drive account has strong auth;
+  worth encrypting if backups ever move somewhere shared.
 - **No shadow-mode report.** Nothing renders "who would have been disqualified", so the
   calibration window that gates §4.4 produces no reviewable output yet.
 - **No policy UI.** Enforcement mode is flipped by the API call in §4.4.

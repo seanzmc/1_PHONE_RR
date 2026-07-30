@@ -6,16 +6,24 @@ import { schema } from '@phoneup/db'
 export type Mismatch = { repId: string; periodKey: string; expected: number; actual: number }
 export type ReconcileResult = { mismatches: Mismatch[] }
 
+/**
+ * Sums credit_delta rather than counting ASSIGN rows.
+ *
+ * The ledger is append-only, so a void does not remove its ASSIGN event — it appends a VOID
+ * carrying credit_delta -1, and voidLead decrements the counter to match. Counting ASSIGN
+ * rows therefore reported a permanent phantom mismatch for every lead ever voided, which
+ * trains the operator to ignore the one alarm that means the numbers cannot be trusted.
+ * credit_delta is the field the ledger keeps for exactly this sum.
+ */
 export async function reconcile(db: DB): Promise<ReconcileResult> {
   const expectedRows = await db
     .select({
       repId: schema.assignmentEvents.repId,
       periodKey: sql<string>`substring(${schema.lead.businessDate} from 1 for 7)`,
-      expected: sql<number>`count(*)::int`,
+      expected: sql<number>`coalesce(sum(${schema.assignmentEvents.creditDelta}), 0)::int`,
     })
     .from(schema.assignmentEvents)
     .innerJoin(schema.lead, eq(schema.lead.id, schema.assignmentEvents.leadId))
-    .where(eq(schema.assignmentEvents.eventType, 'ASSIGN'))
     .groupBy(schema.assignmentEvents.repId, sql`substring(${schema.lead.businessDate} from 1 for 7)`)
 
   const counters = await db.select().from(schema.repMonthCounters)
