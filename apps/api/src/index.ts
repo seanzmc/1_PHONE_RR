@@ -10,7 +10,7 @@ import { db } from '@phoneup/db'
 import { appRouter } from './appRouter'
 import { createContext } from './trpc/context'
 import { attachRealtimeServer } from './realtime/server'
-import { scheduleEligibilityJob } from './jobs/eligibility'
+import { scheduleEligibilityJob, scheduleShiftMaterializationJob } from './jobs/eligibility'
 import { scheduleReconciliationJob } from './jobs/reconciliation'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -48,4 +48,5 @@ server.listen({ port, host: '0.0.0.0' }, (err) => {
   attachRealtimeServer(server.server)
   scheduleEligibilityJob(db)
   scheduleReconciliationJob(db)
+  scheduleShiftMaterializationJob(db)
 })

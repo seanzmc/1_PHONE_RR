@@ -1,13 +1,35 @@
 import cron from 'node-cron'
-import { eq, and, lte, gte, sql } from 'drizzle-orm'
+import { eq, and, inArray, gte } from 'drizzle-orm'
 import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
 
-function shiftDate(dateStr: string, deltaDays: number): string {
+export function shiftDate(dateStr: string, deltaDays: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() + deltaDays)
   return d.toISOString().slice(0, 10)
+}
+
+/** 0=Sunday..6=Saturday for a YYYY-MM-DD business date (tz-independent by construction). */
+export function dayOfWeek(dateStr: string): number {
+  return new Date(`${dateStr}T00:00:00Z`).getUTCDay()
+}
+
+/**
+ * The business week is Monday–Saturday; Sunday (weekday 0) is closed, hardcoded.
+ * Returns every business date from `fromDate` through that week's Saturday, inclusive.
+ * A DQ computed on Monday covers Mon–Sat; one computed on Saturday covers a single day.
+ */
+export function businessDatesThroughSaturday(fromDate: string): string[] {
+  const dates: string[] = []
+  let cursor = fromDate
+  for (let i = 0; i < 7; i++) {
+    const dow = dayOfWeek(cursor)
+    if (dow !== 0) dates.push(cursor) // Sunday is never a business date
+    if (dow === 6) break // Saturday closes the week
+    cursor = shiftDate(cursor, 1)
+  }
+  return dates
 }
 
 export type EvaluateInput = { repId: string; businessDate: string; policyId: string }
@@ -41,12 +63,29 @@ export async function evaluateRepEligibility(db: DB, input: EvaluateInput): Prom
     })
     if (!policy) throw new Error(`policy ${input.policyId} not found`)
 
-    // fail-safe: no shift scheduled for today at all -> CONFIGURATION_ERROR, never silently ELIGIBLE
+    // fail-safe: no shift scheduled for today at all -> CONFIGURATION_ERROR, never silently ELIGIBLE.
+    // The weekly shift materializer (materializeShifts) is what keeps this from being the normal case.
     const todayShift = await tx.query.repShift.findFirst({
       where: and(eq(schema.repShift.repId, input.repId), eq(schema.repShift.businessDate, input.businessDate)),
     })
     if (!todayShift) {
       await upsertStatus(tx, input.repId, input.businessDate, 'CONFIGURATION_ERROR', 'no schedule found for today')
+      return
+    }
+
+    // Precedence (design pass §I, written down once):
+    //   MANAGER_OVERRIDE > day off / closure > WEEK_DQ > eligible
+    // The override case returned above. A non-WORK day is ineligible-for-that-reason, but it must
+    // NOT erase a WEEK_DQ reason already written for the day.
+    if (todayShift.kind !== 'WORK') {
+      const dqReason = existing?.reason?.startsWith('WEEK_DQ') ? ` (${existing.reason})` : ''
+      await upsertStatus(
+        tx,
+        input.repId,
+        input.businessDate,
+        'INELIGIBLE',
+        `${todayShift.kind.toLowerCase()}${dqReason}`,
+      )
       return
     }
 
@@ -57,22 +96,27 @@ export async function evaluateRepEligibility(db: DB, input: EvaluateInput): Prom
       return
     }
 
-    // CRM import lateness check: if nobody at all has a CRM_IMPORT row for that day,
-    // treat the rep as ELIGIBLE and skip evaluation — never auto-DQ on a missing import (spec §7).
-    const anyImportForDay = await tx.query.leadActivity.findFirst({
-      where: eq(schema.leadActivity.businessDate, priorWorkday),
+    // Import lateness check: if NOBODY has a rep_daily_activity row for that day, the import
+    // hasn't landed yet — treat the rep as ELIGIBLE and skip. Never auto-DQ on a missing import.
+    const anyImportForDay = await tx.query.repDailyActivity.findFirst({
+      where: eq(schema.repDailyActivity.businessDate, priorWorkday),
     })
     if (!anyImportForDay) {
-      await upsertStatus(tx, input.repId, input.businessDate, 'ELIGIBLE', 'IMPORT_LATE: no CRM import for prior workday yet')
+      await upsertStatus(tx, input.repId, input.businessDate, 'ELIGIBLE', 'IMPORT_LATE: no activity import for prior workday yet')
       return
     }
 
-    const calls = await tx
-      .select({ count: sql<number>`count(*)::int` })
-      .from(schema.leadActivity)
-      .where(and(eq(schema.leadActivity.repId, input.repId), eq(schema.leadActivity.businessDate, priorWorkday)))
-    const callsFound = calls[0]?.count ?? 0
+    // Calls come from the aggregate import (design pass §H). A roster rep with no row in the
+    // file legitimately registers 0 calls — that is a real signal, not missing data.
+    const activity = await tx.query.repDailyActivity.findFirst({
+      where: and(
+        eq(schema.repDailyActivity.repId, input.repId),
+        eq(schema.repDailyActivity.businessDate, priorWorkday),
+      ),
+    })
+    const callsFound = activity?.calls ?? 0
     const wouldBeStatus = callsFound >= policy.minCalls ? 'ELIGIBLE' : 'INELIGIBLE'
+    const dqReason = `WEEK_DQ: ${callsFound} calls on ${priorWorkday}, ${policy.minCalls} required`
 
     await tx.insert(schema.eligibilitySnapshot).values({
       repId: input.repId,
@@ -81,18 +125,40 @@ export async function evaluateRepEligibility(db: DB, input: EvaluateInput): Prom
       callsFound,
       minCallsRequired: policy.minCalls,
       wouldBeStatus,
-      reason: wouldBeStatus === 'INELIGIBLE' ? `${callsFound} calls, ${policy.minCalls} required` : null,
+      reason: wouldBeStatus === 'INELIGIBLE' ? dqReason : null,
       policyId: policy.id,
     })
 
-    // SHADOW mode never actually disqualifies — compute + log only (spec §6.5, CLAUDE.md).
-    const resolvedStatus = policy.enforcementMode === 'ENFORCE' ? wouldBeStatus : 'ELIGIBLE'
-    const reason =
-      policy.enforcementMode === 'ENFORCE'
-        ? (wouldBeStatus === 'INELIGIBLE' ? `${callsFound} calls, ${policy.minCalls} required` : null)
-        : (wouldBeStatus === 'INELIGIBLE' ? `SHADOW: would be INELIGIBLE (${callsFound}/${policy.minCalls} calls)` : null)
+    // SHADOW mode never actually disqualifies — compute + log only (CLAUDE.md).
+    // The thresholds are what's being calibrated, so the mechanism ships inert first.
+    if (policy.enforcementMode !== 'ENFORCE') {
+      await upsertStatus(
+        tx,
+        input.repId,
+        input.businessDate,
+        'ELIGIBLE',
+        wouldBeStatus === 'INELIGIBLE'
+          ? `SHADOW: would be INELIGIBLE (${callsFound}/${policy.minCalls} calls on ${priorWorkday})`
+          : null,
+      )
+      return
+    }
 
-    await upsertStatus(tx, input.repId, input.businessDate, resolvedStatus, reason)
+    if (wouldBeStatus === 'ELIGIBLE') {
+      await upsertStatus(tx, input.repId, input.businessDate, 'ELIGIBLE', null)
+      return
+    }
+
+    // Week suspension: under the minimum on the evaluated prior workday means ineligible for the
+    // REST OF THE WEEK. Implemented as status writes only — the ranking algorithm still reads
+    // exactly rep_daily_status and gains no branch (CLAUDE.md).
+    //
+    // Future rows are written decidedBy='SYSTEM', so the nightly override guard above leaves a
+    // manager's later reactivation alone. The write never crosses into next week, so "resets every
+    // Monday" is automatic and needs no separate reset job.
+    for (const date of businessDatesThroughSaturday(input.businessDate)) {
+      await upsertStatus(tx, input.repId, date, 'INELIGIBLE', dqReason)
+    }
   })
 }
 
@@ -107,6 +173,8 @@ async function upsertStatus(
     where: and(eq(schema.repDailyStatus.repId, repId), eq(schema.repDailyStatus.businessDate, businessDateStr)),
   })
   if (existing) {
+    // never trample a manager decision on a future date either
+    if (existing.decidedBy === 'MANAGER_OVERRIDE') return
     await tx
       .update(schema.repDailyStatus)
       .set({ status, reason, decidedBy: 'SYSTEM', updatedAt: new Date() })
@@ -114,6 +182,83 @@ async function upsertStatus(
   } else {
     await tx.insert(schema.repDailyStatus).values({ repId, businessDate: businessDateStr, status, reason, decidedBy: 'SYSTEM' })
   }
+}
+
+/**
+ * Materialize `rep_shift` rows ~14 days ahead (design pass §I):
+ *   kind='OFF'  where the weekday is a recurring day off, the weekday is Sunday, or the
+ *               date is a store_closure
+ *   kind='WORK' otherwise
+ *
+ * A manually-set kind (PTO / SICK / TRAINING / SUSPENDED, or a manager-set OFF/WORK) always
+ * wins: this generator only ever INSERTS missing rows and updates rows it previously
+ * generated, and it never rewrites a past date — past dates are eligibility evidence.
+ */
+const GENERATED_KINDS = new Set(['WORK', 'OFF'])
+
+export async function materializeShifts(
+  db: DB,
+  opts: { fromDate?: string; days?: number; repIds?: string[] } = {},
+): Promise<{ inserted: number; updated: number }> {
+  const fromDate = opts.fromDate ?? businessDate(new Date())
+  const days = opts.days ?? 14
+
+  const reps = opts.repIds?.length
+    ? await db.select().from(schema.salesRep).where(inArray(schema.salesRep.id, opts.repIds))
+    : await db.select().from(schema.salesRep)
+  if (reps.length === 0) return { inserted: 0, updated: 0 }
+
+  const repIds = reps.map((r: any) => r.id)
+  const daysOff = await db
+    .select()
+    .from(schema.repRecurringDayOff)
+    .where(inArray(schema.repRecurringDayOff.repId, repIds))
+  const offByRep = new Map<string, Set<number>>()
+  for (const row of daysOff) {
+    if (!offByRep.has(row.repId)) offByRep.set(row.repId, new Set())
+    offByRep.get(row.repId)!.add(row.dayOfWeek)
+  }
+
+  const dates = Array.from({ length: days }, (_, i) => shiftDate(fromDate, i))
+  const closures = await db
+    .select()
+    .from(schema.storeClosure)
+    .where(inArray(schema.storeClosure.closureDate, dates))
+  const closureDates = new Set(closures.map((c: any) => c.closureDate))
+
+  const existing = await db
+    .select()
+    .from(schema.repShift)
+    .where(and(inArray(schema.repShift.repId, repIds), gte(schema.repShift.businessDate, fromDate)))
+  const existingByKey = new Map(existing.map((s: any) => [`${s.repId}:${s.businessDate}`, s]))
+
+  let inserted = 0
+  let updated = 0
+
+  for (const rep of reps) {
+    const repOff = offByRep.get(rep.id) ?? new Set<number>()
+    for (const date of dates) {
+      const dow = dayOfWeek(date)
+      // Sunday is closed for everyone — hardcoded, no config surface, and it must not
+      // consume one of a rep's recurring day-off entries.
+      const isOff = dow === 0 || repOff.has(dow) || closureDates.has(date)
+      const kind = isOff ? 'OFF' : 'WORK'
+
+      const prior = existingByKey.get(`${rep.id}:${date}`)
+      if (!prior) {
+        await db.insert(schema.repShift).values({ repId: rep.id, businessDate: date, kind })
+        inserted++
+        continue
+      }
+      // a manually-set PTO/SICK/TRAINING/SUSPENDED row survives re-materialization
+      if (!GENERATED_KINDS.has(prior.kind)) continue
+      if (prior.kind === kind) continue
+      await db.update(schema.repShift).set({ kind }).where(eq(schema.repShift.id, prior.id))
+      updated++
+    }
+  }
+
+  return { inserted, updated }
 }
 
 export async function runEligibilityJob(db: DB): Promise<void> {
@@ -129,4 +274,10 @@ export async function runEligibilityJob(db: DB): Promise<void> {
 export function scheduleEligibilityJob(db: DB): void {
   // runs early store-local time, before shift start (spec §6)
   cron.schedule('0 8 * * *', () => runEligibilityJob(db), { timezone: 'America/New_York' })
+}
+
+export function scheduleShiftMaterializationJob(db: DB): void {
+  // weekly, Sunday 03:00 store-local — keeps ~14 days of rep_shift rows ahead of the
+  // eligibility job so CONFIGURATION_ERROR stops being the normal case.
+  cron.schedule('0 3 * * 0', () => materializeShifts(db), { timezone: 'America/New_York' })
 }
