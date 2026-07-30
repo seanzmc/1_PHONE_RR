@@ -203,12 +203,34 @@ which only resolves inside Railway's network — it does not work from a laptop.
 
 On failure it writes `BACKUP-FAILED.txt` into the Drive folder, because a scheduled job that
 silently stops running looks exactly like one with nothing to do. **If you ever see that
-file, backups have stopped.** Progress is appended to `backup.log` in the same folder.
+file, backups have stopped.** Progress is logged to `~/Library/Logs/phoneup-backup.log`.
+
+**Why the script stages locally first.** `~/Library/CloudStorage` is protected by macOS
+privacy control, and the rules differ from ordinary file permissions: a background process
+may *create* files there and *delete* ones it names explicitly, but it may not *enumerate*
+the directory, and it cannot touch files another app created. Two consequences, both learned
+the hard way when the LaunchAgent failed while the same script succeeded by hand:
+
+- The log must live outside Drive. It was originally written there, and because pnpm's
+  output was redirected into it, the redirect failed and the backup never ran at all.
+- The script dumps into `~/.phoneup-backups`, verifies and prunes there, then copies the
+  finished file into Drive. Drive pruning deletes explicit paths listed in
+  `~/.phoneup-backups/drive-index.txt`; globbing the Drive folder from the LaunchAgent
+  silently returns nothing, which reads as "no backup was produced" when the file is sitting
+  right there.
+
+Do not "simplify" this back into writing and listing directly in Drive. The alternative fix
+is granting `/bin/bash` Full Disk Access, which is far too broad a grant for a backup script.
 
 ```
-launchctl list | grep phoneup                      # is it scheduled
+launchctl list | grep phoneup                            # is it scheduled ("-  0  com.phoneup.backup" = healthy)
 launchctl kickstart -k gui/$(id -u)/com.phoneup.backup   # run it now
+launchctl print gui/$(id -u)/com.phoneup.backup | grep -E "runs|last exit"
 ```
+
+Test changes to the script with `kickstart`, never by running the script in a terminal. A
+terminal run inherits your shell's environment and privacy grants and will succeed where the
+LaunchAgent fails — that difference is what hid the two problems above.
 
 **Take a backup by hand:**
 
