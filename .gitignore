@@ -8,5 +8,7 @@ dist/
 coverage/
 .playwright-mcp/
 Name Email Role.tsv
+# CRM activity exports — real employee data, imported at runtime, never committed
+Standard-Daily Activity*.csv
 docs/build-logs.txt
 *.zip

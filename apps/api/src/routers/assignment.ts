@@ -1,11 +1,12 @@
 import { TRPCError } from '@trpc/server'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { assignLeadInputSchema, voidLeadInputSchema, hasPermission } from '@phoneup/contracts'
 import { businessDate } from '@phoneup/core'
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
 import { assignLead } from '../domain/assignLead'
+import { voidLead } from '../domain/voidLead'
 
 export const assignmentRouter = router({
   assign: publicProcedure
@@ -36,31 +37,7 @@ export const assignmentRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'void window has closed for this business day' })
       }
 
-      await db.transaction(async (tx) => {
-        await tx.update(schema.lead).set({ status: 'VOID' }).where(eq(schema.lead.id, input.leadId))
-        await tx.insert(schema.assignmentEvents).values({
-          leadId: lead.id,
-          repId: lead.assignedRepId,
-          eventType: 'VOID',
-          cycleNo: (await tx.query.assignmentEvents.findFirst({ where: eq(schema.assignmentEvents.leadId, lead.id) }))!
-            .cycleNo,
-          creditDelta: -1,
-          queueSnapshot: [],
-          idempotencyKey: `void-${input.leadId}-${Date.now()}`,
-        })
-        if (lead.assignedRepId) {
-          await tx
-            .update(schema.repMonthCounters)
-            .set({ upsMtd: sql`${schema.repMonthCounters.upsMtd} - 1` })
-            .where(
-              and(
-                eq(schema.repMonthCounters.repId, lead.assignedRepId),
-                eq(schema.repMonthCounters.periodKey, lead.periodKey),
-              ),
-            )
-        }
-      })
-
+      await voidLead(db, { ...input, actorUserId: ctx.session.userId })
       return { ok: true }
     }),
 })
