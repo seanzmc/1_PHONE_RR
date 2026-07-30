@@ -34,6 +34,9 @@ importers:
       '@trpc/server':
         specifier: ^11.0.0-rc.677
         version: 11.18.0(typescript@5.9.3)
+      csv-parse:
+        specifier: ^7.0.1
+        version: 7.0.1
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@types/react@19.2.17)(postgres@3.4.9)(react@19.2.8)
@@ -1300,6 +1303,9 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  csv-parse@7.0.1:
+    resolution: {integrity: sha512-+2z7Ar0APQ7Uu6fX4cn+pitRmxjZ1WPBcGmZFKmA74FCyi7Et/XZx8cjNQ5CjbZ4HCOxXCOpRBYvYH08Qa003A==}
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -2734,6 +2740,8 @@ snapshots:
   cookie@2.0.1: {}
 
   csstype@3.2.3: {}
+
+  csv-parse@7.0.1: {}
 
   debug@4.4.3:
     dependencies:
