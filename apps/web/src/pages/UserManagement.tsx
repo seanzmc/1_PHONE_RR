@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
 import { mutate, query } from '../lib/api'
+import { useAuthStore } from '../state/authStore'
+import { Badge, Button, Field, Input, Select, Table } from '../ui'
+import { Modal } from '../ui/Modal'
+import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
 
 type Role = 'ADMIN' | 'MANAGER' | 'BDC' | 'REP'
 
@@ -15,9 +19,11 @@ type Account = {
 const ROLES: Role[] = ['ADMIN', 'MANAGER', 'BDC', 'REP']
 
 export function UserManagement() {
+  const { session } = useAuthStore()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [error, setError] = useState<string | null>(null)
 
+  const [addOpen, setAddOpen] = useState(false)
   const [newEmail, setNewEmail] = useState('')
   const [newName, setNewName] = useState('')
   const [newRole, setNewRole] = useState<Role>('BDC')
@@ -32,7 +38,10 @@ export function UserManagement() {
 
   useEffect(refresh, [])
 
+  const addValid = !!newEmail && !!newName.trim() && newPassword.length >= 8
+
   async function createAccount() {
+    if (!addValid) return
     setError(null)
     try {
       await mutate('userManagement.create', {
@@ -41,14 +50,19 @@ export function UserManagement() {
         role: newRole,
         password: newPassword,
       })
-      setNewEmail('')
-      setNewName('')
-      setNewRole('BDC')
-      setNewPassword('')
+      closeAdd()
       refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'create failed')
     }
+  }
+
+  function closeAdd() {
+    setAddOpen(false)
+    setNewEmail('')
+    setNewName('')
+    setNewRole('BDC')
+    setNewPassword('')
   }
 
   async function changeRole(userId: string, newRoleValue: Role) {
@@ -72,116 +86,124 @@ export function UserManagement() {
   }
 
   async function submitReset() {
-    if (!resetTargetId || !resetValue) return
+    if (!resetTargetId || resetValue.length < 8) return
     setError(null)
     try {
       await mutate('userManagement.resetPassword', { userId: resetTargetId, newPassword: resetValue })
-      setResetTargetId(null)
-      setResetValue('')
+      closeReset()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'password reset failed')
     }
   }
 
-  return (
-    <div style={{ padding: 24 }}>
-      <h2>Users</h2>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+  function closeReset() {
+    setResetTargetId(null)
+    setResetValue('')
+  }
 
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left' }}>Name</th>
-            <th style={{ textAlign: 'left' }}>Email</th>
-            <th style={{ textAlign: 'left' }}>Role</th>
-            <th style={{ textAlign: 'left' }}>Status</th>
-            <th style={{ textAlign: 'left' }}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {accounts.map((a) => (
+  const onAddKeyDown = useSubmitOnEnter(createAccount, { disabled: !addValid })
+  const onResetKeyDown = useSubmitOnEnter(submitReset, { disabled: resetValue.length < 8 })
+
+  const resetTarget = accounts.find((a) => a.id === resetTargetId)
+
+  return (
+    <div className="ui-page">
+      <div className="ui-toolbar">
+        <h2>Users</h2>
+        <span className="ui-toolbar-spacer" />
+        <Button variant="primary" onClick={() => setAddOpen(true)}>
+          Add account
+        </Button>
+      </div>
+
+      {error && <p className="ui-error">{error}</p>}
+
+      <Table headers={['Name', 'Email', 'Role', 'Status', 'Actions']}>
+        {accounts.map((a) => {
+          const isSelf = a.id === session?.userId
+          return (
             <tr key={a.id}>
-              <td>{a.displayName ?? a.email}</td>
+              <td>
+                {/* displayName only — never fall back to the email, which reads as a name */}
+                {a.displayName ? a.displayName : <span className="ui-muted">Set name</span>}
+              </td>
               <td>{a.email}</td>
               <td>
-                <select value={a.role} onChange={(e) => changeRole(a.id, e.target.value as Role)}>
+                <Select
+                  value={a.role}
+                  disabled={isSelf}
+                  title={isSelf ? 'You cannot change your own role' : undefined}
+                  onChange={(e) => changeRole(a.id, e.target.value as Role)}
+                >
                   {ROLES.map((r) => (
                     <option key={r} value={r}>
                       {r}
                     </option>
                   ))}
-                </select>
+                </Select>
               </td>
-              <td>{a.isActive ? 'ACTIVE' : 'INACTIVE'}</td>
               <td>
-                <button onClick={() => toggleActive(a.id, !a.isActive)} style={{ marginRight: 8 }}>
-                  {a.isActive ? 'Deactivate' : 'Reactivate'}
-                </button>
-                <button onClick={() => setResetTargetId(a.id)}>Reset password</button>
+                <Badge tone={a.isActive ? 'ok' : 'danger'}>{a.isActive ? 'ACTIVE' : 'INACTIVE'}</Badge>
+              </td>
+              <td>
+                <div className="ui-row">
+                  <Button size="sm" onClick={() => toggleActive(a.id, !a.isActive)}>
+                    {a.isActive ? 'Deactivate' : 'Reactivate'}
+                  </Button>
+                  <Button size="sm" onClick={() => setResetTargetId(a.id)}>
+                    Reset password
+                  </Button>
+                </div>
               </td>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          )
+        })}
+      </Table>
 
-      {resetTargetId && (
-        <div style={{ marginTop: 16, border: '1px solid #ccc', padding: 12, maxWidth: 400 }}>
-          <p>
-            New password for{' '}
-            <strong>{accounts.find((a) => a.id === resetTargetId)?.displayName ?? resetTargetId}</strong>
-          </p>
-          <input
-            type="text"
+      <Modal
+        open={addOpen}
+        title="Add account"
+        onClose={closeAdd}
+        onSubmit={createAccount}
+        submitDisabled={!addValid}
+        submitLabel="Create"
+      >
+        <Field label="Email">
+          <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} onKeyDown={onAddKeyDown} />
+        </Field>
+        <Field label="Display name">
+          <Input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={onAddKeyDown} />
+        </Field>
+        <Field label="Role">
+          <Select value={newRole} onChange={(e) => setNewRole(e.target.value as Role)}>
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Initial password" hint="Minimum 8 characters.">
+          <Input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} onKeyDown={onAddKeyDown} />
+        </Field>
+      </Modal>
+
+      <Modal
+        open={!!resetTargetId}
+        title={`Reset password — ${resetTarget?.displayName ?? resetTarget?.email ?? ''}`}
+        onClose={closeReset}
+        onSubmit={submitReset}
+        submitDisabled={resetValue.length < 8}
+      >
+        <Field label="New password" hint="Minimum 8 characters.">
+          <Input
             value={resetValue}
             onChange={(e) => setResetValue(e.target.value)}
-            placeholder="new password (min 8 chars)"
-            style={{ width: '100%' }}
+            onKeyDown={onResetKeyDown}
+            placeholder="new password"
           />
-          <div style={{ marginTop: 8 }}>
-            <button onClick={submitReset} disabled={resetValue.length < 8}>
-              Confirm
-            </button>
-            <button onClick={() => setResetTargetId(null)} style={{ marginLeft: 8 }}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div style={{ marginTop: 24, border: '1px solid #ccc', padding: 12, maxWidth: 400 }}>
-        <h3>Add account</h3>
-        <input
-          type="email"
-          value={newEmail}
-          onChange={(e) => setNewEmail(e.target.value)}
-          placeholder="email"
-          style={{ width: '100%', marginBottom: 8 }}
-        />
-        <input
-          type="text"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="display name"
-          style={{ width: '100%', marginBottom: 8 }}
-        />
-        <select value={newRole} onChange={(e) => setNewRole(e.target.value as Role)} style={{ marginBottom: 8 }}>
-          {ROLES.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
-        <input
-          type="text"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          placeholder="initial password (min 8 chars)"
-          style={{ width: '100%', marginBottom: 8 }}
-        />
-        <button onClick={createAccount} disabled={!newEmail || !newName || newPassword.length < 8}>
-          Create
-        </button>
-      </div>
+        </Field>
+      </Modal>
     </div>
   )
 }
