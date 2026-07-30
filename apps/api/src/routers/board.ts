@@ -58,7 +58,11 @@ export const boardRouter = router({
     const counters = await db.query.repMonthCounters.findMany({ where: eq(schema.repMonthCounters.periodKey, pKey) })
     const repRows = await db.select().from(schema.salesRep)
     const nameById = new Map(repRows.map((r: any) => [r.id, r.displayName]))
-    const upsPerRep = counters.map((c: any) => ({ repName: nameById.get(c.repId) ?? 'Unknown', ups: c.upsMtd }))
+    const upsPerRep = counters.map((c: any) => ({
+      repId: c.repId,
+      repName: nameById.get(c.repId) ?? 'Unknown',
+      ups: c.upsMtd,
+    }))
 
     const cycle = await db.query.rotationCycle.findFirst({ where: isNull(schema.rotationCycle.closedAt) })
     const servedThisCycle = cycle

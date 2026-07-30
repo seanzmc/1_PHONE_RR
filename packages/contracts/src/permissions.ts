@@ -5,9 +5,13 @@ export type Permission =
   | 'lead.assign'
   | 'lead.void'
   | 'lead.assign.override'
+  | 'lead.note'
   | 'rep.override'
+  | 'rep.view'
   | 'schedule.manage'
   | 'activity.self'
+  | 'activity.import'
+  | 'activity.edit'
   | 'reactivation.review'
   | 'reactivation.self'
   | 'audit.view'
@@ -16,15 +20,18 @@ export type Permission =
 
 const MATRIX: Record<Role, Permission[]> = {
   ADMIN: [
-    'board.view', 'lead.assign', 'lead.void', 'lead.assign.override', 'rep.override',
-    'schedule.manage', 'activity.self', 'reactivation.review', 'reactivation.self',
-    'audit.view', 'user.manage', 'admin.*',
+    'board.view', 'lead.assign', 'lead.void', 'lead.assign.override', 'lead.note',
+    'rep.override', 'rep.view', 'schedule.manage', 'activity.self', 'activity.import',
+    'activity.edit', 'reactivation.review', 'reactivation.self', 'audit.view',
+    'user.manage', 'admin.*',
   ],
   MANAGER: [
-    'board.view', 'lead.assign', 'lead.void', 'lead.assign.override', 'rep.override',
-    'schedule.manage', 'activity.self', 'reactivation.review', 'audit.view', 'user.manage',
+    'board.view', 'lead.assign', 'lead.void', 'lead.assign.override', 'lead.note',
+    'rep.override', 'rep.view', 'schedule.manage', 'activity.self', 'activity.import',
+    'activity.edit', 'reactivation.review', 'audit.view', 'user.manage',
   ],
-  BDC: ['board.view', 'lead.assign', 'lead.void', 'activity.self'],
+  // BDC may note their OWN leads — the router enforces ownership, this only gates the route.
+  BDC: ['board.view', 'lead.assign', 'lead.void', 'lead.note', 'activity.self'],
   REP: ['board.view', 'activity.self', 'reactivation.self'],
 }
 

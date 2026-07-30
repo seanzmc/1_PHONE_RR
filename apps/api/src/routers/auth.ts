@@ -37,5 +37,15 @@ export const authRouter = router({
     return { ok: true }
   }),
 
-  me: publicProcedure.query(({ ctx }) => ctx.session),
+  me: publicProcedure.query(async ({ ctx }) => {
+    if (!ctx.session) return null
+    const user = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, ctx.session.userId) })
+    if (!user) return null
+    return {
+      userId: user.id,
+      role: user.role,
+      email: user.email,
+      displayName: user.displayName,
+    }
+  }),
 })
