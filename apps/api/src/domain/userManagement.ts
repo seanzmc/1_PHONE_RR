@@ -4,8 +4,23 @@ import { schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
 import type { Role } from '@phoneup/contracts'
 import { hashPassword, verifyPassword } from '../auth/password'
+import { materializeShifts } from '../jobs/eligibility'
 
 const ADVISORY_LOCK_KEY = 42_100_1 // same key as assignLead/overrideStatus — this touches rotation ordering too
+
+/**
+ * A rep with no rep_shift row for a date gets CONFIGURATION_ERROR from the eligibility job
+ * and drops out of the rotation. The weekly materialization cron only runs Sunday 03:00, so
+ * a rep added mid-week would have today (inserted inline, as the fail-safe) and nothing
+ * else until then. Fill the window forward as soon as the rep exists.
+ *
+ * Called AFTER the enclosing transaction commits, never inside it: materializeShifts opens
+ * its own transaction and takes the same advisory lock on a different pooled connection,
+ * so nesting it would block on a lock the caller still holds.
+ */
+async function materializeNewRepShifts(db: DB, repId: string): Promise<void> {
+  await materializeShifts(db, { repIds: [repId] })
+}
 
 export async function createAccount(
   db: DB,
@@ -13,7 +28,7 @@ export async function createAccount(
 ): Promise<{ userId: string }> {
   const passwordHash = hashPassword(input.password)
 
-  return db.transaction(async (tx) => {
+  const { userId, repId } = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
 
     const [user] = await tx
@@ -28,6 +43,7 @@ export async function createAccount(
       })
       .returning()
 
+    let newRepId: string | null = null
     if (input.role === 'REP') {
       const today = businessDate(new Date())
       const [rep] = await tx
@@ -41,6 +57,7 @@ export async function createAccount(
         status: 'ELIGIBLE',
         decidedBy: 'SYSTEM',
       })
+      newRepId = rep.id
     }
 
     await tx.insert(schema.auditEvents).values({
@@ -52,8 +69,12 @@ export async function createAccount(
       after: { email: input.email, role: input.role, displayName: input.displayName },
     })
 
-    return { userId: user.id }
+    return { userId: user.id, repId: newRepId }
   })
+
+  if (repId) await materializeNewRepShifts(db, repId)
+
+  return { userId }
 }
 
 async function applyRepRotationStatus(
@@ -97,13 +118,14 @@ export async function setRole(
   db: DB,
   input: { userId: string; newRole: Role; actorUserId: string },
 ): Promise<void> {
-  await db.transaction(async (tx) => {
+  const promotedRepId = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
 
     const user = await tx.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
     if (!user) throw new Error('user not found')
 
     const oldRole = user.role as Role
+    let becameRepId: string | null = null
 
     if (oldRole === 'ADMIN' && input.newRole !== 'ADMIN') {
       const others = await tx
@@ -148,6 +170,7 @@ export async function setRole(
         user.isActive ? 'ELIGIBLE' : 'INELIGIBLE',
         user.isActive ? 'role changed to REP' : 'role changed to REP (account inactive)',
       )
+      becameRepId = rep.id
     }
 
     await tx.insert(schema.auditEvents).values({
@@ -158,7 +181,11 @@ export async function setRole(
       before: { role: oldRole },
       after: { role: input.newRole },
     })
+
+    return becameRepId
   })
+
+  if (promotedRepId) await materializeNewRepShifts(db, promotedRepId)
 }
 
 export async function setActive(

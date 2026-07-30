@@ -1,29 +1,19 @@
-import { randomUUID, randomInt, scryptSync } from 'node:crypto'
+import { randomUUID, scryptSync } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { generateTempPassword } from '@phoneup/core'
 import { db, schema } from './client'
 
-const ADMIN_EMAIL = 'seanzmc9613@gmail.com'
-
 /**
- * Every seeded account gets its OWN random temporary password and is flagged
- * mustChangePassword, so there is never a shared secret that grants access to the app.
- * The plaintext is printed once at the end for distribution and stored nowhere.
+ * First ADMIN account. Overridable so a different operator can bootstrap their own
+ * deployment without editing source: ADMIN_EMAIL=me@example.com pnpm import-roster
+ *
+ * Every seeded account gets its OWN random temporary password (generateTempPassword,
+ * shared with the API) and is flagged mustChangePassword, so there is never a shared
+ * secret that grants access to the app. The plaintext is printed once at the end for
+ * distribution and stored nowhere.
  */
-function generateTempPassword(): string {
-  const ADJ = ['brisk', 'calm', 'clever', 'crisp', 'eager', 'fair', 'fast', 'firm', 'fresh', 'glad',
-    'keen', 'kind', 'lucky', 'neat', 'proud', 'quick', 'ready', 'sharp', 'smart', 'solid',
-    'spare', 'stark', 'sunny', 'swift', 'tidy', 'tough', 'true', 'warm', 'wise', 'zesty']
-  const NOUN = ['anchor', 'arrow', 'badger', 'beacon', 'canyon', 'cedar', 'comet', 'copper', 'dagger',
-    'delta', 'ember', 'falcon', 'garnet', 'harbor', 'hunter', 'jasper', 'kettle', 'lantern',
-    'marble', 'meadow', 'nickel', 'otter', 'pepper', 'quartz', 'ranger', 'ribbon', 'saddle',
-    'timber', 'walnut', 'willow']
-  const DIGITS = '23456789' // no 0/1 — they get misread against O/l/I
-  const pick = <T,>(xs: T[]) => xs[randomInt(xs.length)]
-  let num = ''
-  for (let i = 0; i < 3; i++) num += DIGITS[randomInt(DIGITS.length)]
-  return `${pick(ADJ)}-${pick(NOUN)}-${num}`
-}
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'seanzmc9613@gmail.com'
 
 const ROLE_MAP = {
   Sales: 'REP',

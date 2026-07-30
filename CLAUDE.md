@@ -18,6 +18,7 @@ Assign a phone-up lead to the correct next rep, correctly, in under a few second
 - `plans/poe-plan.md` — alternate architecture, simpler stack, not the chosen path but useful for comparison.
 - `plans/plan-compare.md` — comparison of the two.
 - `plans/v1-plan.md` — **the actual build spec.** This is what to implement. It's fusion-plan trimmed down to single-team scope — follow it, not the untrimmed fusion-plan, when the two disagree on scope.
+- `docs/RUNBOOK.md` — **how this gets deployed, onboarded and operated.** Env vars, first-deploy order, day-one sequence, daily chores, troubleshooting, known gaps. Update it when you change any of those, not just the code.
 
 ## Decided architecture (do not re-litigate without reason)
 
@@ -61,14 +62,24 @@ Re-read `plans/v1-plan.md`. If a request would expand scope beyond it, flag that
 - Any admin-issued password (roster import, `issueTempPassword`, manual reset, new account) sets `app_user.must_change_password`. While that flag is set, `requirePerm` rejects **every** route with `PASSWORD_CHANGE_REQUIRED` — only `auth.changePassword` is reachable. The gate is server-side; do not weaken it to a UI-only check.
 - Temp passwords are deliberately short and speakable (`word-word-NNN`, no `0`/`1`) because they are single-use. That is only safe alongside the login throttle in `auth/loginThrottle.ts` (8 failures per email/IP, then a 15-minute lockout) — do not remove one without reconsidering the other.
 - Plaintext passwords are never stored. A lost temp password means issuing another from the Users page.
+- **One generator: `generateTempPassword` in `packages/core`.** The roster importer, the dev seed and `issueTempPassword` all call it. Do not add a second copy — a local copy is how a shared default sneaks back in.
+- `seed.ts` is a dev fixture and enforces that: it refuses to run against a non-local `DATABASE_URL` or with `NODE_ENV=production`, refuses an already-initialised database, and issues a unique temp password per account. Real deployments use `import-roster`.
+
+## Environment
+
+`DATABASE_URL` has **no fallback** — `packages/db/src/client.ts` and `drizzle.config.ts` both throw without it, and `/health` round-trips a real query so a bad connection fails the platform healthcheck. Both were added because a default of `postgresql://localhost/phoneup_dev` let a misconfigured deploy boot green and serve an empty database. Do not reintroduce a default. Full table in `.env.example`.
 
 ## Operational scripts
 
 Run with `DATABASE_URL` pointed at the target DB:
 
-- `pnpm --filter @phoneup/api materialize-shifts [days]` — generate `rep_shift` rows ahead (default 14). Needed after a roster import, else eligibility writes `CONFIGURATION_ERROR`. Idempotent; never rewrites past dates.
+- `pnpm --filter @phoneup/api materialize-shifts [days]` — generate `rep_shift` rows ahead (default 14). Needed after a roster import, else eligibility writes `CONFIGURATION_ERROR`. Idempotent; never rewrites past dates. Reps created later (Users page, or a role change into REP) get their own 14 days materialized automatically — always **after** the enclosing transaction commits, since `materializeShifts` takes the same advisory lock on its own connection.
 - `pnpm --filter @phoneup/api import-activity <file.csv> [YYYY-MM-DD]` — import the CRM daily activity export. Date comes from the filename or the argument, never the clock. The Import Activity screen is the normal path.
 - `pnpm --filter @phoneup/api rotate-passwords [--commit]` — one-off remediation; dry-run by default.
 - `pnpm --filter @phoneup/db backfill-display-names [file.tsv]` — fill `app_user.display_name` from the roster TSV.
 
+- `pnpm --filter @phoneup/db import-roster [file.tsv]` — one-shot first-run bootstrap (store, hours, policy, first cycle, ADMIN + all accounts). Refuses if a store row exists. First admin email comes from `ADMIN_EMAIL`.
+
 Prod runs `pnpm --filter @phoneup/db migrate` on container start (see `Dockerfile`), so a deploy applies pending migrations automatically.
+
+Deploy order, day-one sequence and troubleshooting live in `docs/RUNBOOK.md` — keep it current.

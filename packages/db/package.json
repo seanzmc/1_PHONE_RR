@@ -15,6 +15,7 @@
     "backfill-display-names": "tsx src/backfillDisplayNames.ts"
   },
   "dependencies": {
+    "@phoneup/core": "workspace:*",
     "drizzle-orm": "^0.36.4",
     "postgres": "^3.4.5"
   },

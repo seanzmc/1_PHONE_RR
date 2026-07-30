@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { changeOwnPassword, resetPassword } from './userManagement'
 import { hashPassword, verifyPassword } from '../auth/password'
-import { generateTempPassword } from '../auth/tempPassword'
+import { generateTempPassword } from '@phoneup/core'
 import {
   isThrottled,
   recordFailure,

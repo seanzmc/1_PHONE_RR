@@ -6,7 +6,10 @@ WORKDIR /app
 COPY . .
 
 RUN pnpm install --frozen-lockfile
-ARG VITE_API_BASE=/trpc
+
+# VITE_API_BASE comes from apps/web/.env.production (=/trpc): the API serves the built
+# web app on its own origin, so the browser talks to a relative path and no cross-site
+# cookie configuration is needed.
 RUN pnpm --filter @phoneup/web build
 
 EXPOSE 3000

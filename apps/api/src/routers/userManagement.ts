@@ -12,7 +12,7 @@ import {
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
 import { createAccount, setRole, setActive, resetPassword } from '../domain/userManagement'
-import { generateTempPassword } from '../auth/tempPassword'
+import { generateTempPassword } from '@phoneup/core'
 
 export const userManagementRouter = router({
   list: publicProcedure.use(requirePerm('user.manage')).query(async () => {

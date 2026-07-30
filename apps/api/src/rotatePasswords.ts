@@ -17,7 +17,7 @@
 import { asc } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { resetPassword } from './domain/userManagement'
-import { generateTempPassword } from './auth/tempPassword'
+import { generateTempPassword } from '@phoneup/core'
 
 const commit = process.argv.includes('--commit')
 

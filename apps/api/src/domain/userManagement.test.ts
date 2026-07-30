@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, gte } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { createAccount } from './userManagement'
 import { businessDate } from '@phoneup/core'
@@ -64,6 +64,34 @@ describe('createAccount', () => {
     expect(status?.status).toBe('ELIGIBLE')
     expect(status?.decidedBy).toBe('SYSTEM')
   })
+
+  // A rep hired mid-week used to have today's shift and nothing else until the Sunday
+  // 03:00 cron, so the eligibility job wrote CONFIGURATION_ERROR and dropped them from
+  // the rotation every day in between.
+  it('materializes 14 days of shifts for a new REP, not just today', async () => {
+    const email = `um-test-rep-shifts-${Date.now()}@dealership.test`
+    const { userId } = await createAccount(db, {
+      email,
+      displayName: 'Shift Fill Rep',
+      role: 'REP',
+      password: 'testpass123',
+      actorUserId,
+    })
+
+    const rep = await db.query.salesRep.findFirst({ where: eq(schema.salesRep.userId, userId) })
+    const today = businessDate(new Date())
+
+    const shifts = await db
+      .select()
+      .from(schema.repShift)
+      .where(and(eq(schema.repShift.repId, rep!.id), gte(schema.repShift.businessDate, today)))
+    expect(shifts).toHaveLength(14)
+
+    // Sundays are store-closed, so the window is a mix — not 14 WORK rows.
+    const dates = shifts.map((s: any) => s.businessDate).sort()
+    expect(dates[0]).toBe(today)
+    expect(new Set(dates).size).toBe(14)
+  })
 })
 
 import { setRole } from './userManagement'
@@ -107,6 +135,13 @@ describe('setRole', () => {
     })
     expect(status?.status).toBe('ELIGIBLE')
     expect(status?.decidedBy).toBe('MANAGER_OVERRIDE')
+
+    // same forward-fill as createAccount — a promotion must not leave a CONFIGURATION_ERROR gap
+    const shifts = await db
+      .select()
+      .from(schema.repShift)
+      .where(and(eq(schema.repShift.repId, rep!.id), gte(schema.repShift.businessDate, today)))
+    expect(shifts).toHaveLength(14)
   })
 
   it('REP -> BDC -> REP reuses the existing sales_rep row (rehire case)', async () => {

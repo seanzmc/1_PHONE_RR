@@ -8,6 +8,7 @@ import staticPlugin from '@fastify/static'
 import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify'
 import { db } from '@phoneup/db'
 import { appRouter } from './appRouter'
+import { checkDatabase } from './routers/health'
 import { createContext } from './trpc/context'
 import { attachRealtimeServer } from './realtime/server'
 import { scheduleEligibilityJob, scheduleShiftMaterializationJob } from './jobs/eligibility'
@@ -28,7 +29,13 @@ await server.register(fastifyTRPCPlugin, {
   trpcOptions: { router: appRouter, createContext },
 })
 
-server.get('/health', () => ({ ok: true }))
+// The platform healthcheck (railway.json) hits this. It must fail when the database is
+// unreachable, otherwise a deploy with a bad DATABASE_URL goes green and stays up.
+server.get('/health', async (_req, reply) => {
+  if (await checkDatabase()) return { ok: true }
+  server.log.error('health check failed: database unreachable')
+  return reply.code(503).send({ ok: false, error: 'database unreachable' })
+})
 
 // Same-origin static hosting of the built web app, when present, so browser
 // requests to the API and the app share one origin — avoids cross-site

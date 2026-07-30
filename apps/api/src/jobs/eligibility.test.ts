@@ -405,8 +405,11 @@ describe('materializeShifts + recurring days off', () => {
     await setRecurringDaysOff(db, { repId, daysOfWeek: [2], actorUserId: managerUserId })
     await setRecurringDaysOff(db, { repId, daysOfWeek: [4, 5], actorUserId: managerUserId })
 
+    // ordered explicitly: Postgres row order is arbitrary, and "the last one" silently
+    // became "some other one" once the table had enough churn from other tests.
     const events = await db.query.auditEvents.findMany({
       where: eq(schema.auditEvents.action, 'rep.days_off.set'),
+      orderBy: (t: any, { asc }: any) => [asc(t.createdAt)],
     })
     const mine = events.filter((e: any) => e.entityId === repId)
     const latest = mine[mine.length - 1]

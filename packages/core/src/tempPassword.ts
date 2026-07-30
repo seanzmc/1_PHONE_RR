@@ -7,11 +7,14 @@ import { randomInt } from 'node:crypto'
  * things together, not by length alone:
  *   1. single-use — the holder is flagged mustChangePassword, so the server refuses
  *      every route except changePassword until it is replaced;
- *   2. login throttling (see auth/loginThrottle.ts) — online guessing is rate-limited
- *      per email and per IP, so the small keyspace can't be swept;
+ *   2. login throttling (see apps/api/src/auth/loginThrottle.ts) — online guessing is
+ *      rate-limited per email and per IP, so the small keyspace can't be swept;
  *   3. no ambiguous characters (0/O, 1/l/I), so it is read back correctly first time.
  *
  * Shape: word-word-NNN  e.g. "brisk-otter-472"  (~20 bits over 4 wordlists)
+ *
+ * Lives in core so the API routes, the roster importer and the dev seed all issue the
+ * same shape from one implementation — a second copy is how a shared default sneaks back in.
  */
 
 /** Digits that can't be misheard or misread: no 0 (vs O) and no 1 (vs l/I). */
