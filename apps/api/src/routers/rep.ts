@@ -1,9 +1,10 @@
 import { z } from 'zod'
 import { db } from '@phoneup/db'
-import { statusOverrideInputSchema, setDaysOffInputSchema } from '@phoneup/contracts'
+import { statusOverrideInputSchema, bulkStatusOverrideInputSchema, setDaysOffInputSchema } from '@phoneup/contracts'
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
 import { overrideStatus } from '../domain/overrideStatus'
+import { bulkOverrideStatus } from '../domain/bulkOverrideStatus'
 import { getRecurringDaysOff, getUpcomingShifts, setRecurringDaysOff } from '../domain/daysOff'
 import { materializeShifts } from '../jobs/eligibility'
 
@@ -16,6 +17,14 @@ export const repRouter = router({
     .mutation(async ({ ctx, input }) => {
       await overrideStatus(db, { ...input, actorUserId: ctx.session.userId })
       return { ok: true }
+    }),
+
+  /** Same decision applied to many reps, in one transaction under one advisory lock. */
+  bulkOverrideStatus: publicProcedure
+    .use(requirePerm('rep.override'))
+    .input(bulkStatusOverrideInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      return bulkOverrideStatus(db, { ...input, actorUserId: ctx.session.userId })
     }),
 
   /** Recurring weekly days off for a rep (design pass §I). */
