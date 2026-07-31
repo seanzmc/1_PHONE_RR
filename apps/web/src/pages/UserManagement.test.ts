@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { partitionAccounts, sortAccounts, type Account } from './UserManagement'
+import { adminPasswordInputProps, partitionAccounts, sortAccounts, type Account } from './UserManagement'
 
 function account(over: Partial<Account> & Pick<Account, 'id'>): Account {
   return {
@@ -42,5 +42,11 @@ describe('sortAccounts', () => {
   it('sorts email and role deterministically', () => {
     expect(sortAccounts(rows, 'email', 'asc').map((row) => row.id)).toEqual(['z', 'blank', 'a'])
     expect(sortAccounts(rows, 'role', 'asc').map((row) => row.id)).toEqual(['a', 'blank', 'z'])
+  })
+})
+
+describe('adminPasswordInputProps', () => {
+  it('masks admin-entered credentials and identifies them as new passwords', () => {
+    expect(adminPasswordInputProps).toEqual({ type: 'password', autoComplete: 'new-password' })
   })
 })

@@ -52,6 +52,11 @@ export function partitionAccounts(accounts: Account[]): { enabled: Account[]; di
 
 const ROLES: Role[] = ['ADMIN', 'MANAGER', 'BDC', 'REP']
 
+export const adminPasswordInputProps = {
+  type: 'password',
+  autoComplete: 'new-password',
+} as const
+
 export function UserManagement() {
   const { session, viewAsUserId } = useAuthStore()
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -327,7 +332,12 @@ export function UserManagement() {
           </Select>
         </Field>
         <Field label="Initial password" hint="Minimum 8 characters.">
-          <Input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} onKeyDown={onAddKeyDown} />
+          <Input
+            {...adminPasswordInputProps}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            onKeyDown={onAddKeyDown}
+          />
         </Field>
       </Modal>
 
@@ -340,6 +350,7 @@ export function UserManagement() {
       >
         <Field label="New password" hint="Minimum 8 characters.">
           <Input
+            {...adminPasswordInputProps}
             value={resetValue}
             onChange={(e) => setResetValue(e.target.value)}
             onKeyDown={onResetKeyDown}
