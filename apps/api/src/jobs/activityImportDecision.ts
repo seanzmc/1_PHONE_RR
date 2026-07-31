@@ -31,6 +31,8 @@ export type EligibilityPreviewRep = {
   minCallsRequired: number
   wouldBeStatus: 'ELIGIBLE' | 'INELIGIBLE'
   reason: string | null
+  /** Whether this rep's number came from the uploaded report or an earlier imported day. */
+  source: 'REPORT' | 'CARRY_FORWARD'
 }
 
 export type ActivityImportPreview = ImportSummary & {
@@ -174,6 +176,10 @@ async function prepareDailyActivity(
       })
       continue
     }
+    // A rep absent from the export made no calls that day: the CRM omits reps with no
+    // activity. The 0 is written as a real row rather than left blank so the manager can
+    // correct it from the rep's activity log if the export was incomplete — a correction
+    // writes source='MANUAL' and survives re-import.
     const calls = incoming?.calls ?? 0
     const sold = incoming?.sold ?? 0
     writes.push({ repId: rep.id, calls, sold })
@@ -208,7 +214,6 @@ async function prepareDailyActivity(
   const activityByKey = new Map<string, any>(
     activityWindow.map((activity: any) => [`${activity.repId}:${activity.businessDate}`, activity]),
   )
-  const datesWithSavedActivity = new Set(activityWindow.map((activity: any) => activity.businessDate))
 
   const weekDates = businessDatesThroughSaturday(opts.statusDate)
   const statusEndDate = weekDates.at(-1) ?? opts.statusDate
@@ -270,11 +275,17 @@ async function prepareDailyActivity(
       continue
     }
 
-    // The report being previewed counts as a landed import for its own date, despite not
-    // being saved yet. For a carry-forward date, require an existing import just like the
-    // nightly evaluator's IMPORT_LATE fail-open.
+    // A rep is judged on THEIR prior workday, which is not always the report's date — someone
+    // off yesterday is carried forward to the last day they actually worked. The report can
+    // only supply that day when the two coincide.
     const reportSuppliesPriorDay = priorWorkday === reportBusinessDate
-    if (!reportSuppliesPriorDay && !datesWithSavedActivity.has(priorWorkday)) {
+    const activity = reportSuppliesPriorDay
+      ? effectiveReportByRep.get(rep.id)
+      : activityByKey.get(`${rep.id}:${priorWorkday}`)
+
+    // A carry-forward day with no import at all is missing data, not a zero — that is the
+    // IMPORT_LATE fail-open. Absence from a report that DID land is a real zero.
+    if (!reportSuppliesPriorDay && !activity) {
       notEvaluatedReps.push({
         repId: rep.id,
         displayName: rep.displayName,
@@ -282,11 +293,6 @@ async function prepareDailyActivity(
       })
       continue
     }
-
-    const activity = reportSuppliesPriorDay
-      ? effectiveReportByRep.get(rep.id)
-      : activityByKey.get(`${rep.id}:${priorWorkday}`)
-    // A roster rep absent from a landed file is a real 0, not missing data.
     const callsFound = activity?.calls ?? 0
     const wouldBeStatus = callsFound >= policy.minCalls ? 'ELIGIBLE' : 'INELIGIBLE'
     const reason =
@@ -301,6 +307,7 @@ async function prepareDailyActivity(
       minCallsRequired: policy.minCalls,
       wouldBeStatus,
       reason,
+      source: reportSuppliesPriorDay ? 'REPORT' : 'CARRY_FORWARD',
     })
   }
 

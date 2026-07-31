@@ -27,6 +27,7 @@ type EligibilityRep = {
   minCallsRequired: number
   wouldBeStatus: 'ELIGIBLE' | 'INELIGIBLE'
   reason: string | null
+  source: 'REPORT' | 'CARRY_FORWARD'
 }
 
 type ImportPreview = ImportSummary & {
@@ -44,12 +45,6 @@ type ImportResult = ImportPreview & {
   deactivatedCount: number
 }
 
-/** Read the report date out of `Standard-Daily Activity 2026-07-29.csv`. */
-function dateFromFilename(filename: string): string | null {
-  const m = filename.match(/(\d{4}-\d{2}-\d{2})/)
-  return m ? m[1] : null
-}
-
 export function ActivityImport() {
   const [csv, setCsv] = useState('')
   const [filename, setFilename] = useState('')
@@ -63,6 +58,15 @@ export function ActivityImport() {
   const busy = phase === 'reading' || phase === 'previewing' || phase === 'committing'
   const progress = progressForPhase(phase, saveDecision)
   const summary = result ?? preview
+  // "Nobody is ineligible" and "nobody was even checked" are opposite outcomes; the screen
+  // previously rendered both as the reassuring one.
+  const evaluatedCount = preview ? preview.eligibleReps.length + preview.ineligibleReps.length : 0
+  // If the report's date is not the day being judged, every number below came from a
+  // previously imported day and this file changed nothing — which used to look identical
+  // to a successful import.
+  const fromReportCount = preview
+    ? [...preview.eligibleReps, ...preview.ineligibleReps].filter((r) => r.source === 'REPORT').length
+    : 0
 
   async function onPickFile(file: File) {
     setError(null)
@@ -78,10 +82,11 @@ export function ActivityImport() {
     setPhase('reading')
     try {
       setCsv(await file.text())
-      // Default from the filename, but leave it editable. The server never guesses the
-      // report date from its clock.
-      const parsed = dateFromFilename(file.name)
-      if (parsed) setBusinessDate(parsed)
+      // The date on this screen is authoritative and is never overwritten from the filename.
+      // The CRM stamps exports with the DOWNLOAD date while the content period comes from the
+      // report's own settings, so the two disagree routinely — and silently retargeting the
+      // import at a day the manager did not choose is how a whole report got applied to the
+      // wrong date.
       setPhase('idle')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'could not read the file')
@@ -214,23 +219,55 @@ export function ActivityImport() {
       {preview && phase === 'decision' && (
         <Card className="ui-import-decision">
           <span className="ui-card-kicker">Eligibility for {preview.statusDate}</span>
+
+          {evaluatedCount > 0 && fromReportCount === 0 && (
+            <p className="ui-error">
+              None of the numbers below came from the file you just uploaded. This report covers{' '}
+              {preview.businessDate}, but eligibility for {preview.statusDate} is decided by each
+              rep’s previous working day — so every result here came from activity imported
+              earlier. Set the business date to the day this report actually covers, or expect
+              this import to change nobody’s status.
+            </p>
+          )}
           <h3>
-            {preview.ineligibleReps.length === 0
-              ? 'All evaluated reps are eligible'
-              : `${preview.ineligibleReps.length} rep${preview.ineligibleReps.length === 1 ? '' : 's'} ineligible. Deactivate?`}
+            {evaluatedCount === 0
+              ? 'No reps were evaluated'
+              : preview.ineligibleReps.length === 0
+                ? `All ${evaluatedCount} evaluated reps are eligible`
+                : `${preview.ineligibleReps.length} of ${evaluatedCount} evaluated reps ineligible. Deactivate?`}
           </h3>
           <p className="ui-muted">
-            Minimum: {preview.minCallsRequired} calls.{' '}
-            {preview.ineligibleReps.length === 0
-              ? 'Log the CRM totals or cancel without saving.'
-              : 'A “Yes” applies the weekly suspension through Saturday. “Log numbers only” saves the CRM totals without changing anyone’s status.'}
+            {evaluatedCount === 0 ? (
+              <>
+                Nothing in this report affects eligibility for {preview.statusDate}, so no rep can
+                be deactivated from it. The reasons are listed below — most often the report covers
+                a different day than the one being decided. You can still log the numbers.
+              </>
+            ) : (
+              <>
+                Minimum: {preview.minCallsRequired} calls.{' '}
+                {preview.ineligibleReps.length === 0
+                  ? 'Log the CRM totals or cancel without saving.'
+                  : 'A “Yes” applies the weekly suspension through Saturday. “Log numbers only” saves the CRM totals without changing anyone’s status.'}
+              </>
+            )}
           </p>
 
           {preview.notEvaluatedReps.length > 0 && (
-            <p className="ui-hint">
-              <Badge tone="warn">{preview.notEvaluatedReps.length} not evaluated</Badge>{' '}
-              Review the skipped reps and reasons in the report summary before deciding.
-            </p>
+            <div className="ui-import-rep-list">
+              <p className="ui-hint">
+                <Badge tone="warn">{preview.notEvaluatedReps.length} not evaluated</Badge> These reps
+                keep their current status — nothing below deactivates them.
+              </p>
+              <Table headers={['Rep', 'Why not evaluated']}>
+                {preview.notEvaluatedReps.map((rep) => (
+                  <tr key={rep.repId}>
+                    <td>{rep.displayName}</td>
+                    <td className="ui-muted">{rep.reason}</td>
+                  </tr>
+                ))}
+              </Table>
+            </div>
           )}
 
           <div className="ui-import-actions">
