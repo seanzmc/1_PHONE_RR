@@ -87,6 +87,27 @@ inline arrow, so React 19 detaches and reattaches it on every render and
 `el.indeterminate` is recomputed each time — correct by reading, still unconfirmed
 in a browser.
 
+Item 3 adds to that list, for the same reason — the profile is still locked. From
+the day-off pass, nothing below has been seen render:
+
+- the None + Mon–Sat radio group, and that a row's radios are scoped to that row
+  (the `name` is `day-off-<repId>`, so a click in one row must not clear another's)
+- a selection saving with no Save button, and surviving a reload
+- the `—` placeholder shown while `rep.allDaysOff` is still in flight or has failed
+- the "Thu, Fri stored — pick one" note for a rep holding more than one legacy day
+- the optimistic rollback and error banner when the mutation fails
+
+`apps/web` runs vitest with `environment: 'node'` and every case in
+`StaffList.test.ts` tests an exported pure function, so none of this is reachable
+from the suite either. The pure parts — `selectedDayOff`, `dayOffPayload` — are
+covered; the rendering is not.
+
+Two of those were reached by reading rather than running, during the final review:
+the "not loaded" state used to render the None radio *checked*, which would have
+suppressed the "pick one" note and let a click silently discard a legacy rep's two
+days. Fixed before merge. That defect sat squarely in the unverified region — the
+gap is not theoretical.
+
 ## Findings worth keeping
 
 Both real defects this round originated in the plan, not the implementation.
