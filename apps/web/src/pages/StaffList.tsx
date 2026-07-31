@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { isOverrideNoOp, noOpReason, type CurrentRepStatus, type OverrideTarget } from '@phoneup/core'
+import {
+  isOverrideNoOp,
+  noOpReason,
+  type CurrentRepStatus,
+  type OverrideTarget,
+} from '@phoneup/core/override-no-op'
 import { mutate, query } from '../lib/api'
 import { useBoardRealtime } from '../lib/useBoardRealtime'
 import { canMutateInCurrentView, useAuthStore } from '../state/authStore'
