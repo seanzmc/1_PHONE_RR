@@ -35,6 +35,21 @@ function toE164(phone: string): string {
 }
 
 /**
+ * Client-side mirror of the name/phone rules in assignLeadInputSchema. Without this, an
+ * invalid submit reaches tRPC and the stringified Zod issues array renders as the error —
+ * unreadable for a BDC agent mid-call. `toE164` accepts exactly these two digit shapes.
+ */
+export function assignFormErrors(name: string, phone: string): { name?: string; phone?: string } {
+  const errors: { name?: string; phone?: string } = {}
+  if (!name.trim()) errors.name = "Enter the customer's name."
+  const digits = phone.replace(/\D/g, '')
+  if (!(digits.length === 10 || (digits.length === 11 && digits.startsWith('1')))) {
+    errors.phone = 'Enter the 10-digit phone number — we add the +1 for you.'
+  }
+  return errors
+}
+
+/**
  * Four buckets, non-leaky — every rep appears in exactly one (design pass §B):
  *   nextUp   : the single rep the next lead goes to
  *   onDeck   : eligible AND unserved this cycle, numbered from 2
@@ -67,11 +82,16 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   const [voidReason, setVoidReason] = useState('')
   const [voidError, setVoidError] = useState<string | null>(null)
   const [copyFailed, setCopyFailed] = useState(false)
+  // Errors only render for fields the user has touched (or after a submit attempt) —
+  // a pristine form stays quiet instead of shouting about fields nobody reached yet.
+  const [touched, setTouched] = useState({ name: false, phone: false })
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
   const { lastCopiedPhone, setLastCopiedPhone } = useClipboardStore()
 
   const canVoid = hasPermission('lead.void')
+  const formErrors = assignFormErrors(name, phone)
+  const formValid = !formErrors.name && !formErrors.phone
 
   const refreshRoster = useCallback(() => {
     loadRoster().then(setRoster).catch(() => {})
@@ -116,6 +136,10 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   }, [lastResult])
 
   async function handleAssign() {
+    // Invalid input must never reach the server — tRPC would return the raw Zod
+    // issues array and that JSON blob would render as the on-screen error.
+    setTouched({ name: true, phone: true })
+    if (!formValid) return
     setError(null)
     setCopyFailed(false)
     const phoneE164 = toE164(phone)
@@ -134,6 +158,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
       setPhone('')
       setNotes('')
       setIdempotencyKey(crypto.randomUUID())
+      setTouched({ name: false, phone: false })
       refreshRoster()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'assign failed')
@@ -204,28 +229,41 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
       <div>
         <h2>Assign Lead</h2>
         <div className="ui-stack">
-          <Field label="Name">
+          <Field label="Name" error={touched.name ? formErrors.name : null}>
             <Input
               ref={nameRef}
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={handleNameKeyDown}
+              onBlur={() => setTouched((t) => ({ ...t, name: true }))}
+              placeholder="Customer name"
               autoFocus
             />
           </Field>
-          <Field label="Phone" hint="10 digits, or +1XXXXXXXXXX">
+          <Field
+            label="Phone"
+            hint="10 digits, or +1XXXXXXXXXX"
+            error={touched.phone ? formErrors.phone : null}
+          >
             <Input
               ref={phoneRef}
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               onKeyDown={handlePhoneKeyDown}
+              onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
+              placeholder="(555) 123-4567"
+              inputMode="tel"
             />
           </Field>
           <Field label="Notes (optional)">
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Anything the rep should know before calling"
+            />
           </Field>
           {error && <p className="ui-error">{error}</p>}
-          <Button variant="primary" onClick={handleAssign}>
+          <Button variant="primary" onClick={handleAssign} disabled={!formValid}>
             Assign (Ctrl+Enter)
           </Button>
         </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bucketRoster } from './AssignScreen'
+import { assignFormErrors, bucketRoster } from './AssignScreen'
 
 type Entry = Parameters<typeof bucketRoster>[0][number]
 
@@ -71,5 +71,26 @@ describe('bucketRoster', () => {
     expect(nextUp).toBeNull()
     expect(onDeck).toEqual([])
     expect(served.length).toBe(2)
+  })
+})
+
+describe('assignFormErrors', () => {
+  it('requires a non-blank customer name', () => {
+    expect(assignFormErrors('', '5551234567').name).toBeTruthy()
+    expect(assignFormErrors('   ', '5551234567').name).toBeTruthy()
+    expect(assignFormErrors('Jane Doe', '5551234567').name).toBeUndefined()
+  })
+
+  it('accepts 10 digits, or 11 starting with 1 — the shapes toE164 can normalize', () => {
+    expect(assignFormErrors('Jane', '5551234567').phone).toBeUndefined()
+    expect(assignFormErrors('Jane', '(555) 123-4567').phone).toBeUndefined()
+    expect(assignFormErrors('Jane', '15551234567').phone).toBeUndefined()
+    expect(assignFormErrors('Jane', '+1 (555) 123-4567').phone).toBeUndefined()
+  })
+
+  it('rejects anything else before it can become a server-side Zod blob', () => {
+    expect(assignFormErrors('Jane', '').phone).toBeTruthy()
+    expect(assignFormErrors('Jane', '555123456').phone).toBeTruthy()
+    expect(assignFormErrors('Jane', '25551234567').phone).toBeTruthy()
   })
 })
