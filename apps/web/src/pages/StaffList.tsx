@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { isOverrideNoOp, type CurrentRepStatus, type OverrideTarget } from '@phoneup/core'
+import { isOverrideNoOp, noOpReason, type CurrentRepStatus, type OverrideTarget } from '@phoneup/core'
 import { mutate, query } from '../lib/api'
 import { useBoardRealtime } from '../lib/useBoardRealtime'
 import { useAuthStore } from '../state/authStore'
-import { Badge, Button, Field, Table, Textarea } from '../ui'
+import { Badge, Button, Field, Select, Table, Textarea } from '../ui'
 import { Modal } from '../ui/Modal'
 import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
 
@@ -17,13 +17,40 @@ export type RosterEntry = {
   decidedBy: 'SYSTEM' | 'MANAGER_OVERRIDE' | null
 }
 
-const STATUS_OPTIONS = ['FORCE_ACTIVE', 'FORCE_INACTIVE', 'FOLLOW_SCHEDULE'] as const
-type StatusOption = (typeof STATUS_OPTIONS)[number]
+const STATUS_OPTIONS: OverrideTarget[] = ['FORCE_ACTIVE', 'FORCE_INACTIVE', 'FOLLOW_SCHEDULE']
 
-const STATUS_LABEL: Record<StatusOption, string> = {
+const STATUS_LABEL: Record<OverrideTarget, string> = {
   FORCE_ACTIVE: 'Reactivate',
   FORCE_INACTIVE: 'Deactivate',
   FOLLOW_SCHEDULE: 'Follow schedule',
+}
+
+/**
+ * One list per action, shared by the per-row and bulk modals so the two cannot drift.
+ * OTHER is always last and is the only option that requires typing.
+ */
+const OTHER = { code: 'OTHER', label: 'Other' }
+
+const REASON_PRESETS: Record<OverrideTarget, Array<{ code: string; label: string }>> = {
+  FORCE_INACTIVE: [
+    { code: 'BELOW_CALL_MINIMUM', label: 'Below call minimum' },
+    { code: 'ABSENT', label: 'Called out / absent' },
+    { code: 'PTO', label: 'PTO' },
+    { code: 'TRAINING', label: 'Training' },
+    { code: 'DISCIPLINARY', label: 'Disciplinary' },
+    OTHER,
+  ],
+  FORCE_ACTIVE: [
+    { code: 'SUSPENSION_LIFTED', label: 'Suspension lifted early' },
+    { code: 'ABSENCE_RESOLVED', label: 'Absence resolved' },
+    { code: 'DEACTIVATED_IN_ERROR', label: 'Deactivated in error' },
+    OTHER,
+  ],
+  FOLLOW_SCHEDULE: [{ code: 'OVERRIDE_NOT_NEEDED', label: 'Override no longer needed' }, OTHER],
+}
+
+export function presetsFor(target: OverrideTarget) {
+  return REASON_PRESETS[target]
 }
 
 // 0=Sunday..6=Saturday. Sunday is store-closed and has no toggle — it needs no
@@ -76,8 +103,9 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   const [error, setError] = useState<string | null>(null)
 
   const [pendingRepId, setPendingRepId] = useState<string | null>(null)
-  const [pendingStatus, setPendingStatus] = useState<StatusOption | null>(null)
-  const [reasonNote, setReasonNote] = useState('')
+  const [pendingStatus, setPendingStatus] = useState<OverrideTarget | null>(null)
+  const [reasonCode, setReasonCode] = useState<string>('')
+  const [otherNote, setOtherNote] = useState('')
 
   const canManageSchedule = hasPermission('schedule.manage')
   const canOverride = hasPermission('rep.override')
@@ -109,14 +137,21 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   }, [refresh])
   useBoardRealtime(refresh)
 
+  // OTHER is the only preset that requires typing; every other one submits with no input.
+  const isOther = reasonCode === 'OTHER'
+  const reasonNote = isOther
+    ? otherNote
+    : (pendingStatus ? presetsFor(pendingStatus).find((p) => p.code === reasonCode)?.label ?? '' : '')
+  const reasonReady = reasonCode !== '' && (!isOther || otherNote.trim() !== '')
+
   async function submitOverride() {
-    if (!pendingRepId || !pendingStatus || !reasonNote.trim()) return
+    if (!pendingRepId || !pendingStatus || !reasonReady) return
     setError(null)
     try {
       await mutate('rep.overrideStatus', {
         repId: pendingRepId,
         status: pendingStatus,
-        reasonCode: pendingStatus,
+        reasonCode,
         reasonNote,
       })
       closeOverride()
@@ -129,7 +164,8 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   function closeOverride() {
     setPendingRepId(null)
     setPendingStatus(null)
-    setReasonNote('')
+    setReasonCode('')
+    setOtherNote('')
   }
 
   /** One mutation per change, audit-logged as rep.days_off.set with before/after. */
@@ -148,7 +184,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
 
   const onReasonKeyDown = useSubmitOnEnter(submitOverride, {
     mode: 'multiline',
-    disabled: !reasonNote.trim(),
+    disabled: !reasonReady,
   })
 
   const pendingRep = roster.find((r) => r.repId === pendingRepId)
@@ -225,19 +261,27 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
             <td>
               <div className="ui-row">
                 {canOverride &&
-                  STATUS_OPTIONS.map((status) => (
-                    <Button
-                      key={status}
-                      size="sm"
-                      variant={status === 'FORCE_INACTIVE' ? 'danger' : 'default'}
-                      onClick={() => {
-                        setPendingRepId(r.repId)
-                        setPendingStatus(status)
-                      }}
-                    >
-                      {STATUS_LABEL[status]}
-                    </Button>
-                  ))}
+                  STATUS_OPTIONS.map((status) => {
+                    const noOp = isOverrideNoOp(status, currentStatusOf(r))
+                    return (
+                      <Button
+                        key={status}
+                        size="sm"
+                        variant={status === 'FORCE_INACTIVE' ? 'danger' : 'default'}
+                        disabled={noOp}
+                        // A dead button should say why rather than just not responding.
+                        title={noOp ? noOpReason(status) : undefined}
+                        onClick={() => {
+                          setPendingRepId(r.repId)
+                          setPendingStatus(status)
+                          setReasonCode('')
+                          setOtherNote('')
+                        }}
+                      >
+                        {STATUS_LABEL[status]}
+                      </Button>
+                    )
+                  })}
               </div>
             </td>
           </tr>
@@ -249,12 +293,25 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         title={`${pendingStatus ? STATUS_LABEL[pendingStatus] : ''} — ${pendingRep?.displayName ?? ''}`}
         onClose={closeOverride}
         onSubmit={submitOverride}
-        submitDisabled={!reasonNote.trim()}
-        hint="Ctrl+Enter to confirm, Esc to cancel"
+        submitDisabled={!reasonReady}
+        hint={isOther ? 'Ctrl+Enter to confirm, Esc to cancel' : 'Esc to cancel'}
       >
         <Field label="Reason (required)">
-          <Textarea value={reasonNote} onChange={(e) => setReasonNote(e.target.value)} onKeyDown={onReasonKeyDown} />
+          <Select value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
+            <option value="">Choose a reason…</option>
+            {pendingStatus &&
+              presetsFor(pendingStatus).map((preset) => (
+                <option key={preset.code} value={preset.code}>
+                  {preset.label}
+                </option>
+              ))}
+          </Select>
         </Field>
+        {isOther && (
+          <Field label="Details (required)">
+            <Textarea value={otherNote} onChange={(e) => setOtherNote(e.target.value)} onKeyDown={onReasonKeyDown} />
+          </Field>
+        )}
         {pendingStatus === 'FORCE_ACTIVE' && (
           <p className="ui-hint">
             Clears any remaining week suspension. The rep is still subject to the daily call
