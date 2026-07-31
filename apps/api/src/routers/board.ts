@@ -10,7 +10,10 @@ function hashRepIdToSeed(repId: string): number {
   return h
 }
 
-async function computeRoster(): Promise<RepRankInput[]> {
+async function computeRoster(): Promise<{
+  ranked: RepRankInput[]
+  decidedByRep: Map<string, 'SYSTEM' | 'MANAGER_OVERRIDE'>
+}> {
   const bDate = businessDate(new Date())
   const pKey = periodKey(bDate)
 
@@ -40,15 +43,26 @@ async function computeRoster(): Promise<RepRankInput[]> {
     }
   })
 
-  return rankReps(rankInputs)
+  // Presentation only, so it is merged at the response layer rather than pushed into
+  // RepRankInput — the ranking algorithm has no business reading who decided a status.
+  const decidedByRep = new Map<string, 'SYSTEM' | 'MANAGER_OVERRIDE'>(
+    statuses.map((s: any) => [s.repId, s.decidedBy]),
+  )
+
+  return { ranked: rankReps(rankInputs), decidedByRep }
 }
 
 export const boardRouter = router({
   roster: publicProcedure.use(requirePerm('board.view')).query(async () => {
-    const ranked = await computeRoster()
+    const { ranked, decidedByRep } = await computeRoster()
     const repRows = await db.select().from(schema.salesRep)
     const nameById = new Map(repRows.map((r: any) => [r.id, r.displayName]))
-    return ranked.map((r) => ({ ...r, displayName: nameById.get(r.repId) ?? 'Unknown' }))
+    return ranked.map((r) => ({
+      ...r,
+      displayName: nameById.get(r.repId) ?? 'Unknown',
+      // null when the rep has no rep_daily_status row for today.
+      decidedBy: decidedByRep.get(r.repId) ?? null,
+    }))
   }),
 
   dashboardSummary: publicProcedure.use(requirePerm('board.view')).query(async () => {
