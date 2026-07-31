@@ -132,6 +132,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   // before the real values are known.
   const [daysOffLoaded, setDaysOffLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
 
   const [pendingRepId, setPendingRepId] = useState<string | null>(null)
   const [pendingStatus, setPendingStatus] = useState<OverrideTarget | null>(null)
@@ -150,6 +151,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
     query<RosterEntry[]>('board.roster')
       .then(async (rows) => {
         setRoster(rows)
+        setLoadError(false)
         setSelected((prev) => reconcileSelection(prev, rows))
         if (!canManageSchedule) return
         // One query for the whole column. This runs on every board realtime event, so the
@@ -165,7 +167,8 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
           setError(err instanceof Error ? err.message : 'loading days off failed')
         }
       })
-      .catch(() => {})
+      // A silent failure leaves a stale (or empty) list looking authoritative.
+      .catch(() => setLoadError(true))
   }, [canManageSchedule])
 
   useEffect(() => {
@@ -339,6 +342,14 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         )}
       </div>
 
+      {loadError && (
+        <p className="ui-error">
+          Couldn't load the staff list — check your connection.{' '}
+          <button type="button" className="ui-linkbtn" onClick={refresh}>
+            Retry
+          </button>
+        </p>
+      )}
       {error && <p className="ui-error">{error}</p>}
       {notice && <p className="ui-hint">{notice}</p>}
 

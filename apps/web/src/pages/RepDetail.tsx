@@ -51,6 +51,7 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
   const [summary, setSummary] = useState<RepSummary | null>(null)
   const [activity, setActivity] = useState<ActivityRow[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
 
   // note drafts, keyed by lead — the Save button only appears when the field is dirty
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -67,15 +68,15 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
 
   const load = useCallback(() => {
     const input = repId ? { repId } : {}
-    query<LeadRow[]>(`lead.byRep?input=${encodeURIComponent(JSON.stringify(input))}`)
-      .then(setLeads)
-      .catch((err) => setError(err instanceof Error ? err.message : 'failed to load leads'))
-    query<RepSummary>(`activity.repSummary?input=${encodeURIComponent(JSON.stringify(input))}`)
-      .then(setSummary)
-      .catch(() => {})
-    query<ActivityRow[]>(`activity.byRep?input=${encodeURIComponent(JSON.stringify(input))}`)
-      .then(setActivity)
-      .catch(() => {})
+    setLoadError(false)
+    // Each setter hangs off its own query, so the sections that CAN load still render;
+    // Promise.all only decides whether the failure banner shows. Silent catches here
+    // used to leave a partial page looking complete.
+    Promise.all([
+      query<LeadRow[]>(`lead.byRep?input=${encodeURIComponent(JSON.stringify(input))}`).then(setLeads),
+      query<RepSummary>(`activity.repSummary?input=${encodeURIComponent(JSON.stringify(input))}`).then(setSummary),
+      query<ActivityRow[]>(`activity.byRep?input=${encodeURIComponent(JSON.stringify(input))}`).then(setActivity),
+    ]).catch(() => setLoadError(true))
   }, [repId])
 
   useEffect(load, [load])
@@ -149,6 +150,14 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
       </div>
 
       {error && <p className="ui-error">{error}</p>}
+      {loadError && (
+        <p className="ui-error">
+          Couldn't load this page — check your connection.{' '}
+          <button type="button" className="ui-linkbtn" onClick={load}>
+            Retry
+          </button>
+        </p>
+      )}
 
       {summary && (
         <div className="ui-card-grid">

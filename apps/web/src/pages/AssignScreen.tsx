@@ -93,8 +93,17 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   const formErrors = assignFormErrors(name, phone)
   const formValid = !formErrors.name && !formErrors.phone
 
+  const [loadError, setLoadError] = useState(false)
+
   const refreshRoster = useCallback(() => {
-    loadRoster().then(setRoster).catch(() => {})
+    loadRoster()
+      .then((rows) => {
+        setRoster(rows)
+        setLoadError(false)
+      })
+      // Never swallow this: an empty roster renders as "no eligible unserved rep" and
+      // "Everyone is available", so a failed load would masquerade as the truth.
+      .catch(() => setLoadError(true))
   }, [])
 
   useEffect(() => {
@@ -296,75 +305,94 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
       <div>
         <h2>Roster</h2>
 
-        <div className="ui-bucket">
-          <div className="ui-bucket-head">
-            <h5>Next Up</h5>
-          </div>
-          {nextUp ? (
-            <div className="ui-nextup">{nextUp.displayName}</div>
-          ) : (
-            <p className="ui-muted">No eligible unserved rep — the next lead queues as unassigned.</p>
-          )}
-        </div>
+        {loadError && roster.length > 0 && (
+          <p className="ui-warn">
+            Couldn't refresh — showing the last good roster.{' '}
+            <button type="button" className="ui-linkbtn" onClick={refreshRoster}>
+              Retry
+            </button>
+          </p>
+        )}
+        {loadError && roster.length === 0 ? (
+          <p className="ui-error">
+            Couldn't load the roster — check your connection.{' '}
+            <button type="button" className="ui-linkbtn" onClick={refreshRoster}>
+              Retry
+            </button>
+          </p>
+        ) : (
+          <>
+            <div className="ui-bucket">
+              <div className="ui-bucket-head">
+                <h5>Next Up</h5>
+              </div>
+              {nextUp ? (
+                <div className="ui-nextup">{nextUp.displayName}</div>
+              ) : (
+                <p className="ui-muted">No eligible unserved rep — the next lead queues as unassigned.</p>
+              )}
+            </div>
 
-        <div className="ui-bucket">
-          <div className="ui-bucket-head">
-            <h5>On Deck</h5>
-            <span className="ui-muted">{onDeck.length}</span>
-          </div>
-          {onDeck.length === 0 ? (
-            <p className="ui-muted">Nobody else is unserved this cycle.</p>
-          ) : (
-            <ul className="ui-list">
-              {onDeck.map((r, i) => (
-                <li key={r.repId}>
-                  {/* numbered from 2 — Next Up is 1 */}
-                  <span className="ui-list-rank">{i + 2}</span>
-                  {repName(r)}
-                  <span className="ui-muted">{r.monthlyLoad} ups MTD</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+            <div className="ui-bucket">
+              <div className="ui-bucket-head">
+                <h5>On Deck</h5>
+                <span className="ui-muted">{onDeck.length}</span>
+              </div>
+              {onDeck.length === 0 ? (
+                <p className="ui-muted">Nobody else is unserved this cycle.</p>
+              ) : (
+                <ul className="ui-list">
+                  {onDeck.map((r, i) => (
+                    <li key={r.repId}>
+                      {/* numbered from 2 — Next Up is 1 */}
+                      <span className="ui-list-rank">{i + 2}</span>
+                      {repName(r)}
+                      <span className="ui-muted">{r.monthlyLoad} ups MTD</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
-        <div className="ui-bucket">
-          <div className="ui-bucket-head">
-            <h5>Served This Cycle</h5>
-            <span className="ui-muted">{served.length}</span>
-          </div>
-          {served.length === 0 ? (
-            <p className="ui-muted">Nobody served yet this cycle.</p>
-          ) : (
-            <ul className="ui-list">
-              {served.map((r) => (
-                <li key={r.repId}>
-                  {repName(r)}
-                  <Badge tone="accent">{r.monthlyLoad} ups MTD</Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+            <div className="ui-bucket">
+              <div className="ui-bucket-head">
+                <h5>Served This Cycle</h5>
+                <span className="ui-muted">{served.length}</span>
+              </div>
+              {served.length === 0 ? (
+                <p className="ui-muted">Nobody served yet this cycle.</p>
+              ) : (
+                <ul className="ui-list">
+                  {served.map((r) => (
+                    <li key={r.repId}>
+                      {repName(r)}
+                      <Badge tone="accent">{r.monthlyLoad} ups MTD</Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
-        <div className="ui-bucket">
-          <div className="ui-bucket-head">
-            <h5>Unavailable</h5>
-            <span className="ui-muted">{unavailable.length}</span>
-          </div>
-          {unavailable.length === 0 ? (
-            <p className="ui-muted">Everyone is available.</p>
-          ) : (
-            <ul className="ui-list">
-              {unavailable.map((r) => (
-                <li key={r.repId}>
-                  {repName(r)}
-                  <Badge tone="warn">{r.ineligibleReason ?? 'ineligible'}</Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+            <div className="ui-bucket">
+              <div className="ui-bucket-head">
+                <h5>Unavailable</h5>
+                <span className="ui-muted">{unavailable.length}</span>
+              </div>
+              {unavailable.length === 0 ? (
+                <p className="ui-muted">Everyone is available.</p>
+              ) : (
+                <ul className="ui-list">
+                  {unavailable.map((r) => (
+                    <li key={r.repId}>
+                      {repName(r)}
+                      <Badge tone="warn">{r.ineligibleReason ?? 'ineligible'}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       <Modal
