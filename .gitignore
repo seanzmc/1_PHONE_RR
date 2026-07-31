@@ -15,3 +15,6 @@ docs/build-logs.txt
 
 # database dumps — real employee and customer data, never committed
 backups/
+
+# graphify analysis output — generated artifact, never committed
+graphify-out/
