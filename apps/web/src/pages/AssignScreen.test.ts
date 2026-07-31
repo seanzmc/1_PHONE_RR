@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assignEnterAction, assignFormErrors, bucketRoster } from './AssignScreen'
+import { assignEnterAction, assignFormErrors, bucketRoster, canSubmitWithRoster } from './AssignScreen'
 
 type Entry = Parameters<typeof bucketRoster>[0][number]
 
@@ -100,5 +100,13 @@ describe('assignEnterAction', () => {
     expect(assignEnterAction('name')).toBe('phone')
     expect(assignEnterAction('phone')).toBe('notes')
     expect(assignEnterAction('notes')).toBe('assign')
+  })
+})
+
+describe('canSubmitWithRoster', () => {
+  it('blocks assignment until the first roster request succeeds', () => {
+    expect(canSubmitWithRoster(true, false)).toBe(false)
+    expect(canSubmitWithRoster(true, true)).toBe(true)
+    expect(canSubmitWithRoster(false, true)).toBe(false)
   })
 })

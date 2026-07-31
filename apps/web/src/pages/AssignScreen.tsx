@@ -55,6 +55,10 @@ export function assignEnterAction(field: 'name' | 'phone' | 'notes'): 'phone' | 
   return 'assign'
 }
 
+export function canSubmitWithRoster(formValid: boolean, hasLoadedRoster: boolean): boolean {
+  return formValid && hasLoadedRoster
+}
+
 /**
  * Four buckets, non-leaky — every rep appears in exactly one (design pass §B):
  *   nextUp   : the single rep the next lead goes to
@@ -88,6 +92,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   const [voidReason, setVoidReason] = useState('')
   const [voidError, setVoidError] = useState<string | null>(null)
   const [copyFailed, setCopyFailed] = useState(false)
+  const [hasLoadedRoster, setHasLoadedRoster] = useState(false)
   // Errors only render for fields the user has touched (or after a submit attempt) —
   // a pristine form stays quiet instead of shouting about fields nobody reached yet.
   const [touched, setTouched] = useState({ name: false, phone: false })
@@ -103,9 +108,11 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   const [loadError, setLoadError] = useState(false)
 
   const refreshRoster = useCallback(() => {
+    setLoadError(false)
     loadRoster()
       .then((rows) => {
         setRoster(rows)
+        setHasLoadedRoster(true)
         setLoadError(false)
       })
       // Never swallow this: an empty roster renders as "no eligible unserved rep" and
@@ -155,7 +162,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
     // Invalid input must never reach the server — tRPC would return the raw Zod
     // issues array and that JSON blob would render as the on-screen error.
     setTouched({ name: true, phone: true })
-    if (!formValid) return
+    if (!canSubmitWithRoster(formValid, hasLoadedRoster)) return
     setError(null)
     setCopyFailed(false)
     const phoneE164 = toE164(phone)
@@ -290,7 +297,11 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
             />
           </Field>
           {error && <p className="ui-error">{error}</p>}
-          <Button variant="primary" onClick={handleAssign} disabled={!formValid}>
+          <Button
+            variant="primary"
+            onClick={handleAssign}
+            disabled={!canSubmitWithRoster(formValid, hasLoadedRoster)}
+          >
             Assign (Ctrl+Enter)
           </Button>
         </div>
@@ -331,7 +342,9 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
             </button>
           </p>
         )}
-        {loadError && roster.length === 0 ? (
+        {!hasLoadedRoster && !loadError ? (
+          <p className="ui-muted">Loading roster…</p>
+        ) : loadError && roster.length === 0 ? (
           <p className="ui-error">
             Couldn't load the roster — check your connection.{' '}
             <button type="button" className="ui-linkbtn" onClick={refreshRoster}>
