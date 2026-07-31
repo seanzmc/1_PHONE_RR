@@ -15,7 +15,7 @@ export const voidLeadInputSchema = z.object({
 
 export const statusOverrideInputSchema = z.object({
   repId: z.string().uuid(),
-  status: z.enum(['FORCE_ACTIVE', 'FORCE_INACTIVE', 'FOLLOW_SCHEDULE']),
+  status: z.enum(['FORCE_ACTIVE', 'FORCE_INACTIVE']),
   reasonCode: z.string().min(1),
   reasonNote: z.string().min(1),
 })
@@ -28,7 +28,7 @@ export const bulkStatusOverrideInputSchema = z.object({
     .min(1)
     .max(200)
     .transform((ids) => [...new Set(ids)]),
-  status: z.enum(['FORCE_ACTIVE', 'FORCE_INACTIVE', 'FOLLOW_SCHEDULE']),
+  status: z.enum(['FORCE_ACTIVE', 'FORCE_INACTIVE']),
   reasonCode: z.string().min(1),
   reasonNote: z.string().min(1),
 })

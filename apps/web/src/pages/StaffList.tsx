@@ -17,12 +17,11 @@ export type RosterEntry = {
   decidedBy: 'SYSTEM' | 'MANAGER_OVERRIDE' | null
 }
 
-const STATUS_OPTIONS: OverrideTarget[] = ['FORCE_ACTIVE', 'FORCE_INACTIVE', 'FOLLOW_SCHEDULE']
+const STATUS_OPTIONS: OverrideTarget[] = ['FORCE_ACTIVE', 'FORCE_INACTIVE']
 
 const STATUS_LABEL: Record<OverrideTarget, string> = {
   FORCE_ACTIVE: 'Reactivate',
   FORCE_INACTIVE: 'Deactivate',
-  FOLLOW_SCHEDULE: 'Follow schedule',
 }
 
 /**
@@ -46,7 +45,6 @@ const REASON_PRESETS: Record<OverrideTarget, Array<{ code: string; label: string
     { code: 'DEACTIVATED_IN_ERROR', label: 'Deactivated in error' },
     OTHER,
   ],
-  FOLLOW_SCHEDULE: [{ code: 'OVERRIDE_NOT_NEEDED', label: 'Override no longer needed' }, OTHER],
 }
 
 export function presetsFor(target: OverrideTarget) {
@@ -186,6 +184,8 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
     setPendingStatus(null)
     setReasonCode('')
     setOtherNote('')
+    // A stale failure must not re-render at the top of the next modal that opens.
+    setError(null)
   }
 
   const selectedSet = new Set(selected)
@@ -232,6 +232,8 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
     setBulkStatus(null)
     setReasonCode('')
     setOtherNote('')
+    // A stale failure must not re-render at the top of the next modal that opens.
+    setError(null)
   }
 
   /** One mutation per change, audit-logged as rep.days_off.set with before/after. */
@@ -409,6 +411,11 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         submitDisabled={!reasonReady}
         hint={isOther ? 'Ctrl+Enter to confirm, Esc to cancel' : 'Esc to cancel'}
       >
+        {/* The modal backdrop sits above the page (z-index 50), so a failed override must
+            render its error here too — the outer error line below the table is invisible
+            while this modal is open. The modal stays open on failure so the manager can
+            retry without re-opening it. */}
+        {error && <p className="ui-error">{error}</p>}
         <Field label="Reason (required)">
           <Select value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
             <option value="">Choose a reason…</option>

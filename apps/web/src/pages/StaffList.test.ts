@@ -93,16 +93,6 @@ describe('splitByNoOp', () => {
     expect(skipped.map((r) => r.repId)).toEqual(['eligible'])
   })
 
-  it('only follows schedule for reps carrying a manager override', () => {
-    const { applied, skipped } = splitByNoOp('FOLLOW_SCHEDULE', [
-      entry({ repId: 'overridden', isEligible: false, decidedBy: 'MANAGER_OVERRIDE' }),
-      entry({ repId: 'systemDecided', isEligible: false, decidedBy: 'SYSTEM' }),
-      entry({ repId: 'noRow', decidedBy: null }),
-    ])
-    expect(applied.map((r) => r.repId)).toEqual(['overridden'])
-    expect(skipped.map((r) => r.repId)).toEqual(['systemDecided', 'noRow'])
-  })
-
   it('is non-leaky: every entry lands in exactly one side', () => {
     const entries = [
       entry({ repId: 'a' }),

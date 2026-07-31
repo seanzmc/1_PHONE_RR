@@ -9,6 +9,12 @@ The Staff List gives a manager three per-row buttons — Reactivate, Deactivate,
 schedule — each opening a modal with a required free-text reason. Two things are wrong
 with it day to day.
 
+**Post-ship correction:** Follow schedule was removed before this shipped to production.
+It was redundant once bulk actions existed, and its disabled-rule could never actually
+hold — `upsertOverride` hardcodes `decidedBy: 'MANAGER_OVERRIDE'`, so after applying it
+the rep still read as manager-decided and the button never disabled. The tables below are
+corrected to match what shipped: two status actions, not three.
+
 Sitting down five reps after a bad call day is five separate modals and five typed
 reasons. There is no way to act on a group.
 
@@ -35,7 +41,7 @@ New mutation on the rep router, permission `rep.override`, input:
 ```ts
 {
   repIds: string[]        // 1..200, uuid, deduped
-  status: 'FORCE_ACTIVE' | 'FORCE_INACTIVE' | 'FOLLOW_SCHEDULE'
+  status: 'FORCE_ACTIVE' | 'FORCE_INACTIVE'
   reasonCode: string      // preset key, or 'OTHER'
   reasonNote: string      // preset label, or the manager's text when OTHER
 }
@@ -89,7 +95,6 @@ A button is rendered disabled rather than opening a modal:
 |---|---|
 | Reactivate | rep is already `ELIGIBLE` |
 | Deactivate | rep is already `INELIGIBLE` |
-| Follow schedule | today's `decidedBy` is not `MANAGER_OVERRIDE` — there is no override to release |
 
 Each disabled button carries a `title` saying why, so the state is explainable on hover
 rather than just dead.
@@ -132,7 +137,6 @@ until it is non-empty. Every other preset submits with no typing.
 |---|---|
 | Deactivate | Below call minimum · Called out / absent · PTO · Training · Disciplinary · Other |
 | Reactivate | Suspension lifted early · Absence resolved · Deactivated in error · Other |
-| Follow schedule | Override no longer needed · Other |
 
 The lists live in one module-level constant keyed by status, shared by the per-row and bulk
 modals so the two cannot drift.

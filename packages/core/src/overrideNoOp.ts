@@ -10,7 +10,7 @@
  * A rep who is ineligible only because it is their scheduled day off therefore cannot be
  * deactivated today — that is done the next day they are in. Accepted in the design.
  */
-export type OverrideTarget = 'FORCE_ACTIVE' | 'FORCE_INACTIVE' | 'FOLLOW_SCHEDULE'
+export type OverrideTarget = 'FORCE_ACTIVE' | 'FORCE_INACTIVE'
 
 /** A rep's status today, normalized from either a `rep_daily_status` row or a roster entry. */
 export type CurrentRepStatus = {
@@ -25,10 +25,6 @@ export function isOverrideNoOp(target: OverrideTarget, current: CurrentRepStatus
       return current.isEligible
     case 'FORCE_INACTIVE':
       return !current.isEligible
-    case 'FOLLOW_SCHEDULE':
-      // Following the schedule releases a manager override. With none in place there is
-      // nothing to release, whatever today's status happens to be.
-      return current.decidedBy !== 'MANAGER_OVERRIDE'
   }
 }
 
@@ -39,7 +35,5 @@ export function noOpReason(target: OverrideTarget): string {
       return 'Already active'
     case 'FORCE_INACTIVE':
       return 'Already inactive'
-    case 'FOLLOW_SCHEDULE':
-      return 'No manager override to release'
   }
 }

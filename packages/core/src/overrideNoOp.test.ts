@@ -29,17 +29,9 @@ describe('isOverrideNoOp', () => {
     expect(isOverrideNoOp('FORCE_INACTIVE', eligible)).toBe(false)
   })
 
-  it('can only follow schedule when there is a manager override to release', () => {
-    expect(isOverrideNoOp('FOLLOW_SCHEDULE', ineligibleByManager)).toBe(false)
-    expect(isOverrideNoOp('FOLLOW_SCHEDULE', eligibleByManager)).toBe(false)
-    expect(isOverrideNoOp('FOLLOW_SCHEDULE', eligible)).toBe(true)
-    expect(isOverrideNoOp('FOLLOW_SCHEDULE', ineligibleBySystem)).toBe(true)
-  })
-
   it('treats a rep with no status row as ineligible, matching what the board shows', () => {
     expect(isOverrideNoOp('FORCE_ACTIVE', noRow)).toBe(false)
     expect(isOverrideNoOp('FORCE_INACTIVE', noRow)).toBe(true)
-    expect(isOverrideNoOp('FOLLOW_SCHEDULE', noRow)).toBe(true)
   })
 })
 
@@ -47,6 +39,5 @@ describe('noOpReason', () => {
   it('explains each disabled button', () => {
     expect(noOpReason('FORCE_ACTIVE')).toBe('Already active')
     expect(noOpReason('FORCE_INACTIVE')).toBe('Already inactive')
-    expect(noOpReason('FOLLOW_SCHEDULE')).toBe('No manager override to release')
   })
 })

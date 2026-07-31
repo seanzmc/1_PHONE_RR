@@ -8,7 +8,7 @@ export const ADVISORY_LOCK_KEY = 42_100_1 // same key as assignLead — override
 
 export type OverrideStatusInput = {
   repId: string
-  status: 'FORCE_ACTIVE' | 'FORCE_INACTIVE' | 'FOLLOW_SCHEDULE'
+  status: 'FORCE_ACTIVE' | 'FORCE_INACTIVE'
   reasonCode: string
   reasonNote: string
   actorUserId: string
@@ -17,7 +17,6 @@ export type OverrideStatusInput = {
 const STATUS_TO_DAILY_STATUS = {
   FORCE_ACTIVE: 'ELIGIBLE',
   FORCE_INACTIVE: 'INELIGIBLE',
-  FOLLOW_SCHEDULE: 'ELIGIBLE', // resolved by the next eligibility evaluation, not this override itself
 } as const
 
 export async function overrideStatus(db: DB, input: OverrideStatusInput): Promise<void> {
@@ -96,7 +95,7 @@ export async function applyOverrideStatus(tx: any, input: OverrideStatusInput): 
       reasonNote: input.reasonNote,
       // Reactivation only clears status rows — it never marks a rep exempt, so the rep is
       // still subject to the daily call qualifier the next morning (design pass §I).
-      appliedThrough: input.status === 'FOLLOW_SCHEDULE' ? today : weekDates[weekDates.length - 1],
+      appliedThrough: weekDates[weekDates.length - 1],
     },
   })
 }
