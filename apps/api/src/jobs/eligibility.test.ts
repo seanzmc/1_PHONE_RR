@@ -387,13 +387,19 @@ describe('materializeShifts + recurring days off', () => {
   it('re-materializing after a days-off change never rewrites a PAST date', async () => {
     const { businessDate } = await import('@phoneup/core')
     const today = businessDate(new Date())
-    const pastDate = shiftDate(today, -3)
+    // -3 lands on a Sunday one day in seven; Sunday normalizes away and would leave this
+    // test asserting nothing. Step back until it is a working day.
+    let pastDate = shiftDate(today, -3)
+    while (new Date(`${pastDate}T12:00:00Z`).getUTCDay() === 0) pastDate = shiftDate(pastDate, -1)
 
     await db.delete(schema.repShift).where(eq(schema.repShift.repId, repId))
     await db.insert(schema.repShift).values({ repId, businessDate: pastDate, kind: 'WORK' })
 
-    // set every weekday off — if the generator reached backwards, the past row would flip to OFF
-    await setRecurringDaysOff(db, { repId, daysOfWeek: [1, 2, 3, 4, 5, 6], actorUserId: managerUserId })
+    // Set the day off to the past date's OWN weekday — if the generator reached backwards,
+    // that row specifically would flip to OFF. One day is all the rule now allows, and it
+    // is the only day that could produce a false pass here anyway.
+    const pastDow = new Date(`${pastDate}T12:00:00Z`).getUTCDay()
+    await setRecurringDaysOff(db, { repId, daysOfWeek: [pastDow], actorUserId: managerUserId })
 
     const past = await db.query.repShift.findFirst({
       where: and(eq(schema.repShift.repId, repId), eq(schema.repShift.businessDate, pastDate)),
@@ -403,7 +409,7 @@ describe('materializeShifts + recurring days off', () => {
 
   it('audit-logs rep.days_off.set with before/after', async () => {
     await setRecurringDaysOff(db, { repId, daysOfWeek: [2], actorUserId: managerUserId })
-    await setRecurringDaysOff(db, { repId, daysOfWeek: [4, 5], actorUserId: managerUserId })
+    await setRecurringDaysOff(db, { repId, daysOfWeek: [4], actorUserId: managerUserId })
 
     // ordered explicitly: Postgres row order is arbitrary, and "the last one" silently
     // became "some other one" once the table had enough churn from other tests.
@@ -414,7 +420,7 @@ describe('materializeShifts + recurring days off', () => {
     const mine = events.filter((e: any) => e.entityId === repId)
     const latest = mine[mine.length - 1]
     expect((latest.before as any).daysOfWeek).toEqual([2])
-    expect((latest.after as any).daysOfWeek).toEqual([4, 5])
+    expect((latest.after as any).daysOfWeek).toEqual([4])
   })
 
   it('CONFIGURATION_ERROR stops being the normal case once shifts are materialized', async () => {
