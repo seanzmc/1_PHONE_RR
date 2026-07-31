@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { query } from '../lib/api'
 import { Card, MetricCard } from '../ui'
 
@@ -11,11 +11,35 @@ type Summary = {
 
 export function Dashboard({ onOpenRep }: { onOpenRep?: (repId: string) => void }) {
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [loadError, setLoadError] = useState(false)
 
-  useEffect(() => {
-    query<Summary>('board.dashboardSummary').then(setSummary).catch(() => {})
+  const load = useCallback(() => {
+    query<Summary>('board.dashboardSummary')
+      .then((s) => {
+        setSummary(s)
+        setLoadError(false)
+      })
+      // A silent catch leaves the screen on "Loading…" forever — indistinguishable
+      // from a slow connection and with no way out.
+      .catch(() => setLoadError(true))
   }, [])
 
+  useEffect(() => {
+    load()
+  }, [load])
+
+  if (loadError && !summary) {
+    return (
+      <div className="ui-page">
+        <p className="ui-error">
+          Couldn't load the dashboard — check your connection.{' '}
+          <button type="button" className="ui-linkbtn" onClick={load}>
+            Retry
+          </button>
+        </p>
+      </div>
+    )
+  }
   if (!summary) return <div className="ui-page">Loading…</div>
 
   return (

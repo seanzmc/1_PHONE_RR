@@ -23,6 +23,7 @@ export function UserManagement() {
   const { session } = useAuthStore()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
 
   const [addOpen, setAddOpen] = useState(false)
   const [newEmail, setNewEmail] = useState('')
@@ -39,7 +40,13 @@ export function UserManagement() {
   const [issuedCopied, setIssuedCopied] = useState(false)
 
   function refresh() {
-    query<Account[]>('userManagement.list').then(setAccounts).catch(() => {})
+    query<Account[]>('userManagement.list')
+      .then((rows) => {
+        setAccounts(rows)
+        setLoadError(false)
+      })
+      // Silent here used to render an empty table that reads as "no accounts".
+      .catch(() => setLoadError(true))
   }
 
   useEffect(refresh, [])
@@ -143,6 +150,14 @@ export function UserManagement() {
       </div>
 
       {error && <p className="ui-error">{error}</p>}
+      {loadError && (
+        <p className="ui-error">
+          Couldn't load the user list — check your connection.{' '}
+          <button type="button" className="ui-linkbtn" onClick={refresh}>
+            Retry
+          </button>
+        </p>
+      )}
 
       <Table headers={['Name', 'Email', 'Role', 'Status', 'Actions']}>
         {accounts.map((a) => {

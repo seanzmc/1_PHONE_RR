@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { mutate, query } from '../lib/api'
 import { useAuthStore } from '../state/authStore'
 import { digitsOnly } from '../state/clipboardStore'
-import { Badge, Button, Field, Input, MetricCard, Table, Textarea } from '../ui'
+import { Badge, Button, Card, Field, Input, MetricCard, Table, Textarea } from '../ui'
 import { Modal } from '../ui/Modal'
 import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
 
@@ -26,6 +26,8 @@ type RepSummary = {
   timesDeactivated: number
   daysInactive: number
   inactiveDates: string[]
+  today: { businessDate: string; isEligible: boolean; reason: string | null }
+  daysOff: number[]
 }
 
 type ActivityRow = {
@@ -40,6 +42,46 @@ function formatPhone(e164: string): string {
   return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : e164
 }
 
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+/** rep_daily_status reasons are stored compact: "WEEK_DQ: …", or a lowercased shift kind. */
+const SHIFT_REASON_LABEL: Record<string, string> = {
+  off: 'Scheduled day off',
+  pto: 'PTO day',
+  sick: 'Sick day',
+  training: 'Training day',
+  suspended: 'Suspended',
+}
+
+/** Make a stored status reason readable — translate the WEEK_DQ prefix, keep the numbers. */
+export function formatStatusReason(reason: string): string {
+  const bare = SHIFT_REASON_LABEL[reason]
+  if (bare) return bare
+  const text = reason.replace(/WEEK_DQ: /g, 'below the call minimum: ')
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/**
+ * The guidance line under the today badge. `isSelf` picks the pointer: reps get sent to
+ * their manager, managers get sent to the Staff List — the one audited status path.
+ */
+export function todayStatusMessage(
+  today: { isEligible: boolean; reason: string | null },
+  isSelf: boolean,
+): string {
+  if (today.isEligible) {
+    return isSelf
+      ? "You're in today's rotation — ups go to the next unserved rep in line."
+      : "In today's rotation — ups go to the next unserved rep in line."
+  }
+  const reason = formatStatusReason(today.reason ?? 'Not evaluated for today yet')
+  if ((today.reason ?? '').startsWith('WEEK_DQ')) {
+    const pointer = isSelf ? 'Think this is wrong? Talk to your manager.' : 'Lift it early from the Staff List.'
+    return `${reason} — suspended through Saturday. ${pointer}`
+  }
+  return `${reason}.`
+}
+
 /**
  * One component behind both the manager drill-down (§D) and the rep's own dashboard (§K).
  * `repId` defaults to self: a REP hitting /me sees only their own data; MANAGER/ADMIN reach
@@ -51,6 +93,7 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
   const [summary, setSummary] = useState<RepSummary | null>(null)
   const [activity, setActivity] = useState<ActivityRow[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
 
   // note drafts, keyed by lead — the Save button only appears when the field is dirty
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -67,15 +110,15 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
 
   const load = useCallback(() => {
     const input = repId ? { repId } : {}
-    query<LeadRow[]>(`lead.byRep?input=${encodeURIComponent(JSON.stringify(input))}`)
-      .then(setLeads)
-      .catch((err) => setError(err instanceof Error ? err.message : 'failed to load leads'))
-    query<RepSummary>(`activity.repSummary?input=${encodeURIComponent(JSON.stringify(input))}`)
-      .then(setSummary)
-      .catch(() => {})
-    query<ActivityRow[]>(`activity.byRep?input=${encodeURIComponent(JSON.stringify(input))}`)
-      .then(setActivity)
-      .catch(() => {})
+    setLoadError(false)
+    // Each setter hangs off its own query, so the sections that CAN load still render;
+    // Promise.all only decides whether the failure banner shows. Silent catches here
+    // used to leave a partial page looking complete.
+    Promise.all([
+      query<LeadRow[]>(`lead.byRep?input=${encodeURIComponent(JSON.stringify(input))}`).then(setLeads),
+      query<RepSummary>(`activity.repSummary?input=${encodeURIComponent(JSON.stringify(input))}`).then(setSummary),
+      query<ActivityRow[]>(`activity.byRep?input=${encodeURIComponent(JSON.stringify(input))}`).then(setActivity),
+    ]).catch(() => setLoadError(true))
   }, [repId])
 
   useEffect(load, [load])
@@ -149,6 +192,32 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
       </div>
 
       {error && <p className="ui-error">{error}</p>}
+      {loadError && (
+        <p className="ui-error">
+          Couldn't load this page — check your connection.{' '}
+          <button type="button" className="ui-linkbtn" onClick={load}>
+            Retry
+          </button>
+        </p>
+      )}
+
+      {summary && (
+        <Card className="ui-stack" kicker={`Today — ${summary.today.businessDate}`}>
+          <div className="ui-row">
+            {summary.today.isEligible ? (
+              <Badge tone="ok">IN ROTATION</Badge>
+            ) : (
+              <Badge tone="warn">NOT IN ROTATION</Badge>
+            )}
+            {summary.daysOff.length > 0 && (
+              <span className="ui-hint">
+                Recurring day off: {summary.daysOff.map((d) => WEEKDAY_NAMES[d]).join(', ')}
+              </span>
+            )}
+          </div>
+          <p className="ui-muted">{todayStatusMessage(summary.today, !repId)}</p>
+        </Card>
+      )}
 
       {summary && (
         <div className="ui-card-grid">

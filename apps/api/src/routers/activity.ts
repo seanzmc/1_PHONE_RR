@@ -210,6 +210,19 @@ export const activityRouter = router({
         }
       }
 
+      // Today's rotation status + recurring day off — the answer to the one question a
+      // rep has ("am I in today, and if not, why"). Read-only, like every other query here.
+      const today = businessDate(new Date())
+      const todayRows = await db
+        .select()
+        .from(schema.repDailyStatus)
+        .where(and(eq(schema.repDailyStatus.repId, repId), eq(schema.repDailyStatus.businessDate, today)))
+        .limit(1)
+      const dayOffRows = await db
+        .select({ dayOfWeek: schema.repRecurringDayOff.dayOfWeek })
+        .from(schema.repRecurringDayOff)
+        .where(eq(schema.repRecurringDayOff.repId, repId))
+
       return {
         repId,
         displayName: rep?.displayName ?? 'Unknown',
@@ -220,6 +233,12 @@ export const activityRouter = router({
         timesDeactivated,
         daysInactive: inactiveDates.length,
         inactiveDates,
+        today: {
+          businessDate: today,
+          isEligible: todayRows[0]?.status === 'ELIGIBLE',
+          reason: todayRows[0]?.reason ?? null,
+        },
+        daysOff: dayOffRows.map((r) => r.dayOfWeek).sort(),
       }
     }),
 })
