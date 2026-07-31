@@ -53,6 +53,18 @@ export function presetsFor(target: OverrideTarget) {
   return REASON_PRESETS[target]
 }
 
+/**
+ * The reason text sent with an override, shared by the per-row and bulk modals.
+ * `target` must be whichever modal is actually open — the per-row modal drives
+ * `pendingStatus`, the bulk modal drives `bulkStatus`, and passing the wrong one (or null
+ * while a modal is open) silently resolves every non-OTHER preset to an empty string.
+ */
+export function reasonNoteFor(target: OverrideTarget | null, reasonCode: string, otherNote: string): string {
+  if (reasonCode === 'OTHER') return otherNote
+  if (!target) return ''
+  return presetsFor(target).find((p) => p.code === reasonCode)?.label ?? ''
+}
+
 // 0=Sunday..6=Saturday. Sunday is store-closed and has no toggle — it needs no
 // rep-level day-off entry and shouldn't consume one.
 const WEEKDAYS: Array<{ dow: number; label: string }> = [
@@ -145,9 +157,10 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
 
   // OTHER is the only preset that requires typing; every other one submits with no input.
   const isOther = reasonCode === 'OTHER'
-  const reasonNote = isOther
-    ? otherNote
-    : (pendingStatus ? presetsFor(pendingStatus).find((p) => p.code === reasonCode)?.label ?? '' : '')
+  // Whichever modal is actually open drives the preset lookup — bulk takes priority since
+  // the two are not opened simultaneously in normal use, and it must never fall back to
+  // pendingStatus's stale null while the bulk modal is the one on screen.
+  const reasonNote = reasonNoteFor(bulkStatus ?? pendingStatus, reasonCode, otherNote)
   const reasonReady = reasonCode !== '' && (!isOther || otherNote.trim() !== '')
 
   async function submitOverride() {
@@ -192,6 +205,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   async function submitBulk() {
     if (!bulkStatus || !bulkSplit || bulkSplit.applied.length === 0 || !reasonReady) return
     setError(null)
+    setNotice(null)
     try {
       const result = await mutate<{ applied: string[]; skipped: string[] }>('rep.bulkOverrideStatus', {
         repIds: bulkSplit.applied.map((r) => r.repId),
@@ -435,6 +449,11 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         submitLabel={bulkSplit ? `${bulkStatus ? STATUS_LABEL[bulkStatus] : ''} ${bulkSplit.applied.length}` : 'Confirm'}
         hint={isOther ? 'Ctrl+Enter to confirm, Esc to cancel' : 'Esc to cancel'}
       >
+        {/* The modal backdrop sits above the page (z-index 50), so a failed bulk mutation
+            must render its error here too — the outer error line below the table is
+            invisible while this modal is open. The modal stays open on failure so the
+            selection survives for a retry; this is what makes that failure visible. */}
+        {error && <p className="ui-error">{error}</p>}
         {bulkSplit && (
           <>
             <p className="ui-muted">{bulkSplit.applied.map((r) => r.displayName).join(' · ')}</p>

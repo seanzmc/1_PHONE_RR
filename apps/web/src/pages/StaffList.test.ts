@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reconcileSelection, splitByNoOp, currentStatusOf } from './StaffList'
+import { reconcileSelection, splitByNoOp, currentStatusOf, reasonNoteFor } from './StaffList'
 
 type Entry = Parameters<typeof splitByNoOp>[1][number]
 
@@ -44,6 +44,32 @@ describe('reconcileSelection', () => {
 
   it('returns an empty selection when the roster empties', () => {
     expect(reconcileSelection(['a', 'b'], [])).toEqual([])
+  })
+})
+
+describe('reasonNoteFor', () => {
+  // Regression: reasonNote used to be derived from pendingStatus alone, which is always
+  // null while the bulk modal is open (it drives bulkStatus instead). Every non-OTHER
+  // preset resolved to '', and the server's z.string().min(1) rejected the mutation.
+  it('resolves a non-OTHER preset for the bulk modal (bulkStatus, pendingStatus null)', () => {
+    expect(reasonNoteFor('FORCE_INACTIVE', 'PTO', '')).toBe('PTO')
+  })
+
+  it('resolves a non-OTHER preset for the per-row modal', () => {
+    expect(reasonNoteFor('FORCE_ACTIVE', 'ABSENCE_RESOLVED', '')).toBe('Absence resolved')
+  })
+
+  it('uses the typed note for OTHER regardless of target', () => {
+    expect(reasonNoteFor('FORCE_INACTIVE', 'OTHER', 'left early')).toBe('left early')
+    expect(reasonNoteFor(null, 'OTHER', 'left early')).toBe('left early')
+  })
+
+  it('is empty when no modal is open', () => {
+    expect(reasonNoteFor(null, 'PTO', '')).toBe('')
+  })
+
+  it('is empty when no reason is chosen yet', () => {
+    expect(reasonNoteFor('FORCE_INACTIVE', '', '')).toBe('')
   })
 })
 
