@@ -101,8 +101,8 @@ describe('connectBoardSocket', () => {
 
 describe('resolveBoardSocketUrl', () => {
   it('resolves a same-origin API path to a secure WebSocket URL', () => {
-    expect(resolveBoardSocketUrl('/trpc', 'https://rr.stingraychevroletcorvette.com')).toBe(
-      'wss://rr.stingraychevroletcorvette.com/ws/board',
+    expect(resolveBoardSocketUrl('/trpc', 'https://stingraysales.net')).toBe(
+      'wss://stingraysales.net/ws/board',
     )
   })
 
