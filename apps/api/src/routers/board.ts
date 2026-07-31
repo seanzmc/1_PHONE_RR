@@ -1,4 +1,4 @@
-import { eq, isNull } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { rankReps, businessDate, periodKey, type RepRankInput } from '@phoneup/core'
 import { publicProcedure, router } from '../trpc/router'
@@ -9,6 +9,28 @@ function hashRepIdToSeed(repId: string): number {
   let h = 0
   for (const c of repId) h = (h * 31 + c.charCodeAt(0)) >>> 0
   return h
+}
+
+type TeamStatusRow = {
+  repId: string
+  businessDate: string
+  status: string
+  reason: string | null
+}
+
+/** One WEEK_DQ suspension spans several dates but counts as one deactivation episode. */
+export function countDeactivationEpisodes(statuses: TeamStatusRow[]): number {
+  const dqRows = statuses
+    .filter((row) => row.status === 'INELIGIBLE' && (row.reason ?? '').startsWith('WEEK_DQ'))
+    .sort((a, b) => a.repId.localeCompare(b.repId) || a.businessDate.localeCompare(b.businessDate))
+  let count = 0
+  let previousEpisode: string | null = null
+  for (const row of dqRows) {
+    const episode = `${row.repId}:${row.reason}`
+    if (episode !== previousEpisode) count++
+    previousEpisode = episode
+  }
+  return count
 }
 
 async function computeRoster(): Promise<{
@@ -73,6 +95,7 @@ export const boardRouter = router({
     const counters = await db.query.repMonthCounters.findMany({ where: eq(schema.repMonthCounters.periodKey, pKey) })
     const repRows = await selectActiveReps(db)
     const activeRepIds = new Set(repRows.map((rep: any) => rep.id))
+    const activeRepIdList = [...activeRepIds]
     const nameById = new Map(repRows.map((r: any) => [r.id, r.displayName]))
     const upsPerRep = counters.filter((c: any) => activeRepIds.has(c.repId)).map((c: any) => ({
       repId: c.repId,
@@ -96,7 +119,62 @@ export const boardRouter = router({
 
     const overrides = await db.query.statusOverride.findMany({ where: eq(schema.statusOverride.businessDate, bDate) })
 
+    const periodStart = `${pKey}-01`
+    const [year, month] = pKey.split('-').map(Number)
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate()
+    const periodEnd = `${pKey}-${String(lastDay).padStart(2, '0')}`
+
+    const activityRows = activeRepIdList.length
+      ? await db
+          .select({ sold: schema.repDailyActivity.sold })
+          .from(schema.repDailyActivity)
+          .where(
+            and(
+              inArray(schema.repDailyActivity.repId, activeRepIdList),
+              gte(schema.repDailyActivity.businessDate, periodStart),
+              lte(schema.repDailyActivity.businessDate, periodEnd),
+            ),
+          )
+      : []
+    const reassignments = activeRepIdList.length
+      ? await db
+          .select({ id: schema.assignmentEvents.id })
+          .from(schema.assignmentEvents)
+          .where(
+            and(
+              inArray(schema.assignmentEvents.repId, activeRepIdList),
+              eq(schema.assignmentEvents.eventType, 'REASSIGN_IN'),
+              sql`to_char(${schema.assignmentEvents.createdAt} at time zone 'America/New_York', 'YYYY-MM') = ${pKey}`,
+            ),
+          )
+      : []
+    const monthStatuses = activeRepIdList.length
+      ? await db
+          .select({
+            repId: schema.repDailyStatus.repId,
+            businessDate: schema.repDailyStatus.businessDate,
+            status: schema.repDailyStatus.status,
+            reason: schema.repDailyStatus.reason,
+          })
+          .from(schema.repDailyStatus)
+          .where(
+            and(
+              inArray(schema.repDailyStatus.repId, activeRepIdList),
+              gte(schema.repDailyStatus.businessDate, periodStart),
+              lte(schema.repDailyStatus.businessDate, periodEnd),
+            ),
+          )
+      : []
+    const deactivationsMtd = countDeactivationEpisodes(monthStatuses)
+
     return {
+      periodKey: pKey,
+      totals: {
+        assignmentsMtd: upsPerRep.reduce((sum, rep) => sum + rep.ups, 0),
+        reassignmentsMtd: reassignments.length,
+        deactivationsMtd,
+        salesMtd: activityRows.reduce((sum, row) => sum + row.sold, 0),
+      },
       upsPerRep,
       cycleProgress,
       disqualifiedCount,

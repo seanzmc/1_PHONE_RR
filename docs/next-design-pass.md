@@ -36,7 +36,11 @@ Role dropdown disabled for your own row (any role, not just admin) — server al
 
 ## G. Admin view-as 
 
-- client-only. Admin picks a role in the nav; authStore gets viewAsRole, hasPermission reads effective role, persistent banner with "Exit". Server unaffected — real permissions unchanged, so it shows layout, not data-level access. Flagging: an admin viewing-as-REP still sees admin data on any screen that isn't role-filtered.
+> **Superseded by the shipped real-profile design.** View-as is not a cosmetic role switch.
+> ADMIN selects an active real account, and GET requests use that account's identity, role,
+> permissions, and self-data scope. Mutations remain blocked until View-as is exited. Active
+> profiles remain available for inspection even when the target still has a temporary password;
+> first-login state must not collapse the selector to the ADMIN's own account.
 
 ## H. Activity import (rewrite of crmImport)
 
@@ -142,6 +146,28 @@ A "Sold" button on the lead row, MANAGER/ADMIN only, so a specific lead can be t
 - Open question to settle first: is the lead mark just an attribution tag on top of the CRM total, or does it become the sales number for reps? Attribution tag is the cheaper answer and doesn't touch the import.
 - Likely shape when it happens: `lead.sold_at` + `lead.sold_marked_by`, `lead.setSold` mutation (MANAGER/ADMIN, audit-logged, unset allowed), and a "sold via app" column on the dashboard shown *next to* CRM monthly sales, never replacing it.
 - Touches no rotation state — a sold lead is still a consumed up. Nothing here goes near the assignment path.
+
+## L. Team dashboard (manager-facing totals)
+
+The Team Dashboard is not only the original four-widget operational snapshot. It also shows
+these current-calendar-month totals across active reps:
+
+- Phone-ups assigned — `SUM(rep_month_counters.ups_mtd)`, so voids stay corrected.
+- CRM sales — `SUM(rep_daily_activity.sold)` for the month.
+- Reassignments — one per `REASSIGN_IN` event created during the month.
+- Call-rule deactivations — distinct `WEEK_DQ` episodes, not one count per suspended date.
+
+Keep current-cycle progress, today's ineligible count, today's overrides, and the per-rep ups
+list below those totals. Every rep name shown on Assign—including the pinned Next Up name—and
+on the Team Dashboard opens that real rep's drill-down.
+
+## M. Audit log presentation
+
+The audit ledger remains complete and append-only, but raw before/after JSON is evidence, not
+the primary interface. Each event renders as one compact chronological entry with a readable
+action label, actor, time, entity, and short change summary. Full raw JSON stays available under
+an expandable Technical details disclosure. Long identifiers and payloads must wrap or scroll
+inside the entry and never escape its border.
 
 Order: A → C → B → E → H → I → D → J → F → G → K. A is the only thing touching the core loop; it ships and gets verified alone. H before I because the weekly rule is meaningless until real call counts land, and both before D/K because the rep-facing screens read the numbers those two produce.
 

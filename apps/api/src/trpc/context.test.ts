@@ -21,10 +21,16 @@ describe('view-as context', () => {
   let adminSessionId: string
   let managerSessionId: string
   let targetUserId: string
+  let temporaryPasswordTargetId: string
   let inactiveTargetId: string
 
   beforeAll(async () => {
-    async function user(label: string, role: 'ADMIN' | 'MANAGER' | 'REP', isActive = true) {
+    async function user(
+      label: string,
+      role: 'ADMIN' | 'MANAGER' | 'REP',
+      isActive = true,
+      mustChangePassword = false,
+    ) {
       const [row] = await db
         .insert(schema.appUser)
         .values({
@@ -33,6 +39,7 @@ describe('view-as context', () => {
           passwordHash: 'x:y',
           role,
           isActive,
+          mustChangePassword,
         })
         .returning()
       userIds.push(row.id)
@@ -42,8 +49,10 @@ describe('view-as context', () => {
     const admin = await user('admin', 'ADMIN')
     const manager = await user('manager', 'MANAGER')
     const target = await user('target', 'REP')
+    const temporaryPasswordTarget = await user('temporary-password', 'REP', true, true)
     const inactive = await user('inactive', 'REP', false)
     targetUserId = target.id
+    temporaryPasswordTargetId = temporaryPasswordTarget.id
     inactiveTargetId = inactive.id
 
     const adminSession = await createSession(admin.id)
@@ -62,6 +71,15 @@ describe('view-as context', () => {
     const context = await createContext(request(adminSessionId, targetUserId))
     expect(context.session).toMatchObject({ userId: targetUserId, role: 'REP' })
     expect(context.viewAs).toMatchObject({ targetUserId })
+  })
+
+  it('allows an admin to inspect an active real profile that has not completed first sign-in', async () => {
+    const context = await createContext(request(adminSessionId, temporaryPasswordTargetId))
+    expect(context.session).toMatchObject({
+      userId: temporaryPasswordTargetId,
+      role: 'REP',
+      mustChangePassword: false,
+    })
   })
 
   it('rejects a non-admin attempting to spoof the header', async () => {

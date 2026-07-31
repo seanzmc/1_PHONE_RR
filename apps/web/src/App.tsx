@@ -86,6 +86,7 @@ function App() {
 
   const viewedProfile = selectedViewAs()
   const isRealAdmin = session.role === 'ADMIN'
+  const viewAsRoles = ['REP', 'BDC', 'MANAGER', 'ADMIN'] as const
 
   function openRep(repId: string) {
     setRepOriginPage(activePage)
@@ -175,11 +176,19 @@ function App() {
                 setPage(profile?.role === 'REP' ? 'me' : 'assign')
               }}
             >
-              {viewAsProfiles.map((profile) => (
-                <option key={profile.userId} value={profile.userId}>
-                  {profile.displayName ?? profile.email} — {profile.role}
-                </option>
-              ))}
+              {viewAsRoles.map((role) => {
+                const profiles = viewAsProfiles.filter((profile) => profile.role === role)
+                if (profiles.length === 0) return null
+                return (
+                  <optgroup key={role} label={role}>
+                    {profiles.map((profile) => (
+                      <option key={profile.userId} value={profile.userId}>
+                        {profile.displayName ?? profile.email}
+                      </option>
+                    ))}
+                  </optgroup>
+                )
+              })}
             </Select>
           </label>
         )}

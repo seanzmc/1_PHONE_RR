@@ -29,12 +29,14 @@ export async function createContext({ req, res }: CreateFastifyContextOptions): 
   }
 
   const target = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, targetUserId) })
-  if (!target?.isActive || target.mustChangePassword) {
+  if (!target?.isActive) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'view-as profile is not available' })
   }
   const session: SessionContext = {
     userId: target.id,
     role: target.role as Role,
+    // The ADMIN is inspecting this real profile through their own authenticated session.
+    // The target's first-login password gate is irrelevant here; all mutations stay blocked.
     mustChangePassword: false,
     // The target never owns the session. Mutations are blocked above, and retaining the
     // ADMIN's session id prevents a synthetic credential from entering the context.

@@ -4,6 +4,7 @@ import { db, schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
 import { t } from '../trpc/router'
 import { boardRouter } from './board'
+import * as BoardModule from './board'
 import type { Context } from '../trpc/context'
 import type { Role } from '@phoneup/contracts'
 
@@ -127,5 +128,31 @@ describe('board.roster — decidedBy', () => {
     const roster = await caller().roster()
     expect(roster.some((entry) => entry.repId === disabledRep)).toBe(false)
     expect(roster.some((entry) => entry.repId === repWithManagerOverride && !entry.isEligible)).toBe(true)
+  })
+
+  it('returns the documented month-to-date team totals', async () => {
+    const summary = await caller().dashboardSummary()
+    expect(summary).toMatchObject({
+      totals: {
+        assignmentsMtd: expect.any(Number),
+        reassignmentsMtd: expect.any(Number),
+        deactivationsMtd: expect.any(Number),
+        salesMtd: expect.any(Number),
+      },
+    })
+  })
+})
+
+describe('team deactivation totals', () => {
+  it('counts one weekly suspension as one episode, not one event per inactive day', () => {
+    const countDeactivationEpisodes = (BoardModule as any).countDeactivationEpisodes
+    expect(countDeactivationEpisodes).toBeTypeOf('function')
+    expect(countDeactivationEpisodes([
+      { repId: 'a', businessDate: '2026-07-01', status: 'INELIGIBLE', reason: 'WEEK_DQ: 3 calls on 2026-06-30' },
+      { repId: 'a', businessDate: '2026-07-02', status: 'INELIGIBLE', reason: 'WEEK_DQ: 3 calls on 2026-06-30' },
+      { repId: 'a', businessDate: '2026-07-08', status: 'INELIGIBLE', reason: 'WEEK_DQ: 4 calls on 2026-07-07' },
+      { repId: 'b', businessDate: '2026-07-01', status: 'INELIGIBLE', reason: 'WEEK_DQ: 3 calls on 2026-06-30' },
+      { repId: 'b', businessDate: '2026-07-02', status: 'INELIGIBLE', reason: 'day off' },
+    ])).toBe(3)
   })
 })

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { verifyPassword } from '../auth/password'
 import { createSession, destroySession } from '../auth/session'
@@ -89,7 +89,10 @@ export const authRouter = router({
         displayName: schema.appUser.displayName,
       })
       .from(schema.appUser)
-      .where(and(eq(schema.appUser.isActive, true), eq(schema.appUser.mustChangePassword, false)))
+      // View-as is an ADMIN inspection tool, not authentication as the target. New-hire
+      // accounts commonly still hold a temporary password; excluding them made the list
+      // collapse to the ADMIN's own profile before onboarding was complete.
+      .where(eq(schema.appUser.isActive, true))
     return users.sort((a, b) =>
       (a.displayName ?? a.email).localeCompare(b.displayName ?? b.email, undefined, { sensitivity: 'base' }),
     )

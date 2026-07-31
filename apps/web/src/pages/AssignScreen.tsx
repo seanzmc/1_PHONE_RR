@@ -16,6 +16,21 @@ type RosterEntry = {
   monthlyLoad: number
 }
 
+export function RosterRepName({
+  entry,
+  onOpenRep,
+}: {
+  entry: RosterEntry
+  onOpenRep?: (repId: string) => void
+}) {
+  if (!onOpenRep) return <>{entry.displayName}</>
+  return (
+    <button type="button" className="ui-linkbtn" onClick={() => onOpenRep(entry.repId)}>
+      {entry.displayName}
+    </button>
+  )
+}
+
 type AssignResult = {
   leadId: string
   assignedRepId: string | null
@@ -285,12 +300,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   const { nextUp, onDeck, served, unavailable } = bucketRoster(roster)
 
   function repName(entry: RosterEntry) {
-    if (!onOpenRep) return <>{entry.displayName}</>
-    return (
-      <button type="button" className="ui-linkbtn" onClick={() => onOpenRep(entry.repId)}>
-        {entry.displayName}
-      </button>
-    )
+    return <RosterRepName entry={entry} onOpenRep={onOpenRep} />
   }
 
   return (
@@ -408,7 +418,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
                 <h5>Next Up</h5>
               </div>
               {nextUp ? (
-                <div className="ui-nextup">{nextUp.displayName}</div>
+                <div className="ui-nextup">{repName(nextUp)}</div>
               ) : (
                 <p className="ui-muted">No eligible unserved rep — the next lead queues as unassigned.</p>
               )}

@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import * as AssignScreenModule from './AssignScreen'
 import {
   assignEnterAction,
   assignFormErrors,
@@ -77,6 +80,21 @@ describe('bucketRoster', () => {
     expect(nextUp).toBeNull()
     expect(onDeck).toEqual([])
     expect(served.length).toBe(2)
+  })
+})
+
+describe('RosterRepName', () => {
+  it('renders the Next Up rep as the same drill-down button used by every other roster bucket', () => {
+    const RosterRepName = (AssignScreenModule as any).RosterRepName
+    expect(RosterRepName).toBeTypeOf('function')
+    const html = renderToStaticMarkup(
+      createElement(RosterRepName, {
+        entry: entry({ repId: 'david', displayName: 'David Johnson' }),
+        onOpenRep: () => {},
+      }),
+    )
+    expect(html).toContain('<button')
+    expect(html).toContain('David Johnson')
   })
 })
 

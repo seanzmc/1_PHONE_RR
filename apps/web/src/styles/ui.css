@@ -237,6 +237,7 @@ textarea.ui-input {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: var(--space-3);
 }
+.ui-section-gap-sm { margin-bottom: var(--space-6); }
 
 /* — badges — */
 .ui-badge {
@@ -359,6 +360,103 @@ textarea.ui-input {
   box-shadow: var(--shadow-md);
 }
 .ui-profile-menu-panel .ui-btn { justify-content: flex-start; }
+
+/* — audit ledger — */
+.ui-audit-list {
+  display: grid;
+  max-width: 100%;
+  border: 1px solid var(--color-divider);
+}
+.ui-audit-entry {
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-3);
+  overflow: hidden;
+  border-bottom: 1px solid var(--color-divider);
+}
+.ui-audit-entry:last-child { border-bottom: 0; }
+.ui-audit-head,
+.ui-audit-meta {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.ui-audit-head time,
+.ui-audit-meta {
+  color: var(--color-neutral-700);
+  font-size: 12px;
+}
+.ui-audit-action {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.ui-audit-meta {
+  margin-top: var(--space-1);
+}
+.ui-audit-meta span,
+.ui-audit-meta code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ui-audit-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+}
+.ui-audit-summary li {
+  padding: 2px var(--space-2);
+  color: var(--color-neutral-800);
+  background: var(--color-neutral-100);
+  border-left: 2px solid var(--color-accent-700);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.ui-audit-details {
+  margin-top: var(--space-2);
+  min-width: 0;
+}
+.ui-audit-details > summary {
+  width: max-content;
+  cursor: pointer;
+  color: var(--color-accent-700);
+  font-family: var(--font-heading);
+  font-size: 12px;
+}
+.ui-audit-diff {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.ui-audit-diff section { min-width: 0; }
+.ui-audit-diff pre {
+  max-width: 100%;
+  max-height: 280px;
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--color-neutral-800);
+  background: var(--color-neutral-100);
+  border: 1px solid var(--color-divider);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+@media (max-width: 640px) {
+  .ui-audit-head,
+  .ui-audit-meta { align-items: flex-start; flex-direction: column; gap: var(--space-1); }
+  .ui-audit-diff { grid-template-columns: 1fr; }
+}
 
 /* — banner (admin view-as) — */
 .ui-banner {
