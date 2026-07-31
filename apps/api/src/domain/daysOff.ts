@@ -1,4 +1,4 @@
-import { sql, eq, and, inArray, gte } from 'drizzle-orm'
+import { sql, eq, inArray } from 'drizzle-orm'
 import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
@@ -89,19 +89,3 @@ export async function getRecurringDaysOffForReps(db: DB, repIds: string[]): Prom
   return out
 }
 
-/** Upcoming shift rows for a rep, for the staff-list schedule preview. */
-export async function getUpcomingShifts(
-  db: DB,
-  repId: string,
-  days = 14,
-): Promise<Array<{ businessDate: string; kind: string }>> {
-  const from = businessDate(new Date())
-  const rows = await db
-    .select()
-    .from(schema.repShift)
-    .where(and(eq(schema.repShift.repId, repId), gte(schema.repShift.businessDate, from)))
-  return rows
-    .map((r: any) => ({ businessDate: r.businessDate, kind: r.kind }))
-    .sort((a, b) => (a.businessDate < b.businessDate ? -1 : 1))
-    .slice(0, days)
-}

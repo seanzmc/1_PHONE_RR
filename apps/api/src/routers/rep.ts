@@ -8,12 +8,9 @@ import { bulkOverrideStatus } from '../domain/bulkOverrideStatus'
 import {
   getRecurringDaysOff,
   getRecurringDaysOffForReps,
-  getUpcomingShifts,
   setRecurringDaysOff,
 } from '../domain/daysOff'
 import { materializeShifts } from '../jobs/eligibility'
-
-const repIdInputSchema = z.object({ repId: z.string().uuid() })
 
 export const repRouter = router({
   overrideStatus: publicProcedure
@@ -30,17 +27,6 @@ export const repRouter = router({
     .input(bulkStatusOverrideInputSchema)
     .mutation(async ({ ctx, input }) => {
       return bulkOverrideStatus(db, { ...input, actorUserId: ctx.session.userId })
-    }),
-
-  /** Recurring weekly days off for a rep (design pass §I). */
-  daysOff: publicProcedure
-    .use(requirePerm('schedule.manage'))
-    .input(repIdInputSchema)
-    .query(async ({ input }) => {
-      return {
-        daysOfWeek: await getRecurringDaysOff(db, input.repId),
-        upcoming: await getUpcomingShifts(db, input.repId),
-      }
     }),
 
   /**
