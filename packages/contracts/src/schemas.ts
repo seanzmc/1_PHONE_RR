@@ -15,7 +15,20 @@ export const voidLeadInputSchema = z.object({
 
 export const statusOverrideInputSchema = z.object({
   repId: z.string().uuid(),
-  status: z.enum(['FORCE_ACTIVE', 'FORCE_INACTIVE', 'FOLLOW_SCHEDULE']),
+  status: z.enum(['FORCE_ACTIVE', 'FORCE_INACTIVE']),
+  reasonCode: z.string().min(1),
+  reasonNote: z.string().min(1),
+})
+
+export const bulkStatusOverrideInputSchema = z.object({
+  // Capped well above a single store's roster (~30 reps). The cap is a guard against a
+  // malformed client, not a product limit.
+  repIds: z
+    .array(z.string().uuid())
+    .min(1)
+    .max(200)
+    .transform((ids) => [...new Set(ids)]),
+  status: z.enum(['FORCE_ACTIVE', 'FORCE_INACTIVE']),
   reasonCode: z.string().min(1),
   reasonNote: z.string().min(1),
 })
@@ -104,6 +117,7 @@ export const setDaysOffInputSchema = z.object({
 export type AssignLeadInput = z.infer<typeof assignLeadInputSchema>
 export type VoidLeadInput = z.infer<typeof voidLeadInputSchema>
 export type StatusOverrideInput = z.infer<typeof statusOverrideInputSchema>
+export type BulkStatusOverrideInput = z.infer<typeof bulkStatusOverrideInputSchema>
 export type CreateAccountInput = z.infer<typeof createAccountInputSchema>
 export type SetRoleInput = z.infer<typeof setRoleInputSchema>
 export type SetActiveInput = z.infer<typeof setActiveInputSchema>

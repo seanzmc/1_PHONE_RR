@@ -342,7 +342,7 @@ so a null or wrong name shows up as an unmatched import row.
 |---|---|---|
 | `/health` returns 503 | `DATABASE_URL` wrong, or Postgres unreachable | Fix the variable / check the database service. The API will not fall back to a local database. |
 | Container exits with `DATABASE_URL is not set` | Variable missing on the service | Set it. Intentional — the alternative was a green deploy serving an empty database. |
-| Reps show `CONFIGURATION_ERROR` | No `rep_shift` row for today | Run `materialize-shifts`, or Staff List → Generate shifts. |
+| Reps show `CONFIGURATION_ERROR` | No `rep_shift` row for today | Run `materialize-shifts`. The weekly job (Sun 03:00) normally keeps 14 days ahead. |
 | Rotation looks empty | Everyone ineligible, or shifts not materialized | Staff List shows a reason per rep. |
 | Login says "too many failed attempts" | 8 failures per email/IP → 15-minute lockout | Wait it out. The counter is in-memory, so an API restart also clears it. |
 | Signed out unexpectedly | Session TTL is 12h; a password change revokes other sessions | Sign in again. |

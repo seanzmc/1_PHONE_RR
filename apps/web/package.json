@@ -16,7 +16,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "zustand": "^5.0.2",
-    "@phoneup/contracts": "workspace:*"
+    "@phoneup/contracts": "workspace:*",
+    "@phoneup/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
