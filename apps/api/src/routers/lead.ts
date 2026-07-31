@@ -6,6 +6,7 @@ import { setLeadNoteInputSchema, hasPermission } from '@phoneup/contracts'
 import { businessDate, periodKey } from '@phoneup/core'
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
+import { isActiveRep } from '../domain/activeReps'
 
 const byRepInputSchema = z.object({
   repId: z.string().uuid().optional(),
@@ -32,6 +33,7 @@ export const leadRouter = router({
       const repId = input.repId ?? selfRepId
 
       if (!repId) throw new TRPCError({ code: 'NOT_FOUND', message: 'no sales_rep record for this user' })
+      if (!(await isActiveRep(db, repId))) throw new TRPCError({ code: 'NOT_FOUND', message: 'rep account is disabled' })
       if (!canViewOthers && repId !== selfRepId) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'you can only view your own leads' })
       }
@@ -59,7 +61,7 @@ export const leadRouter = router({
       const creators = await db.select().from(schema.appUser)
       const creatorById = new Map(
         creators
-          .filter((u: any) => creatorIds.includes(u.id))
+          .filter((u: any) => u.isActive && creatorIds.includes(u.id))
           .map((u: any) => [u.id, u.displayName ?? u.email]),
       )
 

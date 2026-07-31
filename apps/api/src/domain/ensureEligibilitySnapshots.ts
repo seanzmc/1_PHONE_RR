@@ -1,5 +1,6 @@
 import { eq, and } from 'drizzle-orm'
 import { schema } from '@phoneup/db'
+import { selectActiveReps } from './activeReps'
 import { evaluateRepEligibility } from '../jobs/eligibility'
 
 /**
@@ -11,7 +12,7 @@ import { evaluateRepEligibility } from '../jobs/eligibility'
  */
 export async function ensureEligibilitySnapshots(tx: any, businessDate: string): Promise<void> {
   const policy = await tx.query.workRequirementPolicy.findFirst()
-  const reps = await tx.select().from(schema.salesRep)
+  const reps = await selectActiveReps(tx)
 
   for (const rep of reps) {
     const existing = await tx.query.repDailyStatus.findFirst({

@@ -3,6 +3,7 @@ import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
 import { rankReps, businessDate, periodKey, type RepRankInput } from '@phoneup/core'
 import { ensureEligibilitySnapshots } from './ensureEligibilitySnapshots'
+import { selectActiveReps } from './activeReps'
 import { publishAssignment } from '../realtime/bus'
 
 const ADVISORY_LOCK_KEY = 42_100_1 // single store => single fixed key
@@ -64,9 +65,14 @@ export async function assignLead(db: DB, input: AssignLeadInput): Promise<Assign
     }
 
     // 6. rank all members (eligible + ineligible, for full board display)
-    const statuses = await tx.query.repDailyStatus.findMany({
+    const activeReps = await selectActiveReps(tx)
+    const activeRepIds = new Set(activeReps.map((rep: any) => rep.id))
+    if (input.forcedRepId && !activeRepIds.has(input.forcedRepId)) {
+      throw new Error('forced rep account is disabled or missing')
+    }
+    const statuses = (await tx.query.repDailyStatus.findMany({
       where: eq(schema.repDailyStatus.businessDate, bDate),
-    })
+    })).filter((status: any) => activeRepIds.has(status.repId))
     const counters = await tx.query.repMonthCounters.findMany({
       where: eq(schema.repMonthCounters.periodKey, pKey),
     })

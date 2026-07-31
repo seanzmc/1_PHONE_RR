@@ -283,6 +283,18 @@ textarea.ui-input {
 }
 .ui-table tbody tr:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
 .ui-table-scroll { overflow-x: auto; }
+.ui-sortbtn {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.ui-sortbtn:hover,
+.ui-sortbtn:focus-visible { color: var(--color-accent); }
 
 /* — link-styled button, for drill-down on a name — */
 .ui-linkbtn {
@@ -314,6 +326,28 @@ textarea.ui-input {
   color: var(--color-accent);
   border-color: var(--color-accent);
 }
+.ui-profile-menu { position: relative; }
+.ui-profile-menu > summary {
+  cursor: pointer;
+  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  font-size: 13px;
+  list-style-position: inside;
+}
+.ui-profile-menu-panel {
+  position: absolute;
+  z-index: 60;
+  right: 0;
+  top: calc(100% + var(--space-2));
+  min-width: 170px;
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+.ui-profile-menu-panel .ui-btn { justify-content: flex-start; }
 
 /* — banner (admin view-as) — */
 .ui-banner {

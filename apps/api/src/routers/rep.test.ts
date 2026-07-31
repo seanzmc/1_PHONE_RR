@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { t } from '../trpc/router'
 import { repRouter } from './rep'
+import { selectActiveReps } from '../domain/activeReps'
 import type { Context } from '../trpc/context'
 import type { Role } from '@phoneup/contracts'
 import { setRecurringDaysOff } from '../domain/daysOff'
@@ -22,7 +23,7 @@ let repWithout: string
 let managerUserId: string
 
 beforeAll(async () => {
-  const reps = await db.select().from(schema.salesRep)
+  const reps = await selectActiveReps(db)
   if (reps.length < 2) throw new Error('test database needs at least two sales_rep rows — run the seed')
   repWithDayOff = reps[0].id
   repWithout = reps[1].id
@@ -61,9 +62,11 @@ describe('rep.allDaysOff', () => {
     expect(result[repWithout]).toEqual([])
   })
 
-  it('covers every rep on the roster', async () => {
+  it('covers active reps on the roster', async () => {
     const result = await caller('MANAGER').allDaysOff()
-    const reps = await db.select().from(schema.salesRep)
-    expect(Object.keys(result).sort()).toEqual(reps.map((r: any) => r.id).sort())
+    // Assert this suite's stable fixtures rather than the whole shared test database;
+    // other files create and clean up reps concurrently.
+    expect(result).toHaveProperty(repWithDayOff)
+    expect(result).toHaveProperty(repWithout)
   })
 })

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { mutate, query } from '../lib/api'
 import { useAuthStore } from '../state/authStore'
 import { digitsOnly } from '../state/clipboardStore'
-import { Badge, Button, Card, Field, Input, MetricCard, Table, Textarea } from '../ui'
+import { Badge, Button, Card, Field, Input, MetricCard, Select, Table, Textarea } from '../ui'
 import { Modal } from '../ui/Modal'
 import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
 
@@ -35,6 +35,12 @@ type ActivityRow = {
   calls: number
   sold: number
   source: 'IMPORT' | 'MANUAL'
+}
+
+export type ReassignTarget = { repId: string; displayName: string }
+
+export function reassignTargets(roster: ReassignTarget[], currentRepId: string): ReassignTarget[] {
+  return roster.filter((target) => target.repId !== currentRepId)
 }
 
 function formatPhone(e164: string): string {
@@ -92,6 +98,7 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
   const [leads, setLeads] = useState<LeadRow[]>([])
   const [summary, setSummary] = useState<RepSummary | null>(null)
   const [activity, setActivity] = useState<ActivityRow[]>([])
+  const [roster, setRoster] = useState<ReassignTarget[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState(false)
 
@@ -105,8 +112,14 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
   const [metricSold, setMetricSold] = useState('')
   const [metricReason, setMetricReason] = useState('')
 
+  const [reassignLead, setReassignLead] = useState<LeadRow | null>(null)
+  const [reassignTargetId, setReassignTargetId] = useState('')
+  const [reassignReason, setReassignReason] = useState('')
+  const [reassignKey, setReassignKey] = useState('')
+
   const canWriteNotes = hasPermission('lead.note')
   const canEditMetrics = hasPermission('activity.edit')
+  const canReassign = hasPermission('lead.assign.override')
 
   const load = useCallback(() => {
     const input = repId ? { repId } : {}
@@ -114,12 +127,14 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
     // Each setter hangs off its own query, so the sections that CAN load still render;
     // Promise.all only decides whether the failure banner shows. Silent catches here
     // used to leave a partial page looking complete.
-    Promise.all([
+    const requests: Array<Promise<unknown>> = [
       query<LeadRow[]>(`lead.byRep?input=${encodeURIComponent(JSON.stringify(input))}`).then(setLeads),
       query<RepSummary>(`activity.repSummary?input=${encodeURIComponent(JSON.stringify(input))}`).then(setSummary),
       query<ActivityRow[]>(`activity.byRep?input=${encodeURIComponent(JSON.stringify(input))}`).then(setActivity),
-    ]).catch(() => setLoadError(true))
-  }, [repId])
+    ]
+    if (canReassign) requests.push(query<ReassignTarget[]>('board.roster').then(setRoster))
+    Promise.all(requests).catch(() => setLoadError(true))
+  }, [repId, canReassign])
 
   useEffect(load, [load])
 
@@ -177,7 +192,45 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
     }
   }
 
+  function openReassign(lead: LeadRow) {
+    setReassignLead(lead)
+    setReassignTargetId('')
+    setReassignReason('')
+    setReassignKey(crypto.randomUUID())
+    setError(null)
+  }
+
+  function closeReassign() {
+    setReassignLead(null)
+    setReassignTargetId('')
+    setReassignReason('')
+    setReassignKey('')
+    setError(null)
+  }
+
+  async function submitReassign() {
+    if (!reassignLead || !reassignTargetId || !reassignReason.trim() || !reassignKey) return
+    setError(null)
+    try {
+      await mutate('assignment.reassign', {
+        leadId: reassignLead.id,
+        targetRepId: reassignTargetId,
+        reasonNote: reassignReason,
+        idempotencyKey: reassignKey,
+      })
+      closeReassign()
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'reassignment failed')
+    }
+  }
+
   const onMetricKeyDown = useSubmitOnEnter(submitMetric, { disabled: !metricReason.trim() })
+  const onReassignKeyDown = useSubmitOnEnter(submitReassign, {
+    mode: 'multiline',
+    disabled: !reassignTargetId || !reassignReason.trim(),
+  })
+  const availableTargets = summary ? reassignTargets(roster, summary.repId) : []
 
   return (
     <div className="ui-page">
@@ -241,14 +294,14 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
       {leads.length === 0 ? (
         <p className="ui-muted">No leads assigned through the app this month.</p>
       ) : (
-        <Table headers={['Date', 'Customer', 'Phone', 'Assigned by', 'Status', 'Notes']}>
+        <Table headers={['Date', 'Customer', 'Phone', 'Assigned by', 'Status', 'Notes', ...(canReassign ? ['Actions'] : [])]}>
           {leads.map((lead) => (
             <tr key={lead.id}>
               <td>{lead.businessDate}</td>
               <td>{lead.customerName}</td>
               <td>
                 <div className="ui-row">
-                  <a href={`tel:${lead.customerPhoneE164}`}>{formatPhone(lead.customerPhoneE164)}</a>
+                  <span>{formatPhone(lead.customerPhoneE164)}</span>
                   <Button size="sm" onClick={() => copyPhone(lead)}>
                     {copiedLeadId === lead.id ? 'Copied' : 'Copy'}
                   </Button>
@@ -277,6 +330,15 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
                   <span className={lead.note ? '' : 'ui-muted'}>{lead.note ?? '—'}</span>
                 )}
               </td>
+              {canReassign && (
+                <td>
+                  {lead.status === 'ASSIGNED' && (
+                    <Button size="sm" onClick={() => openReassign(lead)}>
+                      Reassign
+                    </Button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </Table>
@@ -306,6 +368,36 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
           ))}
         </Table>
       )}
+
+      <Modal
+        open={!!reassignLead}
+        title={`Reassign — ${reassignLead?.customerName ?? ''}`}
+        onClose={closeReassign}
+        onSubmit={submitReassign}
+        submitDisabled={!reassignTargetId || !reassignReason.trim()}
+        submitLabel="Reassign lead"
+        hint="Ctrl+Enter to confirm, Esc to cancel"
+      >
+        {error && <p className="ui-error">{error}</p>}
+        <Field label="New rep (required)">
+          <Select value={reassignTargetId} onChange={(event) => setReassignTargetId(event.target.value)}>
+            <option value="">Choose a rep…</option>
+            {availableTargets.map((target) => (
+              <option key={target.repId} value={target.repId}>
+                {target.displayName}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Reason (required)">
+          <Textarea
+            value={reassignReason}
+            onChange={(event) => setReassignReason(event.target.value)}
+            onKeyDown={onReassignKeyDown}
+          />
+        </Field>
+        <p className="ui-hint">Managers can reassign an older lead; the original ledger history remains intact.</p>
+      </Modal>
 
       <Modal
         open={!!metricTarget}

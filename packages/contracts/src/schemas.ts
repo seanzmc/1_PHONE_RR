@@ -13,6 +13,13 @@ export const voidLeadInputSchema = z.object({
   reasonNote: z.string().min(1),
 })
 
+export const reassignLeadInputSchema = z.object({
+  leadId: z.string().uuid(),
+  targetRepId: z.string().uuid(),
+  reasonNote: z.string().min(1),
+  idempotencyKey: z.string().uuid(),
+})
+
 export const statusOverrideInputSchema = z.object({
   repId: z.string().uuid(),
   status: z.enum(['FORCE_ACTIVE', 'FORCE_INACTIVE']),
@@ -116,6 +123,7 @@ export const setDaysOffInputSchema = z.object({
 
 export type AssignLeadInput = z.infer<typeof assignLeadInputSchema>
 export type VoidLeadInput = z.infer<typeof voidLeadInputSchema>
+export type ReassignLeadInput = z.infer<typeof reassignLeadInputSchema>
 export type StatusOverrideInput = z.infer<typeof statusOverrideInputSchema>
 export type BulkStatusOverrideInput = z.infer<typeof bulkStatusOverrideInputSchema>
 export type CreateAccountInput = z.infer<typeof createAccountInputSchema>

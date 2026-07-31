@@ -3,6 +3,7 @@ import { eq, and, inArray, gte, sql } from 'drizzle-orm'
 import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
+import { selectActiveReps } from '../domain/activeReps'
 
 const ADVISORY_LOCK_KEY = 42_100_1
 
@@ -209,9 +210,9 @@ export async function materializeShifts(
 
     const fromDate = opts.fromDate ?? businessDate(new Date())
     const days = opts.days ?? 14
-    const reps = opts.repIds?.length
-      ? await tx.select().from(schema.salesRep).where(inArray(schema.salesRep.id, opts.repIds))
-      : await tx.select().from(schema.salesRep)
+    const activeReps = await selectActiveReps(tx)
+    const requested = opts.repIds?.length ? new Set(opts.repIds) : null
+    const reps = requested ? activeReps.filter((rep: any) => requested.has(rep.id)) : activeReps
     if (reps.length === 0) return { inserted: 0, updated: 0 }
 
     const repIds = reps.map((r: any) => r.id)
@@ -269,7 +270,7 @@ export async function runEligibilityJob(db: DB): Promise<void> {
   const today = businessDate(new Date())
   const policy = await db.query.workRequirementPolicy.findFirst()
   if (!policy) return
-  const reps = await db.select().from(schema.salesRep)
+  const reps = await selectActiveReps(db)
   for (const rep of reps) {
     await evaluateRepEligibility(db, { repId: rep.id, businessDate: today, policyId: policy.id })
   }

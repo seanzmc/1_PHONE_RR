@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { db, schema } from '@phoneup/db'
+import { db } from '@phoneup/db'
 import { statusOverrideInputSchema, bulkStatusOverrideInputSchema, setDaysOffInputSchema } from '@phoneup/contracts'
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
@@ -9,6 +9,7 @@ import {
   getRecurringDaysOffForReps,
   setRecurringDaysOff,
 } from '../domain/daysOff'
+import { selectActiveReps } from '../domain/activeReps'
 import { materializeShifts } from '../jobs/eligibility'
 
 export const repRouter = router({
@@ -37,7 +38,7 @@ export const repRouter = router({
    * tell "no day off" apart from "not loaded yet".
    */
   allDaysOff: publicProcedure.use(requirePerm('schedule.manage')).query(async () => {
-    const reps = await db.select({ id: schema.salesRep.id }).from(schema.salesRep)
+    const reps = await selectActiveReps(db)
     const byRep = await getRecurringDaysOffForReps(
       db,
       reps.map((r) => r.id),

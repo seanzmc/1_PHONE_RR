@@ -1,12 +1,13 @@
 import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
-import { assignLeadInputSchema, voidLeadInputSchema, hasPermission } from '@phoneup/contracts'
+import { assignLeadInputSchema, voidLeadInputSchema, reassignLeadInputSchema, hasPermission } from '@phoneup/contracts'
 import { businessDate } from '@phoneup/core'
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
 import { assignLead } from '../domain/assignLead'
 import { voidLead } from '../domain/voidLead'
+import { reassignLead } from '../domain/reassignLead'
 
 export const assignmentRouter = router({
   assign: publicProcedure
@@ -17,6 +18,13 @@ export const assignmentRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'forcedRepId requires lead.assign.override' })
       }
       return assignLead(db, { ...input, actorUserId: ctx.session.userId })
+    }),
+
+  reassign: publicProcedure
+    .use(requirePerm('lead.assign.override'))
+    .input(reassignLeadInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      return reassignLead(db, { ...input, actorUserId: ctx.session.userId })
     }),
 
   void: publicProcedure

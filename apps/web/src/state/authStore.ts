@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { hasPermission as roleHasPermission, type Permission, type Role } from '@phoneup/contracts'
-import { mutate, query } from '../lib/api'
+import { configureViewAs, mutate, query } from '../lib/api'
 
 type Session = {
   userId: string
@@ -11,20 +11,23 @@ type Session = {
   mustChangePassword: boolean
 } | null
 
+export type ViewAsProfile = {
+  userId: string
+  role: Role
+  email: string
+  displayName: string | null
+}
+
 type AuthState = {
   session: Session
   loading: boolean
-  /**
-   * Admin "view as" — CLIENT-ONLY layout preview (design pass §G).
-   * Real server permissions are unchanged, so this shows which controls a role sees,
-   * NOT what data it can read: an admin viewing-as-REP still receives admin data on
-   * any screen that isn't role-filtered server-side.
-   */
-  viewAsRole: Role | null
-  /** The role the UI should render for — viewAsRole when set, otherwise the real one. */
+  viewAsProfiles: ViewAsProfile[]
+  viewAsUserId: string | null
+  selectedViewAs: () => ViewAsProfile | null
   effectiveRole: () => Role | null
   hasPermission: (perm: Permission) => boolean
-  setViewAsRole: (role: Role | null) => void
+  loadViewAsProfiles: () => Promise<void>
+  setViewAsUserId: (userId: string | null) => void
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
@@ -34,12 +37,18 @@ type AuthState = {
 export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   loading: true,
-  viewAsRole: null,
+  viewAsProfiles: [],
+  viewAsUserId: null,
+
+  selectedViewAs: () => {
+    const { viewAsProfiles, viewAsUserId } = get()
+    return viewAsProfiles.find((profile) => profile.userId === viewAsUserId) ?? null
+  },
 
   effectiveRole: () => {
-    const { session, viewAsRole } = get()
+    const { session } = get()
     if (!session) return null
-    return viewAsRole ?? session.role
+    return get().selectedViewAs()?.role ?? session.role
   },
 
   hasPermission: (perm) => {
@@ -47,11 +56,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return role ? roleHasPermission(role, perm) : false
   },
 
-  // only a real ADMIN may view-as, and never while already viewing as someone else
-  setViewAsRole: (role) => {
+  loadViewAsProfiles: async () => {
+    const { session } = get()
+    if (session?.role !== 'ADMIN') {
+      set({ viewAsProfiles: [] })
+      return
+    }
+    const profiles = await query<ViewAsProfile[]>('auth.viewAsProfiles')
+    set({ viewAsProfiles: profiles })
+  },
+
+  setViewAsUserId: (userId) => {
     const { session } = get()
     if (!session || session.role !== 'ADMIN') return
-    set({ viewAsRole: role === session.role ? null : role })
+    const target = userId === session.userId ? null : userId
+    if (target && !get().viewAsProfiles.some((profile) => profile.userId === target)) return
+    configureViewAs(target)
+    set({ viewAsUserId: target })
   },
 
   login: async (email, password) => {
@@ -60,15 +81,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    configureViewAs(null)
     await mutate('auth.logout')
-    set({ session: null, viewAsRole: null })
+    set({ session: null, viewAsProfiles: [], viewAsUserId: null })
   },
 
   refresh: async () => {
+    configureViewAs(null)
     set({ loading: true })
     try {
       const me = await query<Session>('auth.me')
-      set({ session: me, viewAsRole: null })
+      set({ session: me, viewAsProfiles: [], viewAsUserId: null })
     } finally {
       set({ loading: false })
     }

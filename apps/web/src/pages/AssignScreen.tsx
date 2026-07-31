@@ -49,6 +49,12 @@ export function assignFormErrors(name: string, phone: string): { name?: string; 
   return errors
 }
 
+export function assignEnterAction(field: 'name' | 'phone' | 'notes'): 'phone' | 'notes' | 'assign' {
+  if (field === 'name') return 'phone'
+  if (field === 'phone') return 'notes'
+  return 'assign'
+}
+
 /**
  * Four buckets, non-leaky — every rep appears in exactly one (design pass §B):
  *   nextUp   : the single rep the next lead goes to
@@ -87,6 +93,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   const [touched, setTouched] = useState({ name: false, phone: false })
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
+  const notesRef = useRef<HTMLTextAreaElement>(null)
   const { lastCopiedPhone, setLastCopiedPhone } = useClipboardStore()
 
   const canVoid = hasPermission('lead.void')
@@ -192,6 +199,13 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   function handlePhoneKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' && !e.ctrlKey) {
       e.preventDefault()
+      notesRef.current?.focus()
+    }
+  }
+
+  function handleNotesKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault()
       handleAssign()
     }
   }
@@ -238,7 +252,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
       <div>
         <h2>Assign Lead</h2>
         <div className="ui-stack">
-          <Field label="Name" error={touched.name ? formErrors.name : null}>
+          <Field label="Name *" error={touched.name ? formErrors.name : null}>
             <Input
               ref={nameRef}
               value={name}
@@ -247,10 +261,11 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
               onBlur={() => setTouched((t) => ({ ...t, name: true }))}
               placeholder="Customer name"
               autoFocus
+              required
             />
           </Field>
           <Field
-            label="Phone"
+            label="Phone *"
             hint="10 digits, or +1XXXXXXXXXX"
             error={touched.phone ? formErrors.phone : null}
           >
@@ -262,12 +277,15 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
               onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
               placeholder="(555) 123-4567"
               inputMode="tel"
+              required
             />
           </Field>
           <Field label="Notes (optional)">
             <Textarea
+              ref={notesRef}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              onKeyDown={handleNotesKeyDown}
               placeholder="Anything the rep should know before calling"
             />
           </Field>

@@ -8,6 +8,7 @@ import { boardRouter } from './routers/board'
 import { userManagementRouter } from './routers/userManagement'
 import { leadRouter } from './routers/lead'
 import { activityRouter } from './routers/activity'
+import { auditRouter } from './routers/audit'
 
 export const appRouter = router({
   health: healthQuery,
@@ -19,6 +20,7 @@ export const appRouter = router({
   userManagement: userManagementRouter,
   lead: leadRouter,
   activity: activityRouter,
+  audit: auditRouter,
 })
 
 export type AppRouter = typeof appRouter

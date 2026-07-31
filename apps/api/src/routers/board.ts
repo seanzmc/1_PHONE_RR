@@ -3,6 +3,7 @@ import { db, schema } from '@phoneup/db'
 import { rankReps, businessDate, periodKey, type RepRankInput } from '@phoneup/core'
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
+import { selectActiveReps } from '../domain/activeReps'
 
 function hashRepIdToSeed(repId: string): number {
   let h = 0
@@ -17,7 +18,7 @@ async function computeRoster(): Promise<{
   const bDate = businessDate(new Date())
   const pKey = periodKey(bDate)
 
-  const reps = await db.select().from(schema.salesRep)
+  const reps = await selectActiveReps(db)
   const statuses = await db.query.repDailyStatus.findMany({ where: eq(schema.repDailyStatus.businessDate, bDate) })
   const counters = await db.query.repMonthCounters.findMany({ where: eq(schema.repMonthCounters.periodKey, pKey) })
   const cycle = await db.query.rotationCycle.findFirst({ where: isNull(schema.rotationCycle.closedAt) })
@@ -55,7 +56,7 @@ async function computeRoster(): Promise<{
 export const boardRouter = router({
   roster: publicProcedure.use(requirePerm('board.view')).query(async () => {
     const { ranked, decidedByRep } = await computeRoster()
-    const repRows = await db.select().from(schema.salesRep)
+    const repRows = await selectActiveReps(db)
     const nameById = new Map(repRows.map((r: any) => [r.id, r.displayName]))
     return ranked.map((r) => ({
       ...r,
@@ -70,9 +71,10 @@ export const boardRouter = router({
     const bDate = businessDate(new Date())
 
     const counters = await db.query.repMonthCounters.findMany({ where: eq(schema.repMonthCounters.periodKey, pKey) })
-    const repRows = await db.select().from(schema.salesRep)
+    const repRows = await selectActiveReps(db)
+    const activeRepIds = new Set(repRows.map((rep: any) => rep.id))
     const nameById = new Map(repRows.map((r: any) => [r.id, r.displayName]))
-    const upsPerRep = counters.map((c: any) => ({
+    const upsPerRep = counters.filter((c: any) => activeRepIds.has(c.repId)).map((c: any) => ({
       repId: c.repId,
       repName: nameById.get(c.repId) ?? 'Unknown',
       ups: c.upsMtd,
@@ -82,10 +84,15 @@ export const boardRouter = router({
     const servedThisCycle = cycle
       ? await db.query.rrCycleAssignments.findMany({ where: eq(schema.rrCycleAssignments.cycleId, cycle.id) })
       : []
-    const cycleProgress = { served: servedThisCycle.length, totalReps: repRows.length }
+    const cycleProgress = {
+      served: servedThisCycle.filter((row: any) => activeRepIds.has(row.repId)).length,
+      totalReps: repRows.length,
+    }
 
     const statuses = await db.query.repDailyStatus.findMany({ where: eq(schema.repDailyStatus.businessDate, bDate) })
-    const disqualifiedCount = statuses.filter((s: any) => s.status === 'INELIGIBLE').length
+    const disqualifiedCount = statuses.filter(
+      (s: any) => activeRepIds.has(s.repId) && s.status === 'INELIGIBLE',
+    ).length
 
     const overrides = await db.query.statusOverride.findMany({ where: eq(schema.statusOverride.businessDate, bDate) })
 
@@ -93,7 +100,7 @@ export const boardRouter = router({
       upsPerRep,
       cycleProgress,
       disqualifiedCount,
-      overrideCount: overrides.length,
+      overrideCount: overrides.filter((row: any) => activeRepIds.has(row.repId)).length,
     }
   }),
 })

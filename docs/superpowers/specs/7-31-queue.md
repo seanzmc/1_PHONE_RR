@@ -1,8 +1,8 @@
 Queue for this round
 
-Status as of 2026-07-31. Items 1 and 2 are built, reviewed and merged to `main`
-(merge commit of `feat/bulk-staff-actions`, 12 commits). Everything below the
-"Remaining" heading is still open.
+Status as of 2026-07-31. All queued implementation items are complete in the working
+tree. Items 1 and 2 were previously reviewed and merged to `main` (merge commit of
+`feat/bulk-staff-actions`, 12 commits); the current round is not committed yet.
 
 ## Done
 
@@ -19,6 +19,29 @@ Status as of 2026-07-31. Items 1 and 2 are built, reviewed and merged to `main`
    a None + Mon–Sat radio group; the days-off column's per-rep N+1 query was folded into the
    same pass as a new batch query, `rep.allDaysOff`.
 
+4. ~~View-as picks a real user profile~~ — ADMIN selects an active real account, and the
+   server applies that account's identity, role permissions, and self-data scope to GET
+   requests. View-as is deliberately read-only: any POST is rejected until the ADMIN exits.
+5. ~~Master audit log screen~~ — a dedicated, paginated Audit Log page shows actor, time,
+   action, entity and complete before/after JSON. `audit.view` is enforced server-side for
+   ADMIN/MANAGER; BDC/REP are denied. Historic disabled actors remain identifiable there.
+
+6. ~~Nav hub; logout and change-password behind a menu~~ — the signed-in identity now opens
+   a native profile menu containing both account actions; they no longer occupy the main nav.
+7. ~~Back from rep detail returns to its opening screen~~ — the app captures Assign, Staff
+   List, or Dashboard before opening a rep and returns there instead of defaulting to Assign.
+8. ~~Sortable Users and Staff lists~~ — Users sorts by name, email, role, or account status;
+   Staff sorts by rep, rotation status, or ups MTD. Users now also uses Enable/Disable account
+   terminology while Staff keeps Activate/Deactivate for round-robin eligibility.
+9. ~~Assign and reassignment workflow~~ — Enter advances Name → Phone → Notes, then Enter
+   assigns; Name and Phone have visible/semantic required markers; phone numbers render as
+   plain text rather than `tel:` links. Managers/Admins can reassign any assigned lead,
+   including older leads, through an advisory-locked REASSIGN_OUT/REASSIGN_IN ledger path.
+10. ~~Disabled-account leakage~~ — operational rep selection now joins through active
+    `app_user` rows for assignment, roster, Staff, dashboard, rep drill-downs, days off,
+    eligibility/materialization and activity import. Users alone shows disabled accounts in
+    a separate Inactive accounts bucket. Active-but-INELIGIBLE reps remain visible.
+
 Shape of what landed: one shared `isOverrideNoOp` rule in `packages/core`,
 `rep.bulkOverrideStatus` applying every rep inside a single transaction under a
 single advisory lock, per-row and bulk modals both surfacing mutation errors
@@ -34,16 +57,7 @@ stay readable; no migration. The day-off half of the old shifts button is
 
 ## Remaining
 
-4. View-as picks a real rep
-5. Master audit log screen
-6. Nav hub; logout and change-password behind a menu
-7. Back from rep detail returns to Staff List
-8. Sortable Users and Staff lists
-9. Assign screen: Enter→notes, required markers, remove `tel:` link, reassign past Alt-V
-10. Deactivated accounts leak into every list. A user with a disabled login should
-    disappear from Staff List, Assign screen roster, dashboards and drill-downs —
-    appearing only on the Users page, in a separate "Inactive" group below the
-    active ones.
+None.
 
 One thing to be careful about: this app has two different "deactivated" states
 that the UI currently blurs together.
@@ -60,11 +74,9 @@ when you start.
 
 ## Carried debt from the items 1–2 pass
 
-**`apps/api/src/routers/board.test.ts` leaks fixture rows.** It has a `beforeAll`
-that inserts 3 `app_user` + 3 `sales_rep` rows and no `afterAll`. It is the only
-API test file that adds reps without deleting them, and that accumulation is what
-produced a `voidLead` flake during the build session. CI uses a throwaway
-Postgres so this is local-only. One `afterAll` closes it — not yet written.
+~~`apps/api/src/routers/board.test.ts` leaked fixture rows.~~ It now deletes its fixture
+statuses, reps and users in `afterAll` while holding the assignment advisory lock, so cleanup
+cannot race another test that selected those reps inside an assignment transaction.
 
 **Dev database residue.** `phoneup_dev` holds one `status_override` row and its
 audit event against fixture rep `Preview Override 1785392789989…`, left by manual
@@ -96,6 +108,14 @@ the day-off pass, nothing below has been seen render:
 - the `—` placeholder shown while `rep.allDaysOff` is still in flight or has failed
 - the "Thu, Fri stored — pick one" note for a rep holding more than one legacy day
 - the optimistic rollback and error banner when the mutation fails
+- the profile menu opening and its Change password / Log out actions
+- Back returning to each of Assign, Staff List and Dashboard
+- Users and Staff sort controls toggling direction
+- the assign form's Enter sequence (Name → Phone → Notes → assign)
+- real-profile view-as navigation and read-only banner across all four roles
+- the Audit Log page rendering and pagination controls
+- Users' enabled/inactive account buckets
+- manager reassignment modal and post-submit refresh
 
 `apps/web` runs vitest with `environment: 'node'` and every case in
 `StaffList.test.ts` tests an exported pure function, so none of this is reachable
@@ -132,4 +152,6 @@ replay returns `applied: []` / `skipped: [rep]`, proving the server-side re-chec
 inside the lock; unauthenticated calls get `UNAUTHORIZED`; the written row carries
 `reason_code SUSPENSION_LIFTED` rather than echoing the status.
 
-Working top-down. Next up is item 3.
+Final automated verification for this working tree: `pnpm run test` (240 tests passed),
+`pnpm run typecheck`, and `pnpm run build`. The browser-only items above remain explicitly
+unverified until a logged-in browser session is available.

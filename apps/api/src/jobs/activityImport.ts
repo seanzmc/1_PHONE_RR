@@ -2,6 +2,7 @@ import { parse } from 'csv-parse/sync'
 import { eq, and, sql } from 'drizzle-orm'
 import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
+import { selectActiveReps } from '../domain/activeReps'
 
 /**
  * Importer for the CRM "Standard-Daily Activity" export (design pass §H).
@@ -173,7 +174,7 @@ export async function importDailyActivity(
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
 
-    const reps = await tx.select().from(schema.salesRep)
+    const reps = await selectActiveReps(tx)
     const repsByName = indexRosterByNormalizedName(reps)
     const existing = await tx.query.repDailyActivity.findMany({
       where: eq(schema.repDailyActivity.businessDate, businessDate),

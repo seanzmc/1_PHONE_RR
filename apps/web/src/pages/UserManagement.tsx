@@ -7,7 +7,7 @@ import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
 
 type Role = 'ADMIN' | 'MANAGER' | 'BDC' | 'REP'
 
-type Account = {
+export type Account = {
   id: string
   email: string
   displayName: string | null
@@ -17,6 +17,39 @@ type Account = {
   createdAt: string
 }
 
+export type AccountSortKey = 'name' | 'email' | 'role' | 'status'
+export type SortDirection = 'asc' | 'desc'
+
+function compareText(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { sensitivity: 'base' })
+}
+
+export function sortAccounts(
+  accounts: Account[],
+  key: AccountSortKey,
+  direction: SortDirection,
+): Account[] {
+  const multiplier = direction === 'asc' ? 1 : -1
+  return [...accounts].sort((a, b) => {
+    if (key === 'name') {
+      if (!a.displayName) return b.displayName ? 1 : compareText(a.email, b.email)
+      if (!b.displayName) return -1
+      return multiplier * compareText(a.displayName, b.displayName) || compareText(a.email, b.email)
+    }
+    if (key === 'status') {
+      return multiplier * compareText(a.isActive ? 'enabled' : 'disabled', b.isActive ? 'enabled' : 'disabled')
+    }
+    return multiplier * compareText(a[key], b[key]) || compareText(a.email, b.email)
+  })
+}
+
+export function partitionAccounts(accounts: Account[]): { enabled: Account[]; disabled: Account[] } {
+  return {
+    enabled: accounts.filter((account) => account.isActive),
+    disabled: accounts.filter((account) => !account.isActive),
+  }
+}
+
 const ROLES: Role[] = ['ADMIN', 'MANAGER', 'BDC', 'REP']
 
 export function UserManagement() {
@@ -24,6 +57,8 @@ export function UserManagement() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState(false)
+  const [sortKey, setSortKey] = useState<AccountSortKey>('name')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
   const [addOpen, setAddOpen] = useState(false)
   const [newEmail, setNewEmail] = useState('')
@@ -138,6 +173,80 @@ export function UserManagement() {
   const onResetKeyDown = useSubmitOnEnter(submitReset, { disabled: resetValue.length < 8 })
 
   const resetTarget = accounts.find((a) => a.id === resetTargetId)
+  const partitioned = partitionAccounts(accounts)
+  const enabledAccounts = sortAccounts(partitioned.enabled, sortKey, sortDirection)
+  const disabledAccounts = sortAccounts(partitioned.disabled, sortKey, sortDirection)
+
+  function changeSort(nextKey: AccountSortKey) {
+    if (nextKey === sortKey) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(nextKey)
+    setSortDirection('asc')
+  }
+
+  function sortHeader(label: string, key: AccountSortKey) {
+    const active = key === sortKey
+    return (
+      <button type="button" className="ui-sortbtn" onClick={() => changeSort(key)}>
+        {label} {active ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+      </button>
+    )
+  }
+
+  function accountRows(rows: Account[]) {
+    return rows.map((a) => {
+      const isSelf = a.id === session?.userId
+      return (
+        <tr key={a.id}>
+          <td>{a.displayName ? a.displayName : <span className="ui-muted">Set name</span>}</td>
+          <td>{a.email}</td>
+          <td>
+            <Select
+              value={a.role}
+              disabled={isSelf}
+              title={isSelf ? 'You cannot change your own role' : undefined}
+              onChange={(e) => changeRole(a.id, e.target.value as Role)}
+            >
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </Select>
+          </td>
+          <td>
+            <div className="ui-row">
+              <Badge tone={a.isActive ? 'ok' : 'danger'}>{a.isActive ? 'ENABLED' : 'DISABLED'}</Badge>
+              {a.mustChangePassword && <Badge tone="warn">TEMP PASSWORD</Badge>}
+            </div>
+          </td>
+          <td>
+            <div className="ui-row">
+              <Button size="sm" onClick={() => toggleActive(a.id, !a.isActive)}>
+                {a.isActive ? 'Disable' : 'Enable'}
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => issueTempPassword(a)}>
+                Reset password
+              </Button>
+              <Button size="sm" onClick={() => setResetTargetId(a.id)}>
+                Set manually
+              </Button>
+            </div>
+          </td>
+        </tr>
+      )
+    })
+  }
+
+  const accountHeaders = [
+    sortHeader('Name', 'name'),
+    sortHeader('Email', 'email'),
+    sortHeader('Role', 'role'),
+    sortHeader('Account status', 'status'),
+    'Actions',
+  ]
 
   return (
     <div className="ui-page">
@@ -159,53 +268,15 @@ export function UserManagement() {
         </p>
       )}
 
-      <Table headers={['Name', 'Email', 'Role', 'Status', 'Actions']}>
-        {accounts.map((a) => {
-          const isSelf = a.id === session?.userId
-          return (
-            <tr key={a.id}>
-              <td>
-                {/* displayName only — never fall back to the email, which reads as a name */}
-                {a.displayName ? a.displayName : <span className="ui-muted">Set name</span>}
-              </td>
-              <td>{a.email}</td>
-              <td>
-                <Select
-                  value={a.role}
-                  disabled={isSelf}
-                  title={isSelf ? 'You cannot change your own role' : undefined}
-                  onChange={(e) => changeRole(a.id, e.target.value as Role)}
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </Select>
-              </td>
-              <td>
-                <div className="ui-row">
-                  <Badge tone={a.isActive ? 'ok' : 'danger'}>{a.isActive ? 'ACTIVE' : 'INACTIVE'}</Badge>
-                  {a.mustChangePassword && <Badge tone="warn">TEMP PASSWORD</Badge>}
-                </div>
-              </td>
-              <td>
-                <div className="ui-row">
-                  <Button size="sm" onClick={() => toggleActive(a.id, !a.isActive)}>
-                    {a.isActive ? 'Deactivate' : 'Reactivate'}
-                  </Button>
-                  <Button size="sm" variant="primary" onClick={() => issueTempPassword(a)}>
-                    Reset password
-                  </Button>
-                  <Button size="sm" onClick={() => setResetTargetId(a.id)}>
-                    Set manually
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          )
-        })}
-      </Table>
+      <h3>Enabled accounts</h3>
+      <Table headers={accountHeaders}>{accountRows(enabledAccounts)}</Table>
+
+      <h3 style={{ marginTop: 'var(--space-6)' }}>Inactive accounts</h3>
+      {disabledAccounts.length === 0 ? (
+        <p className="ui-muted">No disabled accounts.</p>
+      ) : (
+        <Table headers={accountHeaders}>{accountRows(disabledAccounts)}</Table>
+      )}
 
       <Modal
         open={!!issuedFor}

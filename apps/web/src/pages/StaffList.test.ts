@@ -6,6 +6,7 @@ import {
   reasonNoteFor,
   selectedDayOff,
   dayOffPayload,
+  sortRoster,
 } from './StaffList'
 
 type Entry = Parameters<typeof splitByNoOp>[1][number]
@@ -134,5 +135,24 @@ describe('dayOffPayload', () => {
 
   it('sends a one-element array for a weekday', () => {
     expect(dayOffPayload(3)).toEqual([3])
+  })
+})
+
+describe('sortRoster', () => {
+  const rows = [
+    entry({ repId: 'zed', displayName: 'Zed', monthlyLoad: 2, isEligible: false }),
+    entry({ repId: 'amy', displayName: 'Amy', monthlyLoad: 8, isEligible: true }),
+    entry({ repId: 'bob', displayName: 'Bob', monthlyLoad: 1, isEligible: true }),
+  ]
+
+  it('sorts by rep name in either direction without mutating the source', () => {
+    expect(sortRoster(rows, 'name', 'asc').map((row) => row.repId)).toEqual(['amy', 'bob', 'zed'])
+    expect(sortRoster(rows, 'name', 'desc').map((row) => row.repId)).toEqual(['zed', 'bob', 'amy'])
+    expect(rows.map((row) => row.repId)).toEqual(['zed', 'amy', 'bob'])
+  })
+
+  it('sorts by rotation status and ups', () => {
+    expect(sortRoster(rows, 'status', 'asc').map((row) => row.repId)).toEqual(['amy', 'bob', 'zed'])
+    expect(sortRoster(rows, 'ups', 'desc').map((row) => row.repId)).toEqual(['amy', 'zed', 'bob'])
   })
 })

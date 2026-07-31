@@ -371,6 +371,13 @@ describe('importDailyActivity', () => {
 
 describe('setActivityMetric', () => {
   it('writes MANUAL and audit-logs before/after values', async () => {
+    const beforeEventIds = new Set(
+      (
+        await db.query.auditEvents.findMany({
+          where: eq(schema.auditEvents.action, 'activity.metric.edit'),
+        })
+      ).map((event) => event.id),
+    )
     await importDailyActivity(db, buildCsv([{ user: repA.displayName, calls: 4, sold: 1 }]), BUSINESS_DATE)
     await setActivityMetric(db, {
       repId: repA.id,
@@ -392,12 +399,16 @@ describe('setActivityMetric', () => {
     expect(row?.source).toBe('MANUAL')
 
     const events = await db.query.auditEvents.findMany({
-      where: eq(schema.auditEvents.action, 'activity.metric.edit'),
+      where: and(
+        eq(schema.auditEvents.action, 'activity.metric.edit'),
+        eq(schema.auditEvents.entityId, repA.id),
+        eq(schema.auditEvents.actorUserId, adminUserId),
+      ),
     })
-    const latest = events[events.length - 1]
-    expect((latest.before as any).calls).toBe(4)
-    expect((latest.after as any).calls).toBe(10)
-    expect((latest.after as any).reasonNote).toBeTruthy()
+    const event = events.find((candidate) => !beforeEventIds.has(candidate.id))
+    expect((event!.before as any).calls).toBe(4)
+    expect((event!.after as any).calls).toBe(10)
+    expect((event!.after as any).reasonNote).toBeTruthy()
   })
 
   it('creates a MANUAL row when no import row exists for that date', async () => {

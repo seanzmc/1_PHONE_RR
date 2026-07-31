@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatStatusReason, todayStatusMessage } from './RepDetail'
+import { formatStatusReason, reassignTargets, todayStatusMessage } from './RepDetail'
 
 describe('formatStatusReason', () => {
   it('labels bare shift-kind reasons', () => {
@@ -50,5 +50,19 @@ describe('todayStatusMessage', () => {
 
   it('has a fallback when no status row exists for today', () => {
     expect(todayStatusMessage({ isEligible: false, reason: null }, true)).toBe('Not evaluated for today yet.')
+  })
+})
+
+describe('reassignTargets', () => {
+  it('excludes the rep who already owns the lead', () => {
+    expect(
+      reassignTargets(
+        [
+          { repId: 'source', displayName: 'Source' },
+          { repId: 'target', displayName: 'Target' },
+        ],
+        'source',
+      ).map((row) => row.repId),
+    ).toEqual(['target'])
   })
 })

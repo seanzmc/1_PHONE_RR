@@ -12,6 +12,7 @@ import {
   type ParsedActivityRow,
 } from './activityImport'
 import { publishAssignment } from '../realtime/bus'
+import { selectActiveReps } from '../domain/activeReps'
 
 const ADVISORY_LOCK_KEY = 42_100_1
 const PREVIEW_TOKEN_SECRET = randomBytes(32)
@@ -137,7 +138,7 @@ async function prepareDailyActivity(
     : await tx.query.workRequirementPolicy.findFirst()
   if (!policy) throw new Error('no work requirement policy is configured')
 
-  const reps = await tx.select().from(schema.salesRep)
+  const reps = await selectActiveReps(tx)
   if (reps.length === 0) throw new Error('no sales reps are configured')
   const repIds = reps.map((rep: any) => rep.id)
   const repsByName = indexRosterByNormalizedName(reps)
@@ -464,7 +465,7 @@ export async function commitDailyActivity(
       }
     }
 
-    const firstRepId = (await tx.select({ id: schema.salesRep.id }).from(schema.salesRep).limit(1))[0]?.id
+    const firstRepId = (await selectActiveReps(tx))[0]?.id
     if (!firstRepId) throw new Error('no sales rep available for activity import audit entity')
     await tx.insert(schema.auditEvents).values({
       actorUserId: input.actorUserId,

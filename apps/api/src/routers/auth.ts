@@ -1,12 +1,12 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { verifyPassword } from '../auth/password'
 import { createSession, destroySession } from '../auth/session'
 import { isThrottled, recordFailure, recordSuccess } from '../auth/loginThrottle'
 import { publicProcedure, router } from '../trpc/router'
-import { requireAuth } from '../trpc/requirePerm'
+import { requireAuth, requirePerm } from '../trpc/requirePerm'
 import { changeOwnPassword } from '../domain/userManagement'
 
 const loginInputSchema = z.object({
@@ -79,6 +79,21 @@ export const authRouter = router({
       })
       return { ok: true }
     }),
+
+  viewAsProfiles: publicProcedure.use(requirePerm('admin.*')).query(async () => {
+    const users = await db
+      .select({
+        userId: schema.appUser.id,
+        role: schema.appUser.role,
+        email: schema.appUser.email,
+        displayName: schema.appUser.displayName,
+      })
+      .from(schema.appUser)
+      .where(and(eq(schema.appUser.isActive, true), eq(schema.appUser.mustChangePassword, false)))
+    return users.sort((a, b) =>
+      (a.displayName ?? a.email).localeCompare(b.displayName ?? b.email, undefined, { sensitivity: 'base' }),
+    )
+  }),
 
   me: publicProcedure.query(async ({ ctx }) => {
     if (!ctx.session) return null

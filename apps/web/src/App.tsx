@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import type { Role } from '@phoneup/contracts'
 import { useAuthStore } from './state/authStore'
 import { Login } from './pages/Login'
 import { AssignScreen } from './pages/AssignScreen'
@@ -9,21 +8,40 @@ import { UserManagement } from './pages/UserManagement'
 import { RepDetail } from './pages/RepDetail'
 import { ActivityImport } from './pages/ActivityImport'
 import { ChangePassword } from './pages/ChangePassword'
+import { AuditLog } from './pages/AuditLog'
 import { Button, Select } from './ui'
 
-type Page = 'assign' | 'staff' | 'dashboard' | 'users' | 'me' | 'rep' | 'import' | 'password'
+export type Page = 'assign' | 'staff' | 'dashboard' | 'users' | 'audit' | 'me' | 'rep' | 'import' | 'password'
 
-const VIEW_AS_ROLES: Role[] = ['ADMIN', 'MANAGER', 'BDC', 'REP']
+export function repBackPage(origin: Page | null, canAssign: boolean): Page {
+  if (origin && origin !== 'rep' && origin !== 'password') return origin
+  return canAssign ? 'assign' : 'me'
+}
 
 function App() {
-  const { session, loading, refresh, logout, hasPermission, viewAsRole, setViewAsRole, effectiveRole } =
-    useAuthStore()
+  const {
+    session,
+    loading,
+    refresh,
+    logout,
+    hasPermission,
+    viewAsProfiles,
+    viewAsUserId,
+    selectedViewAs,
+    loadViewAsProfiles,
+    setViewAsUserId,
+  } = useAuthStore()
   const [page, setPage] = useState<Page>('assign')
   const [openRepId, setOpenRepId] = useState<string | null>(null)
+  const [repOriginPage, setRepOriginPage] = useState<Page | null>(null)
 
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  useEffect(() => {
+    if (session?.role === 'ADMIN') loadViewAsProfiles().catch(() => {})
+  }, [session?.role, session?.userId, loadViewAsProfiles])
 
   if (loading) return <div className="ui-page">Loading…</div>
   if (!session) return <Login />
@@ -32,17 +50,18 @@ function App() {
   // rather than render screens that would only return PASSWORD_CHANGE_REQUIRED.
   if (session.mustChangePassword) return <ChangePassword forced />
 
-  const role = effectiveRole()
+  const viewedProfile = selectedViewAs()
   const isRealAdmin = session.role === 'ADMIN'
-
-  function openRep(repId: string) {
-    setOpenRepId(repId)
-    setPage('rep')
-  }
 
   // Reps have no assign screen; land them on their own dashboard instead.
   const canAssign = hasPermission('lead.assign')
   const activePage: Page = page === 'assign' && !canAssign ? 'me' : page
+
+  function openRep(repId: string) {
+    setRepOriginPage(activePage)
+    setOpenRepId(repId)
+    setPage('rep')
+  }
 
   return (
     <div>
@@ -101,44 +120,76 @@ function App() {
             Users
           </Button>
         )}
+        {hasPermission('audit.view') && (
+          <Button
+            variant="ghost"
+            aria-current={activePage === 'audit' ? 'page' : undefined}
+            onClick={() => setPage('audit')}
+          >
+            Audit Log
+          </Button>
+        )}
 
         <span className="ui-toolbar-spacer" />
 
-        {/* §G admin view-as — CLIENT-ONLY layout preview, see the banner copy below */}
+        {/* ADMIN-only, server-enforced real-profile view-as. */}
         {isRealAdmin && (
           <label className="ui-row">
             <span className="ui-hint">View as</span>
             <Select
-              value={viewAsRole ?? session.role}
-              onChange={(e) => setViewAsRole(e.target.value as Role)}
+              value={viewAsUserId ?? session.userId}
+              onChange={(e) => {
+                const target = e.target.value
+                const profile = viewAsProfiles.find((candidate) => candidate.userId === target)
+                setViewAsUserId(target)
+                setPage(profile?.role === 'REP' ? 'me' : 'assign')
+              }}
             >
-              {VIEW_AS_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
+              {viewAsProfiles.map((profile) => (
+                <option key={profile.userId} value={profile.userId}>
+                  {profile.displayName ?? profile.email} — {profile.role}
                 </option>
               ))}
             </Select>
           </label>
         )}
 
-        <span className="ui-hint">
-          {session.displayName ?? session.email} ({role})
-        </span>
-        <Button size="sm" onClick={() => setPage('password')}>
-          Change password
-        </Button>
-        <Button onClick={() => logout()}>Log out</Button>
+        <details className="ui-profile-menu">
+          <summary>
+            {session.displayName ?? session.email} ({session.role})
+          </summary>
+          <div className="ui-profile-menu-panel">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setViewAsUserId(null)
+                setPage('password')
+              }}
+            >
+              Change password
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => logout()}>
+              Log out
+            </Button>
+          </div>
+        </details>
       </nav>
 
-      {viewAsRole && (
+      {viewedProfile && (
         <div className="ui-banner">
-          <strong>Viewing as {viewAsRole}</strong>
+          <strong>Viewing as {viewedProfile.displayName ?? viewedProfile.email}</strong>
           <span>
-            Layout preview only — your real {session.role} permissions still apply, so screens that
-            are not role-filtered still show {session.role} data.
+            Real {viewedProfile.role} permissions and self-scoped data are active. View-as is read-only.
           </span>
           <span className="ui-toolbar-spacer" />
-          <Button size="sm" onClick={() => setViewAsRole(null)}>
+          <Button
+            size="sm"
+            onClick={() => {
+              setViewAsUserId(null)
+              setPage('assign')
+            }}
+          >
             Exit
           </Button>
         </div>
@@ -148,13 +199,14 @@ function App() {
       {activePage === 'staff' && <StaffList onOpenRep={openRep} />}
       {activePage === 'dashboard' && <Dashboard onOpenRep={openRep} />}
       {activePage === 'users' && <UserManagement />}
+      {activePage === 'audit' && <AuditLog />}
       {activePage === 'import' && <ActivityImport />}
       {activePage === 'me' && <RepDetail />}
       {activePage === 'password' && (
         <ChangePassword onDone={() => setPage(canAssign ? 'assign' : 'me')} />
       )}
       {activePage === 'rep' && openRepId && (
-        <RepDetail repId={openRepId} onBack={() => setPage(canAssign ? 'assign' : 'me')} />
+        <RepDetail repId={openRepId} onBack={() => setPage(repBackPage(repOriginPage, canAssign))} />
       )}
     </div>
   )

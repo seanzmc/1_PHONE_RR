@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assignFormErrors, bucketRoster } from './AssignScreen'
+import { assignEnterAction, assignFormErrors, bucketRoster } from './AssignScreen'
 
 type Entry = Parameters<typeof bucketRoster>[0][number]
 
@@ -92,5 +92,13 @@ describe('assignFormErrors', () => {
     expect(assignFormErrors('Jane', '').phone).toBeTruthy()
     expect(assignFormErrors('Jane', '555123456').phone).toBeTruthy()
     expect(assignFormErrors('Jane', '25551234567').phone).toBeTruthy()
+  })
+})
+
+describe('assignEnterAction', () => {
+  it('steps through name, phone and notes before assigning', () => {
+    expect(assignEnterAction('name')).toBe('phone')
+    expect(assignEnterAction('phone')).toBe('notes')
+    expect(assignEnterAction('notes')).toBe('assign')
   })
 })

@@ -17,10 +17,32 @@ export type RosterEntry = {
   decidedBy: 'SYSTEM' | 'MANAGER_OVERRIDE' | null
 }
 
+export type RosterSortKey = 'name' | 'status' | 'ups'
+export type SortDirection = 'asc' | 'desc'
+
+export function sortRoster(
+  roster: RosterEntry[],
+  key: RosterSortKey,
+  direction: SortDirection,
+): RosterEntry[] {
+  const multiplier = direction === 'asc' ? 1 : -1
+  return [...roster].sort((a, b) => {
+    let compared = 0
+    if (key === 'name') {
+      compared = a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' })
+    } else if (key === 'status') {
+      compared = Number(b.isEligible) - Number(a.isEligible)
+    } else {
+      compared = a.monthlyLoad - b.monthlyLoad
+    }
+    return multiplier * compared || a.displayName.localeCompare(b.displayName)
+  })
+}
+
 const STATUS_OPTIONS: OverrideTarget[] = ['FORCE_ACTIVE', 'FORCE_INACTIVE']
 
 const STATUS_LABEL: Record<OverrideTarget, string> = {
-  FORCE_ACTIVE: 'Reactivate',
+  FORCE_ACTIVE: 'Activate',
   FORCE_INACTIVE: 'Deactivate',
 }
 
@@ -133,6 +155,8 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   const [daysOffLoaded, setDaysOffLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState(false)
+  const [sortKey, setSortKey] = useState<RosterSortKey>('name')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
   const [pendingRepId, setPendingRepId] = useState<string | null>(null)
   const [pendingStatus, setPendingStatus] = useState<OverrideTarget | null>(null)
@@ -281,6 +305,26 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
 
   const pendingRep = roster.find((r) => r.repId === pendingRepId)
 
+  function changeSort(nextKey: RosterSortKey) {
+    if (nextKey === sortKey) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(nextKey)
+    setSortDirection('asc')
+  }
+
+  function sortHeader(label: string, key: RosterSortKey) {
+    const active = key === sortKey
+    return (
+      <button type="button" className="ui-sortbtn" onClick={() => changeSort(key)}>
+        {label} {active ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+      </button>
+    )
+  }
+
+  const displayedRoster = sortRoster(roster, sortKey, sortDirection)
+
   const headers = [
     // Spread, not a ternary yielding '': the row below omits the cell entirely when
     // canOverride is false, so an empty header string would leave the columns misaligned.
@@ -299,9 +343,9 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
           />,
         ]
       : []),
-    'Rep',
-    'Status',
-    'Ups MTD',
+    sortHeader('Rep', 'name'),
+    sortHeader('Status', 'status'),
+    sortHeader('Ups MTD', 'ups'),
     ...(canManageSchedule ? ['Recurring day off'] : []),
     'Action',
   ]
@@ -354,7 +398,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
       {notice && <p className="ui-hint">{notice}</p>}
 
       <Table headers={headers}>
-        {roster.map((r) => (
+        {displayedRoster.map((r) => (
           <tr key={r.repId}>
             {canOverride && (
               <td>

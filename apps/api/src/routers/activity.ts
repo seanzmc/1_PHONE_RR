@@ -13,6 +13,7 @@ import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
 import { setActivityMetric } from '../jobs/activityImport'
 import { previewDailyActivity, commitDailyActivity } from '../jobs/activityImportDecision'
+import { isActiveRep } from '../domain/activeReps'
 
 const byRepInputSchema = z.object({
   repId: z.string().uuid().optional(),
@@ -92,6 +93,9 @@ export const activityRouter = router({
       const selfRepId = await ownRepId(ctx.session.userId)
       const repId = input.repId ?? selfRepId
       if (!repId) throw new TRPCError({ code: 'NOT_FOUND', message: 'no sales_rep record for this user' })
+      if (!(await isActiveRep(db, repId))) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'rep account is disabled' })
+      }
       if (!canViewOthers && repId !== selfRepId) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'you can only view your own activity' })
       }
@@ -132,6 +136,9 @@ export const activityRouter = router({
       const selfRepId = await ownRepId(ctx.session.userId)
       const repId = input.repId ?? selfRepId
       if (!repId) throw new TRPCError({ code: 'NOT_FOUND', message: 'no sales_rep record for this user' })
+      if (!(await isActiveRep(db, repId))) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'rep account is disabled' })
+      }
       if (!canViewOthers && repId !== selfRepId) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'you can only view your own summary' })
       }

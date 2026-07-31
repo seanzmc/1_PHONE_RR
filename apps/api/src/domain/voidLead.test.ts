@@ -5,6 +5,7 @@ import { db, schema } from '@phoneup/db'
 import { rankReps, businessDate, periodKey, type RepRankInput } from '@phoneup/core'
 import { assignLead } from './assignLead'
 import { voidLead } from './voidLead'
+import { selectActiveReps } from './activeReps'
 
 let repIds: string[] = []
 let bdcUserId: string
@@ -19,7 +20,7 @@ function hashRepIdToSeed(repId: string): number {
 async function nextUpRepId(): Promise<string | null> {
   const bDate = businessDate(new Date())
   const pKey = periodKey(bDate)
-  const reps = await db.select().from(schema.salesRep)
+  const reps = await selectActiveReps(db)
   const statuses = await db.query.repDailyStatus.findMany({
     where: eq(schema.repDailyStatus.businessDate, bDate),
   })
@@ -49,7 +50,7 @@ async function nextUpRepId(): Promise<string | null> {
 }
 
 beforeAll(async () => {
-  const reps = await db.select().from(schema.salesRep)
+  const reps = await selectActiveReps(db)
   repIds = reps.map((r: any) => r.id)
   const bdc = await db.query.appUser.findFirst({ where: eq(schema.appUser.role, 'BDC') })
   bdcUserId = bdc!.id

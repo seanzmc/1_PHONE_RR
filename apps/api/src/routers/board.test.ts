@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { inArray, sql } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
 import { t } from '../trpc/router'
@@ -33,6 +34,10 @@ describe('board.roster — decidedBy', () => {
   let repWithManagerOverride: string
   let repWithSystemStatus: string
   let repWithNoRowToday: string
+  let disabledRep: string
+  const fixtureUserIds: string[] = []
+  const fixtureRepIds: string[] = []
+  const userByRep = new Map<string, string>()
 
   async function makeRep(label: string): Promise<string> {
     const [user] = await db
@@ -43,6 +48,9 @@ describe('board.roster — decidedBy', () => {
       .insert(schema.salesRep)
       .values({ userId: user.id, displayName: `Board Test ${label} ${stamp}`, hireDate: '2020-01-01' })
       .returning()
+    fixtureUserIds.push(user.id)
+    fixtureRepIds.push(rep.id)
+    userByRep.set(rep.id, user.id)
     return rep.id
   }
 
@@ -50,6 +58,11 @@ describe('board.roster — decidedBy', () => {
     repWithManagerOverride = await makeRep('override')
     repWithSystemStatus = await makeRep('system')
     repWithNoRowToday = await makeRep('norow')
+    disabledRep = await makeRep('disabled')
+    await db
+      .update(schema.appUser)
+      .set({ isActive: false })
+      .where(inArray(schema.appUser.id, [userByRep.get(disabledRep)!]))
 
     await db.insert(schema.repDailyStatus).values([
       {
@@ -65,8 +78,25 @@ describe('board.roster — decidedBy', () => {
         status: 'ELIGIBLE',
         decidedBy: 'SYSTEM',
       },
+      {
+        repId: disabledRep,
+        businessDate: today,
+        status: 'ELIGIBLE',
+        decidedBy: 'SYSTEM',
+      },
     ])
     // repWithNoRowToday deliberately gets no rep_daily_status row for today.
+  })
+
+  afterAll(async () => {
+    // Other API test files assign concurrently. Cleanup takes the same ordering lock so
+    // assignLead cannot select one of these reps and then lose it before writing status.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(${42_100_1})`)
+      await tx.delete(schema.repDailyStatus).where(inArray(schema.repDailyStatus.repId, fixtureRepIds))
+      await tx.delete(schema.salesRep).where(inArray(schema.salesRep.id, fixtureRepIds))
+      await tx.delete(schema.appUser).where(inArray(schema.appUser.id, fixtureUserIds))
+    })
   })
 
   it('reflects rep_daily_status.decidedBy for a rep with a manager-override row today', async () => {
@@ -91,5 +121,11 @@ describe('board.roster — decidedBy', () => {
     // toBe(null) fails on undefined too — this is what catches a silent regression to
     // `decidedBy` being dropped or resolving to undefined instead of null.
     expect(entry?.decidedBy).toBe(null)
+  })
+
+  it('hides disabled accounts but keeps active ineligible reps visible', async () => {
+    const roster = await caller().roster()
+    expect(roster.some((entry) => entry.repId === disabledRep)).toBe(false)
+    expect(roster.some((entry) => entry.repId === repWithManagerOverride && !entry.isEligible)).toBe(true)
   })
 })
