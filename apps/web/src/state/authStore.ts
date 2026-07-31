@@ -29,6 +29,7 @@ export type ViewAsProfile = {
 type AuthState = {
   session: Session
   loading: boolean
+  bootstrapError: string | null
   viewAsProfiles: ViewAsProfile[]
   viewAsUserId: string | null
   selectedViewAs: () => ViewAsProfile | null
@@ -45,6 +46,7 @@ type AuthState = {
 export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   loading: true,
+  bootstrapError: null,
   viewAsProfiles: [],
   viewAsUserId: null,
 
@@ -91,15 +93,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: async () => {
     configureViewAs(null)
     await mutate('auth.logout')
-    set({ session: null, viewAsProfiles: [], viewAsUserId: null })
+    set({ session: null, bootstrapError: null, viewAsProfiles: [], viewAsUserId: null })
   },
 
   refresh: async () => {
     configureViewAs(null)
-    set({ loading: true })
+    set({ loading: true, bootstrapError: null })
     try {
       const me = await query<Session>('auth.me')
       set({ session: me, viewAsProfiles: [], viewAsUserId: null })
+    } catch (err) {
+      set({ bootstrapError: 'Couldn’t check your session — check your connection.' })
+      throw err
     } finally {
       set({ loading: false })
     }

@@ -9,7 +9,7 @@ import { RepDetail } from './pages/RepDetail'
 import { ActivityImport } from './pages/ActivityImport'
 import { ChangePassword } from './pages/ChangePassword'
 import { AuditLog } from './pages/AuditLog'
-import { Button, Select } from './ui'
+import { Button, Card, Select } from './ui'
 
 export type Page = 'assign' | 'staff' | 'dashboard' | 'users' | 'audit' | 'me' | 'rep' | 'import' | 'password'
 
@@ -18,10 +18,15 @@ export function repBackPage(origin: Page | null, canAssign: boolean): Page {
   return canAssign ? 'assign' : 'me'
 }
 
+export function bootstrapRecoveryVisible(hasSession: boolean, bootstrapError: string | null): boolean {
+  return !hasSession && bootstrapError !== null
+}
+
 function App() {
   const {
     session,
     loading,
+    bootstrapError,
     refresh,
     logout,
     hasPermission,
@@ -36,7 +41,7 @@ function App() {
   const [repOriginPage, setRepOriginPage] = useState<Page | null>(null)
 
   useEffect(() => {
-    refresh()
+    refresh().catch(() => {})
   }, [refresh])
 
   useEffect(() => {
@@ -44,6 +49,21 @@ function App() {
   }, [session?.role, session?.userId, loadViewAsProfiles])
 
   if (loading) return <div className="ui-page">Loading…</div>
+  if (bootstrapRecoveryVisible(!!session, bootstrapError)) {
+    return (
+      <div className="ui-page ui-login">
+        <h1>PhoneUp Round-Robin</h1>
+        <Card className="ui-stack">
+          <p className="ui-error" role="alert">
+            {bootstrapError}
+          </p>
+          <Button variant="primary" block onClick={() => refresh().catch(() => {})}>
+            Retry
+          </Button>
+        </Card>
+      </div>
+    )
+  }
   if (!session) return <Login />
 
   // A temporary password blocks every other route server-side, so gate the whole app
