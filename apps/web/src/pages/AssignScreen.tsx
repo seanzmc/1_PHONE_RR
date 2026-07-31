@@ -55,8 +55,12 @@ export function assignEnterAction(field: 'name' | 'phone' | 'notes'): 'phone' | 
   return 'assign'
 }
 
-export function canSubmitWithRoster(formValid: boolean, hasLoadedRoster: boolean): boolean {
-  return formValid && hasLoadedRoster
+export function canSubmitWithRoster(
+  formValid: boolean,
+  hasLoadedRoster: boolean,
+  assigning = false,
+): boolean {
+  return formValid && hasLoadedRoster && !assigning
 }
 
 /**
@@ -93,6 +97,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   const [voidError, setVoidError] = useState<string | null>(null)
   const [copyFailed, setCopyFailed] = useState(false)
   const [hasLoadedRoster, setHasLoadedRoster] = useState(false)
+  const [assigning, setAssigning] = useState(false)
   // Errors only render for fields the user has touched (or after a submit attempt) —
   // a pristine form stays quiet instead of shouting about fields nobody reached yet.
   const [touched, setTouched] = useState({ name: false, phone: false })
@@ -162,7 +167,8 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
     // Invalid input must never reach the server — tRPC would return the raw Zod
     // issues array and that JSON blob would render as the on-screen error.
     setTouched({ name: true, phone: true })
-    if (!canSubmitWithRoster(formValid, hasLoadedRoster)) return
+    if (!canSubmitWithRoster(formValid, hasLoadedRoster, assigning)) return
+    setAssigning(true)
     setError(null)
     setCopyFailed(false)
     const phoneE164 = toE164(phone)
@@ -185,6 +191,8 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
       refreshRoster()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'assign failed')
+    } finally {
+      setAssigning(false)
     }
   }
 
@@ -268,6 +276,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
               onBlur={() => setTouched((t) => ({ ...t, name: true }))}
               placeholder="Customer name"
               autoFocus
+              disabled={assigning}
               required
             />
           </Field>
@@ -284,6 +293,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
               onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
               placeholder="(555) 123-4567"
               inputMode="tel"
+              disabled={assigning}
               required
             />
           </Field>
@@ -294,15 +304,16 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
               onChange={(e) => setNotes(e.target.value)}
               onKeyDown={handleNotesKeyDown}
               placeholder="Anything the rep should know before calling"
+              disabled={assigning}
             />
           </Field>
           {error && <p className="ui-error">{error}</p>}
           <Button
             variant="primary"
             onClick={handleAssign}
-            disabled={!canSubmitWithRoster(formValid, hasLoadedRoster)}
+            disabled={!canSubmitWithRoster(formValid, hasLoadedRoster, assigning)}
           >
-            Assign (Ctrl+Enter)
+            {assigning ? 'Assigning…' : 'Assign (Ctrl+Enter)'}
           </Button>
         </div>
 

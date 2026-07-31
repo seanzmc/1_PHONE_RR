@@ -109,4 +109,9 @@ describe('canSubmitWithRoster', () => {
     expect(canSubmitWithRoster(true, true)).toBe(true)
     expect(canSubmitWithRoster(false, true)).toBe(false)
   })
+
+  it('blocks repeated submissions while an assignment is in flight', () => {
+    expect(canSubmitWithRoster(true, true, true)).toBe(false)
+    expect(canSubmitWithRoster(true, true, false)).toBe(true)
+  })
 })
