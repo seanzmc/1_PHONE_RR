@@ -82,6 +82,11 @@ a { color: var(--color-accent); text-underline-offset: 3px; }
   margin-bottom: var(--space-4);
 }
 .ui-toolbar-spacer { margin-left: auto; }
+.ui-bulkbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
 .ui-login {
   max-width: 360px;
   margin: 12vh auto 0;
