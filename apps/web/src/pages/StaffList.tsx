@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { isOverrideNoOp, noOpReason, type CurrentRepStatus, type OverrideTarget } from '@phoneup/core'
 import { mutate, query } from '../lib/api'
 import { useBoardRealtime } from '../lib/useBoardRealtime'
-import { useAuthStore } from '../state/authStore'
+import { canMutateInCurrentView, useAuthStore } from '../state/authStore'
 import { Badge, Button, Field, Select, Table, Textarea } from '../ui'
 import { Modal } from '../ui/Modal'
 import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
@@ -146,7 +146,7 @@ export function splitByNoOp(
 }
 
 export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }) {
-  const { hasPermission } = useAuthStore()
+  const { hasPermission, viewAsUserId } = useAuthStore()
   const [roster, setRoster] = useState<RosterEntry[]>([])
   const [daysOffByRep, setDaysOffByRep] = useState<Record<string, number[]>>({})
   // `{}` is indistinguishable from "every rep has no day off" — this flag is what lets the
@@ -168,8 +168,9 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   const [notice, setNotice] = useState<string | null>(null)
   const [bulkStatus, setBulkStatus] = useState<OverrideTarget | null>(null)
 
-  const canManageSchedule = hasPermission('schedule.manage')
-  const canOverride = hasPermission('rep.override')
+  const canViewSchedule = hasPermission('schedule.manage')
+  const canManageSchedule = canMutateInCurrentView(canViewSchedule, viewAsUserId)
+  const canOverride = canMutateInCurrentView(hasPermission('rep.override'), viewAsUserId)
 
   const refresh = useCallback(() => {
     query<RosterEntry[]>('board.roster')
@@ -177,7 +178,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         setRoster(rows)
         setLoadError(false)
         setSelected((prev) => reconcileSelection(prev, rows))
-        if (!canManageSchedule) return
+        if (!canViewSchedule) return
         // One query for the whole column. This runs on every board realtime event, so the
         // per-rep loop it replaces was ~30 requests per assign, void and status change.
         // Its own try/catch: a failure here must not be swallowed by the outer .catch, and
@@ -193,7 +194,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
       })
       // A silent failure leaves a stale (or empty) list looking authoritative.
       .catch(() => setLoadError(true))
-  }, [canManageSchedule])
+  }, [canViewSchedule])
 
   useEffect(() => {
     refresh()
@@ -209,7 +210,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   const reasonReady = reasonCode !== '' && (!isOther || otherNote.trim() !== '')
 
   async function submitOverride() {
-    if (!pendingRepId || !pendingStatus || !reasonReady) return
+    if (!pendingRepId || !pendingStatus || !reasonReady || !canOverride) return
     setError(null)
     setNotice(null)
     try {
@@ -250,7 +251,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   const bulkSplit = bulkStatus ? splitByNoOp(bulkStatus, selectedEntries) : null
 
   async function submitBulk() {
-    if (!bulkStatus || !bulkSplit || bulkSplit.applied.length === 0 || !reasonReady) return
+    if (!bulkStatus || !bulkSplit || bulkSplit.applied.length === 0 || !reasonReady || !canOverride) return
     setError(null)
     setNotice(null)
     try {
@@ -285,6 +286,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
 
   /** One mutation per selection, audit-logged as rep.days_off.set with before/after. */
   async function setDayOff(repId: string, dow: number | null) {
+    if (!canManageSchedule) return
     const current = daysOffByRep[repId] ?? []
     const next = dayOffPayload(dow)
     setDaysOffByRep((prev) => ({ ...prev, [repId]: next })) // optimistic
@@ -346,7 +348,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
     sortHeader('Rep', 'name'),
     sortHeader('Status', 'status'),
     sortHeader('Ups MTD', 'ups'),
-    ...(canManageSchedule ? ['Recurring day off'] : []),
+    ...(canViewSchedule ? ['Recurring day off'] : []),
     'Action',
   ]
 
@@ -427,7 +429,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
               )}
             </td>
             <td>{r.monthlyLoad}</td>
-            {canManageSchedule && (
+            {canViewSchedule && (
               <td>
                 {!daysOffLoaded ? (
                   // Not loaded yet (or the load failed) — an empty map here is indistinguishable
@@ -447,6 +449,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
                               type="radio"
                               name={`day-off-${r.repId}`}
                               checked={current === null}
+                              disabled={!canManageSchedule}
                               onChange={() => setDayOff(r.repId, null)}
                             />
                             None
@@ -457,6 +460,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
                                 type="radio"
                                 name={`day-off-${r.repId}`}
                                 checked={current === dow}
+                                disabled={!canManageSchedule}
                                 onChange={() => setDayOff(r.repId, dow)}
                               />
                               {label}

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { mutate } from '../lib/api'
+import { canMutateInCurrentView, useAuthStore } from '../state/authStore'
 import { Badge, Button, Card, Field, Input, Table } from '../ui'
 import {
   activityImportFileSizeAllowed,
@@ -46,6 +47,7 @@ type ImportResult = ImportPreview & {
 }
 
 export function ActivityImport() {
+  const { viewAsUserId } = useAuthStore()
   const [csv, setCsv] = useState('')
   const [filename, setFilename] = useState('')
   const [businessDate, setBusinessDate] = useState(() => priorEasternBusinessDate())
@@ -57,6 +59,7 @@ export function ActivityImport() {
   const fileRef = useRef<HTMLInputElement>(null)
   const busy = phase === 'reading' || phase === 'previewing' || phase === 'committing'
   const progress = progressForPhase(phase, saveDecision)
+  const canImport = canMutateInCurrentView(true, viewAsUserId)
   const summary = result ?? preview
   // "Nobody is ineligible" and "nobody was even checked" are opposite outcomes; the screen
   // previously rendered both as the reassuring one.
@@ -69,6 +72,7 @@ export function ActivityImport() {
     : 0
 
   async function onPickFile(file: File) {
+    if (!canImport) return
     setError(null)
     setPreview(null)
     setResult(null)
@@ -95,7 +99,7 @@ export function ActivityImport() {
   }
 
   async function processReport() {
-    if (!csv || !businessDate) return
+    if (!csv || !businessDate || !canImport) return
     setPhase('previewing')
     setError(null)
     setPreview(null)
@@ -111,7 +115,7 @@ export function ActivityImport() {
   }
 
   async function commit(decision: SaveDecision) {
-    if (!preview) return
+    if (!preview || !canImport) return
     setSaveDecision(decision)
     setPhase('committing')
     setError(null)
@@ -167,7 +171,7 @@ export function ActivityImport() {
             ref={fileRef}
             type="file"
             accept=".csv,text/csv"
-            disabled={busy || phase === 'decision'}
+            disabled={!canImport || busy || phase === 'decision'}
             onChange={(e) => {
               const file = e.target.files?.[0]
               if (file) onPickFile(file)
@@ -180,7 +184,7 @@ export function ActivityImport() {
           <Input
             type="date"
             value={businessDate}
-            disabled={busy || phase === 'decision'}
+            disabled={!canImport || busy || phase === 'decision'}
             onChange={(e) => changeBusinessDate(e.target.value)}
           />
         </Field>
@@ -189,7 +193,7 @@ export function ActivityImport() {
 
         <Button
           variant="primary"
-          disabled={!csv || !businessDate || busy || phase === 'decision'}
+          disabled={!canImport || !csv || !businessDate || busy || phase === 'decision'}
           onClick={processReport}
         >
           Process report
@@ -272,7 +276,7 @@ export function ActivityImport() {
 
           <div className="ui-import-actions">
             {preview.ineligibleReps.length === 0 ? (
-              <Button variant="primary" onClick={() => commit('LOG_ONLY')}>
+              <Button variant="primary" disabled={!canImport} onClick={() => commit('LOG_ONLY')}>
                 Log numbers
               </Button>
             ) : (
@@ -282,13 +286,14 @@ export function ActivityImport() {
                   <Button
                     key={action.id}
                     variant={action.id === 'LOG_AND_DEACTIVATE' ? 'danger' : 'primary'}
+                    disabled={!canImport}
                     onClick={() => commit(action.id as SaveDecision)}
                   >
                     {action.label}
                   </Button>
                 ))
             )}
-            <Button variant="ghost" onClick={cancelEntireImport}>
+            <Button variant="ghost" disabled={!canImport} onClick={cancelEntireImport}>
               Cancel entire import
             </Button>
           </div>

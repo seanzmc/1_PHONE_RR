@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { mutate, query } from '../lib/api'
-import { useAuthStore } from '../state/authStore'
+import { canMutateInCurrentView, useAuthStore } from '../state/authStore'
 import { digitsOnly } from '../state/clipboardStore'
 import { Badge, Button, Card, Field, Input, MetricCard, Select, Table, Textarea } from '../ui'
 import { Modal } from '../ui/Modal'
@@ -94,7 +94,7 @@ export function todayStatusMessage(
  * the same view for any rep by passing repId.
  */
 export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => void }) {
-  const { hasPermission } = useAuthStore()
+  const { hasPermission, viewAsUserId } = useAuthStore()
   const [leads, setLeads] = useState<LeadRow[]>([])
   const [summary, setSummary] = useState<RepSummary | null>(null)
   const [activity, setActivity] = useState<ActivityRow[]>([])
@@ -117,9 +117,9 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
   const [reassignReason, setReassignReason] = useState('')
   const [reassignKey, setReassignKey] = useState('')
 
-  const canWriteNotes = hasPermission('lead.note')
-  const canEditMetrics = hasPermission('activity.edit')
-  const canReassign = hasPermission('lead.assign.override')
+  const canWriteNotes = canMutateInCurrentView(hasPermission('lead.note'), viewAsUserId)
+  const canEditMetrics = canMutateInCurrentView(hasPermission('activity.edit'), viewAsUserId)
+  const canReassign = canMutateInCurrentView(hasPermission('lead.assign.override'), viewAsUserId)
 
   const load = useCallback(() => {
     const input = repId ? { repId } : {}
@@ -147,6 +147,7 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
   }
 
   async function saveNote(lead: LeadRow) {
+    if (!canWriteNotes) return
     setError(null)
     try {
       await mutate('lead.setNote', { leadId: lead.id, note: draftFor(lead) })
@@ -175,7 +176,7 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
   }
 
   async function submitMetric() {
-    if (!metricTarget || !metricReason.trim() || !summary) return
+    if (!metricTarget || !metricReason.trim() || !summary || !canEditMetrics) return
     setError(null)
     try {
       await mutate('activity.setMetric', {
@@ -209,7 +210,7 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
   }
 
   async function submitReassign() {
-    if (!reassignLead || !reassignTargetId || !reassignReason.trim() || !reassignKey) return
+    if (!reassignLead || !reassignTargetId || !reassignReason.trim() || !reassignKey || !canReassign) return
     setError(null)
     try {
       await mutate('assignment.reassign', {

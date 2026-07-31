@@ -2,6 +2,14 @@ import { create } from 'zustand'
 import { hasPermission as roleHasPermission, type Permission, type Role } from '@phoneup/contracts'
 import { configureViewAs, mutate, query } from '../lib/api'
 
+export function isReadOnlyViewAs(viewAsUserId: string | null): boolean {
+  return viewAsUserId !== null
+}
+
+export function canMutateInCurrentView(hasPermission: boolean, viewAsUserId: string | null): boolean {
+  return hasPermission && !isReadOnlyViewAs(viewAsUserId)
+}
+
 type Session = {
   userId: string
   role: Role

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { mutate, query } from '../lib/api'
-import { useAuthStore } from '../state/authStore'
+import { canMutateInCurrentView, useAuthStore } from '../state/authStore'
 import { Badge, Button, Field, Input, Select, Table } from '../ui'
 import { Modal } from '../ui/Modal'
 import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
@@ -53,7 +53,7 @@ export function partitionAccounts(accounts: Account[]): { enabled: Account[]; di
 const ROLES: Role[] = ['ADMIN', 'MANAGER', 'BDC', 'REP']
 
 export function UserManagement() {
-  const { session } = useAuthStore()
+  const { session, viewAsUserId } = useAuthStore()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState(false)
@@ -73,6 +73,7 @@ export function UserManagement() {
   const [issuedFor, setIssuedFor] = useState<Account | null>(null)
   const [issuedPassword, setIssuedPassword] = useState('')
   const [issuedCopied, setIssuedCopied] = useState(false)
+  const canManageUsers = canMutateInCurrentView(true, viewAsUserId)
 
   function refresh() {
     query<Account[]>('userManagement.list')
@@ -89,7 +90,7 @@ export function UserManagement() {
   const addValid = !!newEmail && !!newName.trim() && newPassword.length >= 8
 
   async function createAccount() {
-    if (!addValid) return
+    if (!addValid || !canManageUsers) return
     setError(null)
     try {
       await mutate('userManagement.create', {
@@ -114,6 +115,7 @@ export function UserManagement() {
   }
 
   async function changeRole(userId: string, newRoleValue: Role) {
+    if (!canManageUsers) return
     setError(null)
     try {
       await mutate('userManagement.setRole', { userId, newRole: newRoleValue })
@@ -124,6 +126,7 @@ export function UserManagement() {
   }
 
   async function toggleActive(userId: string, isActive: boolean) {
+    if (!canManageUsers) return
     setError(null)
     try {
       await mutate('userManagement.setActive', { userId, isActive })
@@ -134,7 +137,7 @@ export function UserManagement() {
   }
 
   async function submitReset() {
-    if (!resetTargetId || resetValue.length < 8) return
+    if (!resetTargetId || resetValue.length < 8 || !canManageUsers) return
     setError(null)
     try {
       await mutate('userManagement.resetPassword', { userId: resetTargetId, newPassword: resetValue })
@@ -150,6 +153,7 @@ export function UserManagement() {
   }
 
   async function issueTempPassword(account: Account) {
+    if (!canManageUsers) return
     setError(null)
     try {
       const res = await mutate<{ tempPassword: string }>('userManagement.issueTempPassword', {
@@ -205,7 +209,7 @@ export function UserManagement() {
           <td>
             <Select
               value={a.role}
-              disabled={isSelf}
+              disabled={isSelf || !canManageUsers}
               title={isSelf ? 'You cannot change your own role' : undefined}
               onChange={(e) => changeRole(a.id, e.target.value as Role)}
             >
@@ -224,13 +228,13 @@ export function UserManagement() {
           </td>
           <td>
             <div className="ui-row">
-              <Button size="sm" onClick={() => toggleActive(a.id, !a.isActive)}>
+              <Button size="sm" disabled={!canManageUsers} onClick={() => toggleActive(a.id, !a.isActive)}>
                 {a.isActive ? 'Disable' : 'Enable'}
               </Button>
-              <Button size="sm" variant="primary" onClick={() => issueTempPassword(a)}>
+              <Button size="sm" variant="primary" disabled={!canManageUsers} onClick={() => issueTempPassword(a)}>
                 Reset password
               </Button>
-              <Button size="sm" onClick={() => setResetTargetId(a.id)}>
+              <Button size="sm" disabled={!canManageUsers} onClick={() => setResetTargetId(a.id)}>
                 Set manually
               </Button>
             </div>
@@ -253,7 +257,7 @@ export function UserManagement() {
       <div className="ui-toolbar">
         <h2>Users</h2>
         <span className="ui-toolbar-spacer" />
-        <Button variant="primary" onClick={() => setAddOpen(true)}>
+        <Button variant="primary" disabled={!canManageUsers} onClick={() => setAddOpen(true)}>
           Add account
         </Button>
       </div>

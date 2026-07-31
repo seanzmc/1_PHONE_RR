@@ -114,4 +114,8 @@ describe('canSubmitWithRoster', () => {
     expect(canSubmitWithRoster(true, true, true)).toBe(false)
     expect(canSubmitWithRoster(true, true, false)).toBe(true)
   })
+
+  it('blocks assignment while an admin is viewing another profile', () => {
+    expect(canSubmitWithRoster(true, true, false, true)).toBe(false)
+  })
 })

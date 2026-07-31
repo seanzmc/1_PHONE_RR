@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { mutate, query } from '../lib/api'
 import { useBoardRealtime } from '../lib/useBoardRealtime'
 import { digitsOnly, useClipboardStore } from '../state/clipboardStore'
-import { useAuthStore } from '../state/authStore'
+import { canMutateInCurrentView, isReadOnlyViewAs, useAuthStore } from '../state/authStore'
 import { Badge, Button, Card, Field, Input, Textarea } from '../ui'
 import { Modal } from '../ui/Modal'
 import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
@@ -59,8 +59,9 @@ export function canSubmitWithRoster(
   formValid: boolean,
   hasLoadedRoster: boolean,
   assigning = false,
+  readOnly = false,
 ): boolean {
-  return formValid && hasLoadedRoster && !assigning
+  return formValid && hasLoadedRoster && !assigning && !readOnly
 }
 
 /**
@@ -84,7 +85,7 @@ export function bucketRoster(roster: RosterEntry[]) {
 }
 
 export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => void }) {
-  const { hasPermission } = useAuthStore()
+  const { hasPermission, viewAsUserId } = useAuthStore()
   const [roster, setRoster] = useState<RosterEntry[]>([])
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -106,7 +107,8 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   const notesRef = useRef<HTMLTextAreaElement>(null)
   const { lastCopiedPhone, setLastCopiedPhone } = useClipboardStore()
 
-  const canVoid = hasPermission('lead.void')
+  const readOnly = isReadOnlyViewAs(viewAsUserId)
+  const canVoid = canMutateInCurrentView(hasPermission('lead.void'), viewAsUserId)
   const formErrors = assignFormErrors(name, phone)
   const formValid = !formErrors.name && !formErrors.phone
 
@@ -167,7 +169,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
     // Invalid input must never reach the server — tRPC would return the raw Zod
     // issues array and that JSON blob would render as the on-screen error.
     setTouched({ name: true, phone: true })
-    if (!canSubmitWithRoster(formValid, hasLoadedRoster, assigning)) return
+    if (!canSubmitWithRoster(formValid, hasLoadedRoster, assigning, readOnly)) return
     setAssigning(true)
     setError(null)
     setCopyFailed(false)
@@ -232,7 +234,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   }
 
   async function handleVoid() {
-    if (!lastResult) return
+    if (!lastResult || !canVoid) return
     setVoidError(null)
     if (!voidReason.trim()) {
       setVoidError('Reason is required')
@@ -276,7 +278,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
               onBlur={() => setTouched((t) => ({ ...t, name: true }))}
               placeholder="Customer name"
               autoFocus
-              disabled={assigning}
+              disabled={assigning || readOnly}
               required
             />
           </Field>
@@ -293,7 +295,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
               onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
               placeholder="(555) 123-4567"
               inputMode="tel"
-              disabled={assigning}
+              disabled={assigning || readOnly}
               required
             />
           </Field>
@@ -304,14 +306,14 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
               onChange={(e) => setNotes(e.target.value)}
               onKeyDown={handleNotesKeyDown}
               placeholder="Anything the rep should know before calling"
-              disabled={assigning}
+              disabled={assigning || readOnly}
             />
           </Field>
           {error && <p className="ui-error">{error}</p>}
           <Button
             variant="primary"
             onClick={handleAssign}
-            disabled={!canSubmitWithRoster(formValid, hasLoadedRoster, assigning)}
+            disabled={!canSubmitWithRoster(formValid, hasLoadedRoster, assigning, readOnly)}
           >
             {assigning ? 'Assigning…' : 'Assign (Ctrl+Enter)'}
           </Button>
