@@ -76,6 +76,11 @@ Two gaps: the deactivation window is a week (code only does a day), and there is
 
 **Policy:** `work_requirement_policy.minCalls = 10`. Ships in **SHADOW** first per CLAUDE.md — the mechanism below computes and logs but enforces nothing until an ADMIN flips `enforcementMode` to `ENFORCE`. Shadow window 1–2 weeks; the thresholds are the thing being calibrated, not the data.
 
+> **Superseded.** Shipped behaviour no longer matches this section: a rep is constrained
+> to **at most one** recurring day off, not several, and the Staff List renders it as a
+> None/Mon–Sat radio group rather than a row of seven independent toggles. See
+> `docs/superpowers/specs/2026-07-31-recurring-day-off-design.md`.
+
 **Recurring day off.** New table (not a column — a rep can have more than one, and an array column can't be joined cleanly):
 
 ```

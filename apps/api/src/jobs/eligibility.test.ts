@@ -390,7 +390,7 @@ describe('materializeShifts + recurring days off', () => {
     // -3 lands on a Sunday one day in seven; Sunday normalizes away and would leave this
     // test asserting nothing. Step back until it is a working day.
     let pastDate = shiftDate(today, -3)
-    while (new Date(`${pastDate}T12:00:00Z`).getUTCDay() === 0) pastDate = shiftDate(pastDate, -1)
+    while (dayOfWeek(pastDate) === 0) pastDate = shiftDate(pastDate, -1)
 
     await db.delete(schema.repShift).where(eq(schema.repShift.repId, repId))
     await db.insert(schema.repShift).values({ repId, businessDate: pastDate, kind: 'WORK' })
@@ -398,7 +398,7 @@ describe('materializeShifts + recurring days off', () => {
     // Set the day off to the past date's OWN weekday — if the generator reached backwards,
     // that row specifically would flip to OFF. One day is all the rule now allows, and it
     // is the only day that could produce a false pass here anyway.
-    const pastDow = new Date(`${pastDate}T12:00:00Z`).getUTCDay()
+    const pastDow = dayOfWeek(pastDate)
     await setRecurringDaysOff(db, { repId, daysOfWeek: [pastDow], actorUserId: managerUserId })
 
     const past = await db.query.repShift.findFirst({
