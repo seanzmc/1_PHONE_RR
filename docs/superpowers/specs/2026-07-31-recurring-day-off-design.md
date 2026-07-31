@@ -58,8 +58,13 @@ The new check goes **after** normalization, inside the existing transaction and 
 lock, before any write:
 
 ```
-if (requested.length > 1) throw new TRPCError({ code: 'BAD_REQUEST', ... })
+if (requested.length > 1) throw new Error('a rep can have at most one recurring day off, got: ...')
 ```
+
+A plain `Error`, not a `TRPCError`. No domain module in this codebase throws `TRPCError` —
+`bulkOverrideStatus`, `voidLead` and `userManagement` all throw `Error` and let the router
+layer map it — and the web client renders `error.message` regardless of code, so the
+manager sees the same sentence either way.
 
 After normalization, not before, so the rule is about working days off. `[0, 3]` is Sunday
 plus Wednesday, which is one recurring day off and must be accepted. `[4, 5]` is two and is
@@ -99,8 +104,10 @@ rep's stored day.
 
 Selecting fires `rep.setDaysOff` immediately with `[dow]`, or `[]` for None — the existing
 optimistic-update-and-roll-back path, minus the toggle arithmetic. A failed mutation
-restores the previous selection and shows the error on that row, matching how per-row
-override errors already surface.
+restores the previous selection and shows the message in the existing `ui-error` banner
+above the table — the same one `toggleDayOff` writes to today. There is no per-row error
+slot on the Staff List and this pass does not add one: the radio is a single click with an
+immediate visible rollback, so the banner is unambiguous about which action failed.
 
 `refresh()` replaces its per-rep loop with a single `rep.allDaysOff` call, still gated on
 `canManageSchedule`.
