@@ -10,6 +10,7 @@
     "materialize-shifts": "tsx src/materializeShifts.ts",
     "import-activity": "tsx src/importActivity.ts",
     "rotate-passwords": "tsx src/rotatePasswords.ts",
+    "recover-admin": "tsx src/recoverAdmin.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",

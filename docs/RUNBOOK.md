@@ -83,6 +83,10 @@ It prints a one-time distribution table: role, email, name, temporary password. 
 that output.** Every password is unique, single-use, and stored only as a hash — a lost one
 must be reissued from the Users page. Never stored in plaintext, never recoverable.
 
+Losing the **ADMIN** password is the one case the Users page cannot fix, since reaching it
+requires signing in. `recover-admin` (§4.6.1) is the way back. Capturing the table is still
+the intended path — recovery is a break-glass tool, not a substitute.
+
 ### 3.3 Materialize shifts
 
 ```
@@ -291,6 +295,36 @@ DATABASE_URL=<prod> pnpm --filter @phoneup/api rotate-passwords --commit   # app
 Reissues a fresh temp password for every account and prints the distribution list. One-off
 tool for a suspected exposure, not routine hygiene.
 
+It **skips accounts still flagged `must_change_password`**, so people mid-way through a first
+sign-in don't lose the password they were just given. That also means it cannot rescue an
+admin who never signed in — use `recover-admin` below.
+
+### 4.6.1 Locked out of the ADMIN account
+
+If §3.2's one-time distribution table was never captured, the ADMIN account is unreachable:
+no email delivery, no self-service reset, and the Users page needs a session to reach.
+
+```
+DATABASE_URL=<prod> pnpm --filter @phoneup/api recover-admin                      # dry run
+DATABASE_URL=<prod> pnpm --filter @phoneup/api recover-admin --commit             # apply
+DATABASE_URL=<prod> pnpm --filter @phoneup/api recover-admin you@example.com --commit
+```
+
+The dry run lists every ADMIN account, whether it is active, and whether it still holds a
+temporary password — useful on its own for confirming a database was actually bootstrapped.
+Naming the email is required when more than one ADMIN exists.
+
+Committing issues a fresh temp password, revokes existing sessions, sets
+`must_change_password`, reactivates the account if it was inactive, and writes an audit
+event. The password prints once and is stored only as a hash, same as everywhere else.
+
+Its only requirement is `DATABASE_URL`. That is the whole security boundary and it is the
+right one: anyone holding the production connection string can already rewrite `app_user`
+directly. Do not add a login requirement — that recreates the lockout.
+
+If the database has no accounts at all, the script says so and points at §3.2. That means
+the roster import was never run, not that the password was lost.
+
 ### 4.7 Fixing display names
 
 ```
@@ -314,6 +348,7 @@ so a null or wrong name shows up as an unmatched import row.
 | Signed out unexpectedly | Session TTL is 12h; a password change revokes other sessions | Sign in again. |
 | Import reports unmatched reps | CRM display name ≠ `sales_rep.display_name` | Fix the name on the Users page, re-import. No fuzzy matching, by design. |
 | `import-roster` refuses: store row exists | Database already initialised | Correct behaviour. Add people via the Users page. |
+| Nobody can sign in as ADMIN; temp password lost | §3.2's one-time output was never captured | `recover-admin --commit` (§4.6.1). `rotate-passwords` will not help — it skips accounts holding a temp password. |
 | `seed` refuses to run | Guards against non-local databases and `NODE_ENV=production` | Correct behaviour. Use `import-roster` for real deployments. |
 | Reconciliation logs drift | Ledger and counters disagree | The ledger is truth. Investigate before trusting dashboard numbers — do not "fix" counters by hand. |
 
