@@ -31,7 +31,8 @@ export function Dashboard({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   if (loadError && !summary) {
     return (
       <div className="ui-page">
-        <p className="ui-error">
+        <h2>Dashboard</h2>
+        <p className="ui-error" role="alert">
           Couldn't load the dashboard — check your connection.{' '}
           <button type="button" className="ui-linkbtn" onClick={load}>
             Retry
@@ -40,7 +41,7 @@ export function Dashboard({ onOpenRep }: { onOpenRep?: (repId: string) => void }
       </div>
     )
   }
-  if (!summary) return <div className="ui-page">Loading…</div>
+  if (!summary) return <div className="ui-page"><h2>Dashboard</h2><p>Loading…</p></div>
 
   return (
     <div className="ui-page">

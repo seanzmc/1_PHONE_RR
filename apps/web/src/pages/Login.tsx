@@ -29,7 +29,7 @@ export function Login() {
           <Field label="Password">
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </Field>
-          {error && <p className="ui-error">{error}</p>}
+          {error && <p className="ui-error" role="alert">{error}</p>}
           <Button type="submit" variant="primary" block>
             Log in
           </Button>

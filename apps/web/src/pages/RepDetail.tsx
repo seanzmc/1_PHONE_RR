@@ -245,9 +245,9 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
         {summary && <Badge tone="accent">{summary.periodKey}</Badge>}
       </div>
 
-      {error && <p className="ui-error">{error}</p>}
+      {error && <p className="ui-error" role="alert">{error}</p>}
       {loadError && (
-        <p className="ui-error">
+        <p className="ui-error" role="alert">
           Couldn't load this page — check your connection.{' '}
           <button type="button" className="ui-linkbtn" onClick={load}>
             Retry
@@ -292,6 +292,9 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
       )}
 
       <h3 style={{ marginTop: 'var(--space-6)' }}>Leads this month</h3>
+      <span className="ui-sr-only" role="status" aria-live="polite">
+        {copiedLeadId ? 'Phone number copied.' : ''}
+      </span>
       {leads.length === 0 ? (
         <p className="ui-muted">No leads assigned through the app this month.</p>
       ) : (

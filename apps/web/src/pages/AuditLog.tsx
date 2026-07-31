@@ -22,8 +22,8 @@ export function AuditLog() {
   }, [offset])
   useEffect(() => { load() }, [load])
 
-  if (error && !data) return <div className="ui-page"><p className="ui-error">Couldn’t load the audit log. <button type="button" className="ui-linkbtn" onClick={load}>Retry</button></p></div>
-  if (!data) return <div className="ui-page">Loading…</div>
+  if (error && !data) return <div className="ui-page"><h2>Audit log</h2><p className="ui-error" role="alert">Couldn’t load the audit log. <button type="button" className="ui-linkbtn" onClick={load}>Retry</button></p></div>
+  if (!data) return <div className="ui-page"><h2>Audit log</h2><p>Loading…</p></div>
   return <div className="ui-page">
     <h2>Audit log</h2>
     {data.items.length === 0 ? <p className="ui-muted">No audit events yet.</p> : <div className="ui-stack">

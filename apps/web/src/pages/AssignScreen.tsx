@@ -64,6 +64,12 @@ export function canSubmitWithRoster(
   return formValid && hasLoadedRoster && !assigning && !readOnly
 }
 
+export function copyOutcomeMessage(succeeded: boolean): string {
+  return succeeded
+    ? 'Phone number copied — Alt+C copies it again.'
+    : 'Auto-copy blocked — press Alt+C or click Copy phone.'
+}
+
 /**
  * Four buckets, non-leaky — every rep appears in exactly one (design pass §B):
  *   nextUp   : the single rep the next lead goes to
@@ -97,6 +103,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   const [voidReason, setVoidReason] = useState('')
   const [voidError, setVoidError] = useState<string | null>(null)
   const [copyFailed, setCopyFailed] = useState(false)
+  const [copyNotice, setCopyNotice] = useState<string | null>(null)
   const [hasLoadedRoster, setHasLoadedRoster] = useState(false)
   const [assigning, setAssigning] = useState(false)
   // Errors only render for fields the user has touched (or after a submit attempt) —
@@ -137,7 +144,15 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
       if (e.altKey && e.code === 'KeyC' && lastCopiedPhone) {
-        navigator.clipboard.writeText(lastCopiedPhone).catch(() => {})
+        navigator.clipboard.writeText(lastCopiedPhone)
+          .then(() => {
+            setCopyFailed(false)
+            setCopyNotice(copyOutcomeMessage(true))
+          })
+          .catch(() => {
+            setCopyFailed(true)
+            setCopyNotice(copyOutcomeMessage(false))
+          })
       }
     }
     window.addEventListener('keydown', onKeydown)
@@ -173,6 +188,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
     setAssigning(true)
     setError(null)
     setCopyFailed(false)
+    setCopyNotice(null)
     const phoneE164 = toE164(phone)
     try {
       const result = await mutate<AssignResult>('assignment.assign', {
@@ -183,8 +199,13 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
       })
       const digits = digitsOnly(phoneE164)
       setLastCopiedPhone(digits)
-      navigator.clipboard.writeText(digits).catch(() => setCopyFailed(true))
       setLastResult(result)
+      navigator.clipboard.writeText(digits)
+        .then(() => setCopyNotice(copyOutcomeMessage(true)))
+        .catch(() => {
+          setCopyFailed(true)
+          setCopyNotice(copyOutcomeMessage(false))
+        })
       setName('')
       setPhone('')
       setNotes('')
@@ -229,7 +250,15 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
 
   function handleCopyClick() {
     if (lastCopiedPhone) {
-      navigator.clipboard.writeText(lastCopiedPhone).catch(() => {})
+      navigator.clipboard.writeText(lastCopiedPhone)
+        .then(() => {
+          setCopyFailed(false)
+          setCopyNotice(copyOutcomeMessage(true))
+        })
+        .catch(() => {
+          setCopyFailed(true)
+          setCopyNotice(copyOutcomeMessage(false))
+        })
     }
   }
 
@@ -309,7 +338,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
               disabled={assigning || readOnly}
             />
           </Field>
-          {error && <p className="ui-error">{error}</p>}
+          {error && <p className="ui-error" role="alert">{error}</p>}
           <Button
             variant="primary"
             onClick={handleAssign}
@@ -321,11 +350,18 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
 
         {lastResult && (
           <Card title="Just Assigned" className="ui-stack">
-            {lastResult.assignedRepId ? (
-              <>
+            <div role="status" aria-live="polite">
+              {lastResult.assignedRepId ? (
                 <p>
                   Assigned to <strong>{nameById.get(lastResult.assignedRepId) ?? lastResult.assignedRepId}</strong>
                 </p>
+              ) : (
+                <p>No eligible rep — lead queued as unassigned.</p>
+              )}
+              {lastResult.duplicatePhone && <p className="ui-warn">Warning: this phone number already exists.</p>}
+            </div>
+            {lastResult.assignedRepId && (
+              <>
                 <div className="ui-row">
                   <Button onClick={handleCopyClick}>Copy phone (digits only)</Button>
                   {canVoid && (
@@ -334,13 +370,14 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
                     </Button>
                   )}
                 </div>
-                {copyFailed && <p className="ui-warn">Auto-copy blocked — press Alt+C or click Copy phone</p>}
               </>
-            ) : (
-              <p>No eligible rep — lead queued as unassigned.</p>
             )}
-            {lastResult.duplicatePhone && <p className="ui-warn">Warning: this phone number already exists.</p>}
           </Card>
+        )}
+        {copyNotice && (
+          <p className={copyFailed ? 'ui-warn' : 'ui-hint'} role="status" aria-live="polite">
+            {copyNotice}
+          </p>
         )}
       </div>
 
@@ -348,7 +385,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
         <h2>Roster</h2>
 
         {loadError && roster.length > 0 && (
-          <p className="ui-warn">
+          <p className="ui-warn" role="status">
             Couldn't refresh — showing the last good roster.{' '}
             <button type="button" className="ui-linkbtn" onClick={refreshRoster}>
               Retry
@@ -358,7 +395,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
         {!hasLoadedRoster && !loadError ? (
           <p className="ui-muted">Loading roster…</p>
         ) : loadError && roster.length === 0 ? (
-          <p className="ui-error">
+          <p className="ui-error" role="alert">
             Couldn't load the roster — check your connection.{' '}
             <button type="button" className="ui-linkbtn" onClick={refreshRoster}>
               Retry

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuthStore } from './state/authStore'
 import { Login } from './pages/Login'
 import { AssignScreen } from './pages/AssignScreen'
@@ -22,6 +22,13 @@ export function bootstrapRecoveryVisible(hasSession: boolean, bootstrapError: st
   return !hasSession && bootstrapError !== null
 }
 
+export function focusPageHeading(main: HTMLElement | null): void {
+  const heading = main?.querySelector<HTMLElement>('h1, h2')
+  if (!heading) return
+  heading.tabIndex = -1
+  heading.focus()
+}
+
 function App() {
   const {
     session,
@@ -39,6 +46,9 @@ function App() {
   const [page, setPage] = useState<Page>('assign')
   const [openRepId, setOpenRepId] = useState<string | null>(null)
   const [repOriginPage, setRepOriginPage] = useState<Page | null>(null)
+  const mainRef = useRef<HTMLElement>(null)
+  const canAssign = hasPermission('lead.assign')
+  const activePage: Page = page === 'assign' && !canAssign ? 'me' : page
 
   useEffect(() => {
     refresh().catch(() => {})
@@ -48,10 +58,14 @@ function App() {
     if (session?.role === 'ADMIN') loadViewAsProfiles().catch(() => {})
   }, [session?.role, session?.userId, loadViewAsProfiles])
 
-  if (loading) return <div className="ui-page">Loading…</div>
+  useEffect(() => {
+    focusPageHeading(mainRef.current)
+  }, [activePage, bootstrapError, loading, openRepId, session?.userId])
+
+  if (loading) return <main ref={mainRef} className="ui-page"><h1 className="ui-sr-only">PhoneUp Round-Robin</h1><p>Loading…</p></main>
   if (bootstrapRecoveryVisible(!!session, bootstrapError)) {
     return (
-      <div className="ui-page ui-login">
+      <main ref={mainRef} className="ui-page ui-login">
         <h1>PhoneUp Round-Robin</h1>
         <Card className="ui-stack">
           <p className="ui-error" role="alert">
@@ -61,21 +75,17 @@ function App() {
             Retry
           </Button>
         </Card>
-      </div>
+      </main>
     )
   }
-  if (!session) return <Login />
+  if (!session) return <main ref={mainRef}><Login /></main>
 
   // A temporary password blocks every other route server-side, so gate the whole app
   // rather than render screens that would only return PASSWORD_CHANGE_REQUIRED.
-  if (session.mustChangePassword) return <ChangePassword forced />
+  if (session.mustChangePassword) return <main ref={mainRef}><ChangePassword forced /></main>
 
   const viewedProfile = selectedViewAs()
   const isRealAdmin = session.role === 'ADMIN'
-
-  // Reps have no assign screen; land them on their own dashboard instead.
-  const canAssign = hasPermission('lead.assign')
-  const activePage: Page = page === 'assign' && !canAssign ? 'me' : page
 
   function openRep(repId: string) {
     setRepOriginPage(activePage)
@@ -215,19 +225,21 @@ function App() {
         </div>
       )}
 
-      {activePage === 'assign' && <AssignScreen onOpenRep={openRep} />}
-      {activePage === 'staff' && <StaffList onOpenRep={openRep} />}
-      {activePage === 'dashboard' && <Dashboard onOpenRep={openRep} />}
-      {activePage === 'users' && <UserManagement />}
-      {activePage === 'audit' && <AuditLog />}
-      {activePage === 'import' && <ActivityImport />}
-      {activePage === 'me' && <RepDetail />}
-      {activePage === 'password' && (
-        <ChangePassword onDone={() => setPage(canAssign ? 'assign' : 'me')} />
-      )}
-      {activePage === 'rep' && openRepId && (
-        <RepDetail repId={openRepId} onBack={() => setPage(repBackPage(repOriginPage, canAssign))} />
-      )}
+      <main ref={mainRef}>
+        {activePage === 'assign' && <AssignScreen onOpenRep={openRep} />}
+        {activePage === 'staff' && <StaffList onOpenRep={openRep} />}
+        {activePage === 'dashboard' && <Dashboard onOpenRep={openRep} />}
+        {activePage === 'users' && <UserManagement />}
+        {activePage === 'audit' && <AuditLog />}
+        {activePage === 'import' && <ActivityImport />}
+        {activePage === 'me' && <RepDetail />}
+        {activePage === 'password' && (
+          <ChangePassword onDone={() => setPage(canAssign ? 'assign' : 'me')} />
+        )}
+        {activePage === 'rep' && openRepId && (
+          <RepDetail repId={openRepId} onBack={() => setPage(repBackPage(repOriginPage, canAssign))} />
+        )}
+      </main>
     </div>
   )
 }

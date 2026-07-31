@@ -189,7 +189,7 @@ export function ActivityImport() {
           />
         </Field>
 
-        {error && <p className="ui-error">{error}</p>}
+        {error && <p className="ui-error" role="alert">{error}</p>}
 
         <Button
           variant="primary"
@@ -225,7 +225,7 @@ export function ActivityImport() {
           <span className="ui-card-kicker">Eligibility for {preview.statusDate}</span>
 
           {evaluatedCount > 0 && fromReportCount === 0 && (
-            <p className="ui-error">
+            <p className="ui-error" role="alert">
               None of the numbers below came from the file you just uploaded. This report covers{' '}
               {preview.businessDate}, but eligibility for {preview.statusDate} is decided by each
               rep’s previous working day — so every result here came from activity imported
@@ -319,7 +319,7 @@ export function ActivityImport() {
       )}
 
       {result && phase === 'done' && (
-        <Card className="ui-import-complete">
+        <Card className="ui-import-complete" role="status" aria-live="polite">
           <Badge tone="ok">Saved</Badge>
           <h3>
             {result.decision === 'LOG_AND_DEACTIVATE'

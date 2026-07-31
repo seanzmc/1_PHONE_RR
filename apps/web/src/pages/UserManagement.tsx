@@ -262,9 +262,9 @@ export function UserManagement() {
         </Button>
       </div>
 
-      {error && <p className="ui-error">{error}</p>}
+      {error && <p className="ui-error" role="alert">{error}</p>}
       {loadError && (
-        <p className="ui-error">
+        <p className="ui-error" role="alert">
           Couldn't load the user list — check your connection.{' '}
           <button type="button" className="ui-linkbtn" onClick={refresh}>
             Retry

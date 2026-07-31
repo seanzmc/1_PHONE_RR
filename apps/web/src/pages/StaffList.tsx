@@ -389,15 +389,15 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
       </div>
 
       {loadError && (
-        <p className="ui-error">
+        <p className="ui-error" role="alert">
           Couldn't load the staff list — check your connection.{' '}
           <button type="button" className="ui-linkbtn" onClick={refresh}>
             Retry
           </button>
         </p>
       )}
-      {error && <p className="ui-error">{error}</p>}
-      {notice && <p className="ui-hint">{notice}</p>}
+      {error && <p className="ui-error" role="alert">{error}</p>}
+      {notice && <p className="ui-hint" role="status">{notice}</p>}
 
       <Table headers={headers}>
         {displayedRoster.map((r) => (

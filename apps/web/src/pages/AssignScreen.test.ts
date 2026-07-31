@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { assignEnterAction, assignFormErrors, bucketRoster, canSubmitWithRoster } from './AssignScreen'
+import {
+  assignEnterAction,
+  assignFormErrors,
+  bucketRoster,
+  canSubmitWithRoster,
+  copyOutcomeMessage,
+} from './AssignScreen'
 
 type Entry = Parameters<typeof bucketRoster>[0][number]
 
@@ -117,5 +123,12 @@ describe('canSubmitWithRoster', () => {
 
   it('blocks assignment while an admin is viewing another profile', () => {
     expect(canSubmitWithRoster(true, true, false, true)).toBe(false)
+  })
+})
+
+describe('copyOutcomeMessage', () => {
+  it('provides explicit assistive-technology feedback for copy success and failure', () => {
+    expect(copyOutcomeMessage(true)).toBe('Phone number copied — Alt+C copies it again.')
+    expect(copyOutcomeMessage(false)).toBe('Auto-copy blocked — press Alt+C or click Copy phone.')
   })
 })

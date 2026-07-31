@@ -77,7 +77,7 @@ export function ChangePassword({ forced = false, onDone }: { forced?: boolean; o
             />
           </Field>
 
-          {error && <p className="ui-error">{error}</p>}
+          {error && <p className="ui-error" role="alert">{error}</p>}
 
           <Button type="submit" variant="primary" block disabled={!valid || busy}>
             {busy ? 'Saving…' : 'Save password'}

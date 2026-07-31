@@ -1,5 +1,6 @@
 import type {
   ButtonHTMLAttributes,
+  HTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
   Ref,
@@ -54,7 +55,7 @@ export function Field({ label, hint, error, children }: FieldProps) {
         {children}
       </label>
       {hint && <p className="ui-hint">{hint}</p>}
-      {error && <p className="ui-error">{error}</p>}
+      {error && <p className="ui-error" role="alert">{error}</p>}
     </div>
   )
 }
@@ -81,16 +82,15 @@ export function Select({ className, ...rest }: SelectHTMLAttributes<HTMLSelectEl
 
 /* ── Card ───────────────────────────────────────────────────────────────── */
 
-export type CardProps = {
+export type CardProps = HTMLAttributes<HTMLDivElement> & {
   title?: string
   kicker?: string
   children?: ReactNode
-  className?: string
 }
 
-export function Card({ title, kicker, children, className }: CardProps) {
+export function Card({ title, kicker, children, className, ...rest }: CardProps) {
   return (
-    <div className={['ui-card', className ?? ''].filter(Boolean).join(' ')}>
+    <div className={['ui-card', className ?? ''].filter(Boolean).join(' ')} {...rest}>
       {kicker && <span className="ui-card-kicker">{kicker}</span>}
       {title && <h4 className="ui-card-title">{title}</h4>}
       {children}

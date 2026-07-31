@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { bootstrapRecoveryVisible, repBackPage } from './App'
+import { describe, expect, it, vi } from 'vitest'
+import { bootstrapRecoveryVisible, focusPageHeading, repBackPage } from './App'
 
 describe('repBackPage', () => {
   it('returns to the page that opened the rep detail', () => {
@@ -19,5 +19,18 @@ describe('bootstrapRecoveryVisible', () => {
     expect(bootstrapRecoveryVisible(false, 'connection failed')).toBe(true)
     expect(bootstrapRecoveryVisible(false, null)).toBe(false)
     expect(bootstrapRecoveryVisible(true, 'connection failed')).toBe(false)
+  })
+})
+
+describe('focusPageHeading', () => {
+  it('makes the current page heading programmatically focusable and focuses it', () => {
+    const heading = { tabIndex: 0, focus: vi.fn() }
+    const main = { querySelector: vi.fn(() => heading) }
+
+    focusPageHeading(main as unknown as HTMLElement)
+
+    expect(main.querySelector).toHaveBeenCalledWith('h1, h2')
+    expect(heading.tabIndex).toBe(-1)
+    expect(heading.focus).toHaveBeenCalledOnce()
   })
 })
