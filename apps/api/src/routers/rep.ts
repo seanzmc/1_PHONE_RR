@@ -6,7 +6,6 @@ import { requirePerm } from '../trpc/requirePerm'
 import { overrideStatus } from '../domain/overrideStatus'
 import { bulkOverrideStatus } from '../domain/bulkOverrideStatus'
 import {
-  getRecurringDaysOff,
   getRecurringDaysOffForReps,
   setRecurringDaysOff,
 } from '../domain/daysOff'
