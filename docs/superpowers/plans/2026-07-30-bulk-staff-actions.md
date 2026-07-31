@@ -361,11 +361,9 @@ Create `apps/api/src/domain/bulkOverrideStatus.test.ts`:
 ```ts
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import { eq, and, inArray } from 'drizzle-orm'
-import { randomUUID } from 'node:crypto'
 import { db, schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
 import { bulkOverrideStatus } from './bulkOverrideStatus'
-import { assignLead } from './assignLead'
 import { businessDatesThroughSaturday } from '../jobs/eligibility'
 
 let repIds: string[] = []
@@ -592,44 +590,6 @@ describe('bulkOverrideStatus', () => {
     }
   })
 
-  it('serializes against a concurrent assignLead rather than interleaving', async () => {
-    // The batch holds the rotation lock for its whole duration. If it did not, an assign
-    // landing mid-batch could pick a rep the batch was in the middle of deactivating.
-    await db.delete(schema.assignmentEvents)
-    await db.delete(schema.rrCycleAssignments)
-    await db.delete(schema.unassignedQueue)
-    await db.delete(schema.lead)
-    await db.delete(schema.customer)
-    await db.delete(schema.repMonthCounters)
-
-    await setStatus(repIds, 'ELIGIBLE', 'SYSTEM')
-    const bdc = await db.query.appUser.findFirst({ where: eq(schema.appUser.role, 'BDC') })
-
-    await Promise.all([
-      bulkOverrideStatus(db, {
-        repIds,
-        status: 'FORCE_INACTIVE',
-        reasonCode: 'TRAINING',
-        reasonNote: 'Training',
-        actorUserId: managerUserId,
-      }),
-      assignLead(db, {
-        idempotencyKey: randomUUID(),
-        customerName: 'Concurrent With Bulk',
-        customerPhoneE164: '+15557770001',
-        actorUserId: bdc!.id,
-      }),
-    ])
-
-    // Whichever won the lock, the ledger and the counters agree — that is what the lock buys.
-    const events = await db.query.assignmentEvents.findMany({
-      where: eq(schema.assignmentEvents.eventType, 'ASSIGN'),
-    })
-    const counters = await db.query.repMonthCounters.findMany()
-    const totalCredited = counters.reduce((sum: number, c: any) => sum + c.upsMtd, 0)
-    expect(totalCredited).toBe(events.length)
-  })
-
   it('rolls the whole batch back when one rep fails', async () => {
     await setStatus(repIds, 'ELIGIBLE', 'SYSTEM')
     const bogusRepId = '00000000-0000-0000-0000-000000000000'
@@ -750,12 +710,12 @@ export async function bulkOverrideStatus(
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `TEST_DATABASE_URL=postgresql://localhost/phoneup_test pnpm --filter @phoneup/api test src/domain/bulkOverrideStatus.test.ts`
-Expected: PASS, 7 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Run the whole API suite**
 
 Run: `TEST_DATABASE_URL=postgresql://localhost/phoneup_test pnpm --filter @phoneup/api test`
-Expected: PASS, 14 files, 133 tests.
+Expected: PASS, 14 files, 132 tests.
 
 - [ ] **Step 6: Typecheck and commit**
 
@@ -867,7 +827,7 @@ Run: `pnpm typecheck`
 Expected: all five projects Done.
 
 Run: `TEST_DATABASE_URL=postgresql://localhost/phoneup_test pnpm --filter @phoneup/api test`
-Expected: PASS, 14 files, 133 tests.
+Expected: PASS, 14 files, 132 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -951,7 +911,7 @@ Expected: all five projects Done. `computeRoster` has exactly one caller, so a m
 Start the API and query the route as a signed-in manager, or run the existing suite which exercises the ranking:
 
 Run: `TEST_DATABASE_URL=postgresql://localhost/phoneup_test pnpm --filter @phoneup/api test`
-Expected: PASS, 14 files, 133 tests.
+Expected: PASS, 14 files, 132 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1691,7 +1651,7 @@ Run: `pnpm typecheck`
 Expected: all five projects Done.
 
 Run: `TEST_DATABASE_URL=postgresql://localhost/phoneup_test pnpm --filter @phoneup/api test`
-Expected: PASS, 14 files, 133 tests.
+Expected: PASS, 14 files, 132 tests.
 
 - [ ] **Step 9: Verify in the running app**
 

@@ -166,8 +166,11 @@ Domain, against the test database:
   another manager's explicit future decision alone — the single-rep guarantee holds per rep
   in a batch.
 - A failure mid-batch leaves the database unchanged.
-- Bulk holds the advisory lock: a concurrent `assignLead` serializes against it rather than
-  interleaving.
+
+The lock itself is not re-tested here. `assignLead.concurrency.test.ts` already exercises
+`ADVISORY_LOCK_KEY`, and the batch reaches it through the same `pg_advisory_xact_lock` call
+on the same key — a bulk-specific race test would either duplicate that coverage or pass
+vacuously when the batch leaves no eligible rep for the racing assign to find.
 
 Client, pure functions extracted for test as `AssignScreen.test.ts` does:
 
