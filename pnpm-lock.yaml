@@ -80,6 +80,9 @@ importers:
       '@phoneup/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@phoneup/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       react:
         specifier: ^19.2.7
         version: 19.2.8

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { isOverrideNoOp, type CurrentRepStatus, type OverrideTarget } from '@phoneup/core'
 import { mutate, query } from '../lib/api'
 import { useBoardRealtime } from '../lib/useBoardRealtime'
 import { useAuthStore } from '../state/authStore'
@@ -6,12 +7,14 @@ import { Badge, Button, Field, Table, Textarea } from '../ui'
 import { Modal } from '../ui/Modal'
 import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
 
-type RosterEntry = {
+export type RosterEntry = {
   repId: string
   displayName: string
   isEligible: boolean
   ineligibleReason?: string
   monthlyLoad: number
+  /** Who decided today's status; null when the rep has no row for today. */
+  decidedBy: 'SYSTEM' | 'MANAGER_OVERRIDE' | null
 }
 
 const STATUS_OPTIONS = ['FORCE_ACTIVE', 'FORCE_INACTIVE', 'FOLLOW_SCHEDULE'] as const
@@ -33,6 +36,38 @@ const WEEKDAYS: Array<{ dow: number; label: string }> = [
   { dow: 5, label: 'Fri' },
   { dow: 6, label: 'Sat' },
 ]
+
+/** Roster entry to the shape the shared no-op rule expects. */
+export function currentStatusOf(entry: RosterEntry): CurrentRepStatus {
+  return { isEligible: entry.isEligible, decidedBy: entry.decidedBy }
+}
+
+/**
+ * Drop selected ids that are no longer on the roster. The list refreshes on every board
+ * realtime event, and a stale id left in the selection would silently widen a later batch.
+ */
+export function reconcileSelection(selected: string[], roster: RosterEntry[]): string[] {
+  const live = new Set(roster.map((r) => r.repId))
+  return selected.filter((repId) => live.has(repId))
+}
+
+/**
+ * Which of these reps a given action would actually change. Used to enable or disable the
+ * bulk buttons and to show the split in the confirm modal — the server re-checks the same
+ * rule inside the transaction, so this is a preview, not the decision.
+ */
+export function splitByNoOp(
+  target: OverrideTarget,
+  entries: RosterEntry[],
+): { applied: RosterEntry[]; skipped: RosterEntry[] } {
+  const applied: RosterEntry[] = []
+  const skipped: RosterEntry[] = []
+  for (const entry of entries) {
+    if (isOverrideNoOp(target, currentStatusOf(entry))) skipped.push(entry)
+    else applied.push(entry)
+  }
+  return { applied, skipped }
+}
 
 export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }) {
   const { hasPermission } = useAuthStore()
