@@ -8,6 +8,16 @@ Status as of 2026-07-31. Items 1 and 2 are built, reviewed and merged to `main`
 
 1. ~~Bulk activate/deactivate on Staff List, replacing the shifts button~~ — merged.
 2. ~~Preset reasons + Other; no prompt when status wouldn't change~~ — merged.
+3. ~~Days off: one recurring day off per rep~~ — `feat/one-recurring-day-off`. Landed as a
+   narrower design than originally scoped, deliberately: this item as written assumed
+   multi-select ("Save button, gate on all-week"), but the spec pass it needed (item 3's
+   own note above) concluded a rep gets **at most one** recurring day off. That changes
+   both things it asked for. A radio click is already a complete intent — there is nothing
+   to batch before saving, so immediate-save-per-click stays correct and no Save button was
+   built. "Every day off" is unreachable with a radio group rather than something to guard,
+   so no all-week gate was built either. The Staff List's six day-off toggle buttons became
+   a None + Mon–Sat radio group; the days-off column's per-rep N+1 query was folded into the
+   same pass as a new batch query, `rep.allDaysOff`.
 
 Shape of what landed: one shared `isOverrideNoOp` rule in `packages/core`,
 `rep.bulkOverrideStatus` applying every rep inside a single transaction under a
@@ -24,8 +34,6 @@ stay readable; no migration. The day-off half of the old shifts button is
 
 ## Remaining
 
-3. Days off: Save button, gate on all-week. Needs its own spec pass — this is
-   what the dropped shifts button used to reach, and nothing replaced it.
 4. View-as picks a real rep
 5. Master audit log screen
 6. Nav hub; logout and change-password behind a menu
@@ -78,6 +86,27 @@ select-all indeterminate ref at `apps/web/src/pages/StaffList.tsx:272` is an
 inline arrow, so React 19 detaches and reattaches it on every render and
 `el.indeterminate` is recomputed each time — correct by reading, still unconfirmed
 in a browser.
+
+Item 3 adds to that list, for the same reason — the profile is still locked. From
+the day-off pass, nothing below has been seen render:
+
+- the None + Mon–Sat radio group, and that a row's radios are scoped to that row
+  (the `name` is `day-off-<repId>`, so a click in one row must not clear another's)
+- a selection saving with no Save button, and surviving a reload
+- the `—` placeholder shown while `rep.allDaysOff` is still in flight or has failed
+- the "Thu, Fri stored — pick one" note for a rep holding more than one legacy day
+- the optimistic rollback and error banner when the mutation fails
+
+`apps/web` runs vitest with `environment: 'node'` and every case in
+`StaffList.test.ts` tests an exported pure function, so none of this is reachable
+from the suite either. The pure parts — `selectedDayOff`, `dayOffPayload` — are
+covered; the rendering is not.
+
+Two of those were reached by reading rather than running, during the final review:
+the "not loaded" state used to render the None radio *checked*, which would have
+suppressed the "pick one" note and let a click silently discard a legacy rep's two
+days. Fixed before merge. That defect sat squarely in the unverified region — the
+gap is not theoretical.
 
 ## Findings worth keeping
 

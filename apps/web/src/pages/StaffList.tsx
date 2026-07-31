@@ -74,6 +74,23 @@ const WEEKDAYS: Array<{ dow: number; label: string }> = [
   { dow: 6, label: 'Sat' },
 ]
 
+/**
+ * Which radio is selected for a rep. A rep gets one recurring day off or none, so more
+ * than one stored day is data this UI cannot represent — surface it rather than picking
+ * whichever sorted first, which would show a schedule the database does not hold and let
+ * a stray click silently discard the other day.
+ */
+export function selectedDayOff(days: number[]): number | null | 'AMBIGUOUS' {
+  if (days.length === 0) return null
+  if (days.length === 1) return days[0]
+  return 'AMBIGUOUS'
+}
+
+/** The `daysOfWeek` a radio selection sends. `null` is the None option. */
+export function dayOffPayload(dow: number | null): number[] {
+  return dow === null ? [] : [dow]
+}
+
 /** Roster entry to the shape the shared no-op rule expects. */
 export function currentStatusOf(entry: RosterEntry): CurrentRepStatus {
   return { isEligible: entry.isEligible, decidedBy: entry.decidedBy }
@@ -110,6 +127,10 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   const { hasPermission } = useAuthStore()
   const [roster, setRoster] = useState<RosterEntry[]>([])
   const [daysOffByRep, setDaysOffByRep] = useState<Record<string, number[]>>({})
+  // `{}` is indistinguishable from "every rep has no day off" — this flag is what lets the
+  // days-off cell tell "not loaded yet" apart from that, so it never renders None-checked
+  // before the real values are known.
+  const [daysOffLoaded, setDaysOffLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [pendingRepId, setPendingRepId] = useState<string | null>(null)
@@ -131,19 +152,18 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         setRoster(rows)
         setSelected((prev) => reconcileSelection(prev, rows))
         if (!canManageSchedule) return
-        const entries = await Promise.all(
-          rows.map(async (r) => {
-            try {
-              const res = await query<{ daysOfWeek: number[] }>(
-                `rep.daysOff?input=${encodeURIComponent(JSON.stringify({ repId: r.repId }))}`,
-              )
-              return [r.repId, res.daysOfWeek] as const
-            } catch {
-              return [r.repId, []] as const
-            }
-          }),
-        )
-        setDaysOffByRep(Object.fromEntries(entries))
+        // One query for the whole column. This runs on every board realtime event, so the
+        // per-rep loop it replaces was ~30 requests per assign, void and status change.
+        // Its own try/catch: a failure here must not be swallowed by the outer .catch, and
+        // must flip daysOffLoaded back to false rather than leaving stale/empty data marked
+        // as loaded.
+        try {
+          setDaysOffByRep(await query<Record<string, number[]>>('rep.allDaysOff'))
+          setDaysOffLoaded(true)
+        } catch (err) {
+          setDaysOffLoaded(false)
+          setError(err instanceof Error ? err.message : 'loading days off failed')
+        }
       })
       .catch(() => {})
   }, [canManageSchedule])
@@ -236,10 +256,10 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
     setError(null)
   }
 
-  /** One mutation per change, audit-logged as rep.days_off.set with before/after. */
-  async function toggleDayOff(repId: string, dow: number) {
+  /** One mutation per selection, audit-logged as rep.days_off.set with before/after. */
+  async function setDayOff(repId: string, dow: number | null) {
     const current = daysOffByRep[repId] ?? []
-    const next = current.includes(dow) ? current.filter((d) => d !== dow) : [...current, dow].sort()
+    const next = dayOffPayload(dow)
     setDaysOffByRep((prev) => ({ ...prev, [repId]: next })) // optimistic
     setError(null)
     setNotice(null)
@@ -247,7 +267,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
       await mutate('rep.setDaysOff', { repId, daysOfWeek: next })
     } catch (err) {
       setDaysOffByRep((prev) => ({ ...prev, [repId]: current })) // roll back
-      setError(err instanceof Error ? err.message : 'saving days off failed')
+      setError(err instanceof Error ? err.message : 'saving the day off failed')
     }
   }
 
@@ -279,7 +299,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
     'Rep',
     'Status',
     'Ups MTD',
-    ...(canManageSchedule ? ['Recurring days off'] : []),
+    ...(canManageSchedule ? ['Recurring day off'] : []),
     'Action',
   ]
 
@@ -354,23 +374,52 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
             <td>{r.monthlyLoad}</td>
             {canManageSchedule && (
               <td>
-                <div className="ui-row">
-                  {WEEKDAYS.map(({ dow, label }) => {
-                    const on = (daysOffByRep[r.repId] ?? []).includes(dow)
+                {!daysOffLoaded ? (
+                  // Not loaded yet (or the load failed) — an empty map here is indistinguishable
+                  // from "no day off", so nothing renders as checked and nothing is clickable
+                  // until the real values are in.
+                  <span className="ui-muted">—</span>
+                ) : (
+                  (() => {
+                    const stored = daysOffByRep[r.repId] ?? []
+                    const current = selectedDayOff(stored)
+                    const ambiguous = current === 'AMBIGUOUS'
                     return (
-                      <Button
-                        key={dow}
-                        size="sm"
-                        variant={on ? 'primary' : 'default'}
-                        aria-pressed={on}
-                        title={on ? `${label} is a scheduled day off` : `Mark ${label} as a day off`}
-                        onClick={() => toggleDayOff(r.repId, dow)}
-                      >
-                        {label}
-                      </Button>
+                      <>
+                        <div className="ui-row">
+                          <label className="ui-radio">
+                            <input
+                              type="radio"
+                              name={`day-off-${r.repId}`}
+                              checked={current === null}
+                              onChange={() => setDayOff(r.repId, null)}
+                            />
+                            None
+                          </label>
+                          {WEEKDAYS.map(({ dow, label }) => (
+                            <label key={dow} className="ui-radio">
+                              <input
+                                type="radio"
+                                name={`day-off-${r.repId}`}
+                                checked={current === dow}
+                                onChange={() => setDayOff(r.repId, dow)}
+                              />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
+                        {ambiguous && (
+                          <p className="ui-hint">
+                            {stored
+                              .map((d) => WEEKDAYS.find((w) => w.dow === d)?.label ?? String(d))
+                              .join(', ')}{' '}
+                            stored — pick one
+                          </p>
+                        )}
+                      </>
                     )
-                  })}
-                </div>
+                  })()
+                )}
               </td>
             )}
             <td>

@@ -472,3 +472,11 @@ textarea.ui-input {
   .ui-import-actions { align-items: stretch; }
   .ui-import-actions .ui-btn { width: 100%; }
 }
+
+/* Day-off radios sit inline in a table cell; the gap keeps the dot off its label. */
+.ui-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}

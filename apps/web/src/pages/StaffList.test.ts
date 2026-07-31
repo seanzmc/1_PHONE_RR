@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { reconcileSelection, splitByNoOp, currentStatusOf, reasonNoteFor } from './StaffList'
+import {
+  reconcileSelection,
+  splitByNoOp,
+  currentStatusOf,
+  reasonNoteFor,
+  selectedDayOff,
+  dayOffPayload,
+} from './StaffList'
 
 type Entry = Parameters<typeof splitByNoOp>[1][number]
 
@@ -101,5 +108,31 @@ describe('splitByNoOp', () => {
     ]
     const { applied, skipped } = splitByNoOp('FORCE_INACTIVE', entries)
     expect(applied.length + skipped.length).toBe(entries.length)
+  })
+})
+
+describe('selectedDayOff', () => {
+  it('is null when a rep has no recurring day off', () => {
+    expect(selectedDayOff([])).toBe(null)
+  })
+
+  it('is the day when a rep has exactly one', () => {
+    expect(selectedDayOff([3])).toBe(3)
+  })
+
+  it('is AMBIGUOUS when a rep somehow has more than one', () => {
+    // Legacy rows, or a direct database write. Rendering one of them would show a
+    // schedule the database does not hold and let a stray click discard the other.
+    expect(selectedDayOff([4, 5])).toBe('AMBIGUOUS')
+  })
+})
+
+describe('dayOffPayload', () => {
+  it('sends an empty array for None', () => {
+    expect(dayOffPayload(null)).toEqual([])
+  })
+
+  it('sends a one-element array for a weekday', () => {
+    expect(dayOffPayload(3)).toEqual([3])
   })
 })
