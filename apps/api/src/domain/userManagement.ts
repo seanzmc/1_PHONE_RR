@@ -282,14 +282,17 @@ export async function resetPassword(
  */
 export async function changeOwnPassword(
   db: DB,
-  input: { userId: string; currentPassword: string; newPassword: string; keepSessionId?: string },
+  input: { userId: string; currentPassword?: string; newPassword: string; keepSessionId?: string },
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const user = await tx.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
     if (!user) throw new Error('user not found')
 
-    if (!verifyPassword(input.currentPassword, user.passwordHash)) {
-      throw new Error('current password is incorrect')
+    if (!user.mustChangePassword) {
+      if (!input.currentPassword) throw new Error('CURRENT_PASSWORD_REQUIRED')
+      if (!verifyPassword(input.currentPassword, user.passwordHash)) {
+        throw new Error('current password is incorrect')
+      }
     }
     if (verifyPassword(input.newPassword, user.passwordHash)) {
       throw new Error('new password must be different from the current one')

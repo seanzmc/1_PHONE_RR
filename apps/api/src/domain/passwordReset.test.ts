@@ -95,6 +95,35 @@ describe('resetPassword (admin-issued)', () => {
 })
 
 describe('changeOwnPassword', () => {
+  it('lets a forced first-login session choose a password without resubmitting the temporary password', async () => {
+    await resetPassword(db, { userId, newPassword: 'tempPass123', actorUserId: adminId })
+    const keep = `forced-keep-${Date.now()}`
+    const other = `forced-other-${Date.now()}`
+    await db.insert(schema.session).values([
+      { id: keep, userId, expiresAt: new Date(Date.now() + 60_000) },
+      { id: other, userId, expiresAt: new Date(Date.now() + 60_000) },
+    ])
+
+    await changeOwnPassword(db, {
+      userId,
+      newPassword: 'myRealPassword9',
+      keepSessionId: keep,
+    })
+
+    const user = await reload()
+    expect(user?.mustChangePassword).toBe(false)
+    expect(verifyPassword('myRealPassword9', user!.passwordHash)).toBe(true)
+    const sessions = await db.query.session.findMany({ where: eq(schema.session.userId, userId) })
+    expect(sessions.map((session) => session.id)).toEqual([keep])
+  })
+
+  it('requires the current password for an ordinary voluntary change', async () => {
+    await expect(
+      changeOwnPassword(db, { userId, newPassword: 'myRealPassword9' }),
+    ).rejects.toThrow('CURRENT_PASSWORD_REQUIRED')
+    expect(verifyPassword('originalPassword1', (await reload())!.passwordHash)).toBe(true)
+  })
+
   it('clears the forced-change flag when the user picks their own password', async () => {
     await resetPassword(db, { userId, newPassword: 'tempPass123', actorUserId: adminId })
     expect((await reload())?.mustChangePassword).toBe(true)

@@ -8,6 +8,16 @@ import { isThrottled, recordFailure, recordSuccess } from '../auth/loginThrottle
 import { publicProcedure, router } from '../trpc/router'
 import { requireAuth, requirePerm } from '../trpc/requirePerm'
 import { changeOwnPassword } from '../domain/userManagement'
+import {
+  completePasswordReset,
+  requestPasswordReset,
+  RESET_LINK_INVALID_OR_EXPIRED,
+} from '../domain/passwordRecovery'
+import { createResendPasswordResetSender } from '../email/resend'
+import {
+  checkRecoveryThrottle,
+  recordRecoveryRequest,
+} from '../auth/recoveryThrottle'
 
 const loginInputSchema = z.object({
   email: z.string().email(),
@@ -15,11 +25,81 @@ const loginInputSchema = z.object({
 })
 
 const changePasswordInputSchema = z.object({
-  currentPassword: z.string().min(1),
+  currentPassword: z.string().min(1).optional(),
+  newPassword: z.string().min(8),
+})
+
+const requestPasswordResetInputSchema = z.object({
+  email: z.string().trim().email(),
+})
+
+const completePasswordResetInputSchema = z.object({
+  token: z.string().min(16),
   newPassword: z.string().min(8),
 })
 
 export const authRouter = router({
+  requestPasswordReset: publicProcedure
+    .input(requestPasswordResetInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const email = input.email.toLowerCase()
+      const ip = (ctx.req as any).ip ?? 'unknown'
+      const keys = [`recovery-email:${email}`, `recovery-ip:${ip}`]
+      const { throttled, retryAfter } = checkRecoveryThrottle(keys)
+      if (throttled) {
+        throw new TRPCError({
+          code: 'TOO_MANY_REQUESTS',
+          message: `Too many password reset requests — try again in ${Math.ceil(retryAfter / 60)} minute(s)`,
+        })
+      }
+      recordRecoveryRequest(keys)
+
+      const apiKey = process.env.RESEND_API_KEY ?? ''
+      const from = process.env.RESEND_FROM_EMAIL ?? ''
+      const configuredAppBaseUrl = process.env.APP_BASE_URL ?? ''
+      if (!apiKey || !from || !configuredAppBaseUrl) {
+        ;(ctx.req as any).log?.error('password reset email delivery failed: email is not configured')
+        return { ok: true }
+      }
+      let appBaseUrl: string
+      try {
+        const url = new URL(configuredAppBaseUrl)
+        if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsupported protocol')
+        appBaseUrl = url.origin
+      } catch {
+        ;(ctx.req as any).log?.error('password reset email delivery failed: APP_BASE_URL is invalid')
+        return { ok: true }
+      }
+
+      await requestPasswordReset(
+        db,
+        { email },
+        {
+          sendEmail: createResendPasswordResetSender({ apiKey, from }),
+          appBaseUrl,
+          logDeliveryFailure: (error) => {
+            const message = error instanceof Error ? error.message : 'Password reset email delivery failed'
+            ;(ctx.req as any).log?.error(`password reset email delivery failed: ${message}`)
+          },
+        },
+      )
+      return { ok: true }
+    }),
+
+  completePasswordReset: publicProcedure
+    .input(completePasswordResetInputSchema)
+    .mutation(async ({ input }) => {
+      try {
+        await completePasswordReset(db, input)
+      } catch (error) {
+        if (error instanceof Error && error.message === RESET_LINK_INVALID_OR_EXPIRED) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: RESET_LINK_INVALID_OR_EXPIRED })
+        }
+        throw error
+      }
+      return { ok: true }
+    }),
+
   login: publicProcedure.input(loginInputSchema).mutation(async ({ ctx, input }) => {
     // Throttle before touching the DB: temporary passwords are short by design, so
     // rate limiting is what keeps the small keyspace from being swept.

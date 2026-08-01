@@ -38,9 +38,11 @@ type AuthState = {
   loadViewAsProfiles: () => Promise<void>
   setViewAsUserId: (userId: string | null) => void
   login: (email: string, password: string) => Promise<void>
+  requestPasswordReset: (email: string) => Promise<void>
+  completePasswordReset: (token: string, newPassword: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
-  changePassword: (currentPassword: string, newPassword: string) => Promise<void>
+  changePassword: (currentPassword: string | undefined, newPassword: string) => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -90,6 +92,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await get().refresh()
   },
 
+  requestPasswordReset: async (email) => {
+    await mutate('auth.requestPasswordReset', { email })
+  },
+
+  completePasswordReset: async (token, newPassword) => {
+    await mutate('auth.completePasswordReset', { token, newPassword })
+    configureViewAs(null)
+    set({ session: null, bootstrapError: null, viewAsProfiles: [], viewAsUserId: null })
+  },
+
   logout: async () => {
     configureViewAs(null)
     await mutate('auth.logout')
@@ -111,8 +123,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   changePassword: async (currentPassword, newPassword) => {
-    await mutate('auth.changePassword', { currentPassword, newPassword })
-    // re-read the session so mustChangePassword clears and the app unlocks
-    await get().refresh()
+    await mutate('auth.changePassword', {
+      ...(currentPassword ? { currentPassword } : {}),
+      newPassword,
+    })
+    // Re-read without entering the app-wide loading state. A full refresh would
+    // unmount the voluntary change-password page before it can show confirmation.
+    configureViewAs(null)
+    const session = await query<Session>('auth.me')
+    set({ session, bootstrapError: null, viewAsProfiles: [], viewAsUserId: null })
   },
 }))

@@ -15,6 +15,9 @@ rotation queue, one solo maintainer. Scope rules live in `CLAUDE.md`; the build 
 | `WEB_ORIGIN` | no | CORS origin. Only needed when the browser app is on a different origin than the API (local dev, Vite on `:5173`). In production the API serves `apps/web/dist` itself, so leave unset. |
 | `NODE_ENV` | no | Set to `production` by the API `start` script. Drives `secure` session cookies and blocks the dev seed. |
 | `ADMIN_EMAIL` | no | Email of the first ADMIN account created by the roster import. Defaults to the maintainer's address. |
+| `APP_BASE_URL` | for password recovery | Canonical public app origin used to build single-use reset links. |
+| `RESEND_API_KEY` | for password recovery | Resend key restricted to sending access. Never commit it. |
+| `RESEND_FROM_EMAIL` | for password recovery | Sender address on a domain verified in Resend. |
 | `TEST_DATABASE_URL` | no | Test database, default `postgresql://localhost/phoneup_test`. Separate from `DATABASE_URL` on purpose — an exported `DATABASE_URL` must never be able to point the destructive test suite at a real database. The suite also refuses any database whose name lacks `test`. |
 
 See `.env.example`. Copy it to `.env` for local work; in production set them as platform variables.
@@ -35,7 +38,8 @@ Host is Railway (`railway.json` → `Dockerfile`). Migrations run on container s
 deploy applies pending migrations automatically.
 
 1. **Provision Postgres.** Copy its connection string.
-2. **Set `DATABASE_URL`** on the API service. Nothing else is required.
+2. **Set `DATABASE_URL`** on the API service. This is enough for the core app. To enable
+   Forgot password, also set `APP_BASE_URL`, `RESEND_API_KEY`, and `RESEND_FROM_EMAIL` (§4.6.1).
 3. **Deploy.** The image builds the web app, then runs
    `pnpm --filter @phoneup/db migrate && pnpm --filter @phoneup/api start`.
 4. **Confirm health.** `curl https://<host>/health` must return `{"ok":true}` with status
@@ -106,8 +110,8 @@ Every account is flagged `must_change_password`. While that flag is set the serv
 **every** route except `auth.changePassword`, so first sign-in forces a password change
 before anything else works. That gate is server-side.
 
-If someone loses their temp password: Users page → that row → issue a new one. There is no
-email delivery and no self-service reset.
+If someone loses their temp password, they can use Forgot password after Resend is configured
+(§4.6.1). A manager can still use Users page → that row → issue a new one and relay it directly.
 
 ### 3.5 Verify the core loop before telling anyone it's live
 
@@ -287,6 +291,31 @@ DATABASE_URL=<prod> pnpm --filter @phoneup/api reconcile
 
 ### 4.6 Password remediation
 
+#### 4.6.1 Self-service email reset
+
+Forgot password sends a 30-minute, single-use link only when the submitted address belongs
+to an active `app_user`. The browser always shows the same generic response, including for an
+unknown or inactive address. A successful reset revokes all sessions and all other outstanding
+reset links for that account.
+
+Production delivery requires:
+
+1. Add and verify a sending domain in Resend.
+2. Create an API key restricted to **sending access** and set it as `RESEND_API_KEY` in Railway.
+3. Set `RESEND_FROM_EMAIL` to an address on the verified domain, for example
+   `PhoneUp <security@example.com>`.
+4. Set `APP_BASE_URL` to the deployed origin, with no path, for example
+   `https://phoneup.example.com`.
+
+After deployment, smoke-test with a dedicated active test account: request a link from Forgot
+password, confirm Resend reports it delivered to that same account email, open it once, choose a
+new password, and confirm both that the link cannot be reused and the prior session must sign in
+again. Do not use a production employee's account for this check.
+
+If any of the three variables is missing, the public screen remains generic and the API logs
+`password reset email delivery failed: email is not configured` without writing a secret or reset
+URL. The Users page and `recover-admin` remain available as operator-controlled fallback paths.
+
 ```
 DATABASE_URL=<prod> pnpm --filter @phoneup/api rotate-passwords            # dry run
 DATABASE_URL=<prod> pnpm --filter @phoneup/api rotate-passwords --commit   # apply
@@ -299,10 +328,11 @@ It **skips accounts still flagged `must_change_password`**, so people mid-way th
 sign-in don't lose the password they were just given. That also means it cannot rescue an
 admin who never signed in — use `recover-admin` below.
 
-### 4.6.1 Locked out of the ADMIN account
+#### 4.6.2 Locked out of the ADMIN account
 
 If §3.2's one-time distribution table was never captured, the ADMIN account is unreachable:
-no email delivery, no self-service reset, and the Users page needs a session to reach.
+use Forgot password when Resend is configured and the ADMIN account is active. If email delivery
+is unavailable or misconfigured, the Users page still needs a session, so use this break-glass tool.
 
 ```
 DATABASE_URL=<prod> pnpm --filter @phoneup/api recover-admin                      # dry run
@@ -348,7 +378,8 @@ so a null or wrong name shows up as an unmatched import row.
 | Signed out unexpectedly | Session TTL is 12h; a password change revokes other sessions | Sign in again. |
 | Import reports unmatched reps | CRM display name ≠ `sales_rep.display_name` | Fix the name on the Users page, re-import. No fuzzy matching, by design. |
 | `import-roster` refuses: store row exists | Database already initialised | Correct behaviour. Add people via the Users page. |
-| Nobody can sign in as ADMIN; temp password lost | §3.2's one-time output was never captured | `recover-admin --commit` (§4.6.1). `rotate-passwords` will not help — it skips accounts holding a temp password. |
+| Forgot password says it sent a link, but no email arrives | Address is unknown/inactive, Resend variables are missing, or the sender domain is unverified | Confirm the account is active; then inspect Railway variables, API logs, and Resend delivery status (§4.6.1). |
+| Nobody can sign in as ADMIN; temp password lost | §3.2's one-time output was never captured | Try Forgot password first; if email is unavailable, run `recover-admin --commit` (§4.6.2). `rotate-passwords` will not help — it skips accounts holding a temp password. |
 | `seed` refuses to run | Guards against non-local databases and `NODE_ENV=production` | Correct behaviour. Use `import-roster` for real deployments. |
 | Reconciliation logs drift | Ledger and counters disagree | The ledger is truth. Investigate before trusting dashboard numbers — do not "fix" counters by hand. |
 
@@ -370,4 +401,5 @@ Open items that affect operating this, tracked so they are not rediscovered in p
 - **No policy UI.** Enforcement mode is flipped by the API call in §4.4.
 - **Reps cannot submit reactivation requests.** The permission exists; the route does not.
   Reactivation is a manager action on the Staff List for now.
-- **No email.** Every password hand-off and notification is manual and in person.
+- **No general notifications.** Resend is used only for self-service password-reset links;
+  assignment, policy, and status notifications remain manual.

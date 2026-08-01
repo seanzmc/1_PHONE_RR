@@ -1,20 +1,14 @@
 import { useState } from 'react'
 import { useAuthStore } from '../state/authStore'
 import { Button, Card, Field, Input } from '../ui'
+import { PasswordInput } from '../ui/PasswordInput'
+import { authErrorCopy } from '../lib/authErrors'
 
 export function loginErrorCopy(message: string): string {
-  if (/invalid credentials/i.test(message)) {
-    return "Email or password didn’t match — passwords are case-sensitive. Forgot it? A manager can reset it from the Users page."
-  }
-  const throttle = message.match(/too many failed attempts.*?(\d+) minute/i)
-  if (throttle) {
-    const minutes = Number(throttle[1])
-    return `Too many failed attempts — try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`
-  }
-  return message
+  return authErrorCopy(new Error(message), 'login')
 }
 
-export function Login() {
+export function Login({ onForgotPassword }: { onForgotPassword?: () => void }) {
   const login = useAuthStore((s) => s.login)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -48,8 +42,8 @@ export function Login() {
             />
           </Field>
           <Field label="Password">
-            <Input
-              type="password"
+            <PasswordInput
+              label="Login password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
@@ -59,6 +53,11 @@ export function Login() {
           <Button type="submit" variant="primary" block>
             Log in
           </Button>
+          {onForgotPassword && (
+            <button type="button" className="ui-linkbtn" onClick={onForgotPassword}>
+              Forgot password?
+            </button>
+          )}
         </form>
       </Card>
     </div>

@@ -198,6 +198,31 @@ textarea.ui-input {
   min-height: 90px;
   resize: vertical;
 }
+.ui-password-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+}
+.ui-password-input .ui-input {
+  min-width: 0;
+}
+.ui-password-toggle {
+  min-width: 58px;
+  padding: 0 var(--space-3);
+  color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-left: 0;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ui-password-toggle:hover { text-decoration: underline; }
+.ui-password-toggle:focus-visible {
+  position: relative;
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
 .ui-input-inline {
   width: 90px;
   min-height: 30px;

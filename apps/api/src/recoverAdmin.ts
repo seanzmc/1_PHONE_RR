@@ -2,10 +2,10 @@
  * Break-glass recovery for a locked-out ADMIN.
  *
  * `import-roster` prints each temporary password exactly once and stores only the hash. If
- * that output was never captured, the ADMIN account becomes unreachable: there is no email
- * delivery, no self-service reset, and `rotate-passwords` deliberately SKIPS accounts still
- * flagged `mustChangePassword` — which a never-used admin account always is. That left no
- * way back into a live deployment. This is that way back.
+ * that output was never captured, Forgot password is now the normal recovery path for an active
+ * account when Resend is configured. This command remains the break-glass path when email is
+ * unavailable or misconfigured. `rotate-passwords` deliberately SKIPS accounts still flagged
+ * `mustChangePassword` — which a never-used admin account always is.
  *
  * The security boundary is `DATABASE_URL`. Anyone who can point this at the production
  * database can already read and rewrite every row in it, so requiring nothing beyond that

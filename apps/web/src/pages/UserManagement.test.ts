@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { adminPasswordInputProps, partitionAccounts, sortAccounts, type Account } from './UserManagement'
+import {
+  adminPasswordInputProps,
+  partitionAccounts,
+  sortAccounts,
+  type Account,
+} from './UserManagement'
+import { managerPasswordLabels } from '../lib/passwordLabels'
 
 function account(over: Partial<Account> & Pick<Account, 'id'>): Account {
   return {
@@ -46,7 +52,14 @@ describe('sortAccounts', () => {
 })
 
 describe('adminPasswordInputProps', () => {
-  it('masks admin-entered credentials and identifies them as new passwords', () => {
-    expect(adminPasswordInputProps).toEqual({ type: 'password', autoComplete: 'new-password' })
+  it('identifies admin-entered credentials for password managers', () => {
+    expect(adminPasswordInputProps).toEqual({ autoComplete: 'new-password' })
+  })
+
+  it('gives each editable manager password a field-specific visibility label', () => {
+    expect(managerPasswordLabels('Taylor Reed')).toEqual({
+      initial: 'Initial password',
+      manualReset: 'Temporary password for Taylor Reed',
+    })
   })
 })

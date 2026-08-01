@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { bootstrapRecoveryVisible, focusPageHeading, repBackPage } from './App'
+import { resetTokenFromLocation } from './lib/publicAuth'
 
 describe('repBackPage', () => {
   it('returns to the page that opened the rep detail', () => {
@@ -19,6 +20,14 @@ describe('bootstrapRecoveryVisible', () => {
     expect(bootstrapRecoveryVisible(false, 'connection failed')).toBe(true)
     expect(bootstrapRecoveryVisible(false, null)).toBe(false)
     expect(bootstrapRecoveryVisible(true, 'connection failed')).toBe(false)
+  })
+})
+
+describe('resetTokenFromLocation', () => {
+  it('selects only a non-empty reset token from the root query string', () => {
+    expect(resetTokenFromLocation('?reset_token=single-use-token')).toBe('single-use-token')
+    expect(resetTokenFromLocation('?reset_token=')).toBeNull()
+    expect(resetTokenFromLocation('?other=value')).toBeNull()
   })
 })
 

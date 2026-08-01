@@ -9,9 +9,13 @@ import { RepDetail } from './pages/RepDetail'
 import { ActivityImport } from './pages/ActivityImport'
 import { ChangePassword } from './pages/ChangePassword'
 import { AuditLog } from './pages/AuditLog'
+import { PasswordRecovery } from './pages/PasswordRecovery'
+import { ResetPassword } from './pages/ResetPassword'
+import { resetTokenFromLocation } from './lib/publicAuth'
 import { Button, Card, Select } from './ui'
 
 export type Page = 'assign' | 'staff' | 'dashboard' | 'users' | 'audit' | 'me' | 'rep' | 'import' | 'password'
+export type PublicAuthPage = 'login' | 'recovery' | 'reset'
 
 export function repBackPage(origin: Page | null, canAssign: boolean): Page {
   if (origin && origin !== 'rep' && origin !== 'password') return origin
@@ -44,6 +48,12 @@ function App() {
     setViewAsUserId,
   } = useAuthStore()
   const [page, setPage] = useState<Page>('assign')
+  const [resetToken] = useState(() =>
+    typeof window === 'undefined' ? null : resetTokenFromLocation(window.location.search),
+  )
+  const [publicAuthPage, setPublicAuthPage] = useState<PublicAuthPage>(() =>
+    resetTokenFromLocation(typeof window === 'undefined' ? '' : window.location.search) ? 'reset' : 'login',
+  )
   const [openRepId, setOpenRepId] = useState<string | null>(null)
   const [repOriginPage, setRepOriginPage] = useState<Page | null>(null)
   const mainRef = useRef<HTMLElement>(null)
@@ -60,7 +70,7 @@ function App() {
 
   useEffect(() => {
     focusPageHeading(mainRef.current)
-  }, [activePage, bootstrapError, loading, openRepId, session?.userId])
+  }, [activePage, bootstrapError, loading, openRepId, publicAuthPage, session?.userId])
 
   if (loading) return <main ref={mainRef} className="ui-page"><h1 className="ui-sr-only">PhoneUp Round-Robin</h1><p>Loading…</p></main>
   if (bootstrapRecoveryVisible(!!session, bootstrapError)) {
@@ -78,7 +88,28 @@ function App() {
       </main>
     )
   }
-  if (!session) return <main ref={mainRef}><Login /></main>
+  if (publicAuthPage === 'reset' && resetToken) {
+    return (
+      <main ref={mainRef}>
+        <ResetPassword
+          token={resetToken}
+          onDone={() => setPublicAuthPage('login')}
+          onRequestNew={() => setPublicAuthPage('recovery')}
+        />
+      </main>
+    )
+  }
+  if (!session) {
+    return (
+      <main ref={mainRef}>
+        {publicAuthPage === 'recovery' ? (
+          <PasswordRecovery onBack={() => setPublicAuthPage('login')} />
+        ) : (
+          <Login onForgotPassword={() => setPublicAuthPage('recovery')} />
+        )}
+      </main>
+    )
+  }
 
   // A temporary password blocks every other route server-side, so gate the whole app
   // rather than render screens that would only return PASSWORD_CHANGE_REQUIRED.

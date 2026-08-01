@@ -43,6 +43,13 @@
       "when": 1785384813414,
       "tag": "0005_chunky_changeling",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785591290647,
+      "tag": "0006_mature_whistler",
+      "breakpoints": true
     }
   ]
 }

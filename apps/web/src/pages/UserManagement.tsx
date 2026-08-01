@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { mutate, query } from '../lib/api'
 import { canMutateInCurrentView, useAuthStore } from '../state/authStore'
 import { Badge, Button, Field, Input, Select, Table } from '../ui'
+import { PasswordInput } from '../ui/PasswordInput'
+import { authErrorCopy } from '../lib/authErrors'
+import { managerPasswordLabels } from '../lib/passwordLabels'
 import { Modal } from '../ui/Modal'
 import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
 
@@ -53,7 +56,6 @@ export function partitionAccounts(accounts: Account[]): { enabled: Account[]; di
 const ROLES: Role[] = ['ADMIN', 'MANAGER', 'BDC', 'REP']
 
 export const adminPasswordInputProps = {
-  type: 'password',
   autoComplete: 'new-password',
 } as const
 
@@ -148,7 +150,7 @@ export function UserManagement() {
       await mutate('userManagement.resetPassword', { userId: resetTargetId, newPassword: resetValue })
       closeReset()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'password reset failed')
+      setError(authErrorCopy(err, 'manager_reset'))
     }
   }
 
@@ -169,7 +171,7 @@ export function UserManagement() {
       setIssuedCopied(false)
       refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'could not issue a temporary password')
+      setError(authErrorCopy(err, 'manager_reset'))
     }
   }
 
@@ -332,7 +334,8 @@ export function UserManagement() {
           </Select>
         </Field>
         <Field label="Initial password" hint="Minimum 8 characters.">
-          <Input
+          <PasswordInput
+            label={managerPasswordLabels(newName.trim() || 'new account').initial}
             {...adminPasswordInputProps}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
@@ -349,7 +352,8 @@ export function UserManagement() {
         submitDisabled={resetValue.length < 8}
       >
         <Field label="New password" hint="Minimum 8 characters.">
-          <Input
+          <PasswordInput
+            label={managerPasswordLabels(resetTarget?.displayName ?? resetTarget?.email ?? 'user').manualReset}
             {...adminPasswordInputProps}
             value={resetValue}
             onChange={(e) => setResetValue(e.target.value)}
