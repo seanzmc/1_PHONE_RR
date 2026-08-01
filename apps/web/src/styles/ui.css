@@ -613,6 +613,50 @@ textarea.ui-input {
   gap: var(--space-2);
 }
 
+/* — drawer — */
+.ui-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: color-mix(in srgb, var(--color-text) 32%, transparent);
+}
+.ui-drawer {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: min(920px, 92vw);
+  overflow: auto;
+  background: var(--color-bg);
+  border-left: 2px solid var(--color-accent);
+  box-shadow: var(--shadow-lg);
+}
+.ui-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-divider);
+}
+.ui-drawer-header h2 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 20px;
+}
+
+@media (max-width: 700px) {
+  .ui-drawer { width: 100vw; }
+}
+
+@keyframes ui-drawer-enter {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ui-drawer { animation: ui-drawer-enter 160ms ease-out; }
+}
+
 /* — daily activity preview / decision — */
 .ui-section-gap,
 .ui-import-progress,

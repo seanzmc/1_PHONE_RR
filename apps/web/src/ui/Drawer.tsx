@@ -1,0 +1,90 @@
+import { useCallback, useEffect, useRef } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
+import { Button } from './index'
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+export type DrawerProps = {
+  open: boolean
+  title: string
+  busy?: boolean
+  onClose: () => void
+  children: ReactNode
+}
+
+export function canCloseDrawer(busy: boolean): boolean {
+  return !busy
+}
+
+export function Drawer({ open, title, busy = false, onClose, children }: DrawerProps) {
+  const panelRef = useRef<HTMLElement>(null)
+  const previouslyFocused = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    previouslyFocused.current = document.activeElement as HTMLElement | null
+    const first = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE)
+    first?.focus()
+    return () => previouslyFocused.current?.focus?.()
+  }, [open])
+
+  const requestClose = useCallback(() => {
+    if (canCloseDrawer(busy)) onClose()
+  }, [busy, onClose])
+
+  const handleBackdropMouseDown = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.target === event.currentTarget) requestClose()
+    },
+    [requestClose],
+  )
+
+  const handleKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLElement>) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        requestClose()
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const nodes = Array.from(panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
+      if (nodes.length === 0) return
+      const first = nodes[0]
+      const last = nodes[nodes.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    },
+    [requestClose],
+  )
+
+  if (!open) return null
+
+  return (
+    <div className="ui-drawer-backdrop" onMouseDown={handleBackdropMouseDown}>
+      <section
+        className="ui-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        ref={panelRef}
+        onKeyDown={handleKeyDown}
+      >
+        <header className="ui-drawer-header">
+          <h2>{title}</h2>
+          <Button aria-label={`Close ${title}`} onClick={requestClose} disabled={busy}>
+            Close
+          </Button>
+        </header>
+        {children}
+      </section>
+    </div>
+  )
+}
