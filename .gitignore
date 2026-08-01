@@ -18,3 +18,7 @@ backups/
 
 # graphify analysis output — generated artifact, never committed
 graphify-out/
+
+# Local agent workspaces and generated review artifacts
+.worktrees/
+.superpowers/
