@@ -10,7 +10,8 @@ describe('Drawer', () => {
       </Drawer>,
     )
 
-    expect(html).toContain('role="dialog"')
+    expect(html.match(/role="dialog"/g)).toHaveLength(1)
+    expect(html).toContain('aria-modal="true"')
     expect(html).toContain('aria-label="Assign lead"')
     expect(html).toContain('disabled=""')
   })
