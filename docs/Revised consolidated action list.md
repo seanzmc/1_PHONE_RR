@@ -1,12 +1,14 @@
 # Revised consolidated action list
 
-## Priority 1 — Login and password recovery
+## Priority 1 — Login and password recovery — Complete
 
-Add accessible Show/Hide password controls to every password field.
-Remove the temporary-password field from forced first-login setup.
-Add a visible “Forgot password?” link and manager-assisted recovery screen.
-Add confirmation after a voluntary password change.
-Translate raw authentication and password errors into actionable language.
+- [x] Add accessible Show/Hide password controls to every password field.
+- [x] Remove the temporary-password field from forced first-login setup.
+- [x] Add a visible “Forgot password?” link and a 30-minute, single-use email recovery flow for active users, while preserving Manager/Admin-assisted password reset.
+- [x] Add confirmation after a voluntary password change.
+- [x] Translate raw authentication and password errors into actionable language.
+
+Completed and deployed on August 1, 2026 in `44d1cd4`. Focused validation passed 25 API tests and 12 web tests. Production Resend delivery was confirmed, including the eligible-user restriction and single-use reset link.
 
 ## Priority 2 — Assignment workflow
 
@@ -83,4 +85,4 @@ These require operational verification or a product decision:
 Confirm the display-name backfill actually ran in production.
 Verify whether the CRM Sold column is daily or cumulative using a real import.
 Keep “Mark a lead sold” deferred until CRM-total versus lead-attribution semantics are decided.
-No files were changed. Current web validation passed 73/73 tests, and the production build passed. It ran under Node 26.5.0 while the repository declares Node 22.x; no live browser or production verification was performed.
+Priority 1 has been implemented and production-verified. The remaining priorities were not re-audited as part of this status update. Focused validation ran under Node 26.5.0 while the repository declares Node 22.x.
