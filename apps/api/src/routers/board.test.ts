@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
 import { t } from '../trpc/router'
@@ -36,6 +36,9 @@ describe('board.roster — decidedBy', () => {
   let repWithSystemStatus: string
   let repWithNoRowToday: string
   let disabledRep: string
+  let fixtureCycleId: string
+  let fixtureSkipKey: string
+  const servedAt = new Date('2026-08-01T13:15:00.000Z')
   const fixtureUserIds: string[] = []
   const fixtureRepIds: string[] = []
   const userByRep = new Map<string, string>()
@@ -87,6 +90,27 @@ describe('board.roster — decidedBy', () => {
       },
     ])
     // repWithNoRowToday deliberately gets no rep_daily_status row for today.
+
+    const openCycle = await db.query.rotationCycle.findFirst({
+      where: isNull(schema.rotationCycle.closedAt),
+    })
+    fixtureCycleId = openCycle?.id ?? (await db.insert(schema.rotationCycle).values({}).returning())[0].id
+    fixtureSkipKey = `board-test-skip-${stamp}`
+
+    await db.insert(schema.rrCycleAssignments).values({
+      cycleId: fixtureCycleId,
+      repId: repWithSystemStatus,
+      assignedAt: servedAt,
+    })
+    await db.insert(schema.assignmentEvents).values({
+      leadId: null,
+      repId: repWithSystemStatus,
+      eventType: 'SKIP',
+      cycleNo: fixtureCycleId,
+      creditDelta: -1,
+      queueSnapshot: [],
+      idempotencyKey: fixtureSkipKey,
+    })
   })
 
   afterAll(async () => {
@@ -94,6 +118,11 @@ describe('board.roster — decidedBy', () => {
     // assignLead cannot select one of these reps and then lose it before writing status.
     await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(${42_100_1})`)
+      await tx.delete(schema.assignmentEvents).where(eq(schema.assignmentEvents.idempotencyKey, fixtureSkipKey))
+      await tx.delete(schema.rrCycleAssignments).where(and(
+        eq(schema.rrCycleAssignments.cycleId, fixtureCycleId),
+        eq(schema.rrCycleAssignments.repId, repWithSystemStatus),
+      ))
       await tx.delete(schema.repDailyStatus).where(inArray(schema.repDailyStatus.repId, fixtureRepIds))
       await tx.delete(schema.salesRep).where(inArray(schema.salesRep.id, fixtureRepIds))
       await tx.delete(schema.appUser).where(inArray(schema.appUser.id, fixtureUserIds))
@@ -122,6 +151,18 @@ describe('board.roster — decidedBy', () => {
     // toBe(null) fails on undefined too — this is what catches a silent regression to
     // `decidedBy` being dropped or resolving to undefined instead of null.
     expect(entry?.decidedBy).toBe(null)
+  })
+
+  it('adds active-cycle service metadata without leaking the skip reason', async () => {
+    const roster = await caller().roster()
+    const entry = roster.find((row) => row.repId === repWithSystemStatus)
+
+    expect(entry).toMatchObject({
+      servedAt: servedAt.toISOString(),
+      skippedThisCycle: true,
+    })
+    expect(entry).not.toHaveProperty('skipReason')
+    expect(entry).not.toHaveProperty('reasonNote')
   })
 
   it('hides disabled accounts but keeps active ineligible reps visible', async () => {

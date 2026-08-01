@@ -36,6 +36,8 @@ export function countDeactivationEpisodes(statuses: TeamStatusRow[]): number {
 async function computeRoster(): Promise<{
   ranked: RepRankInput[]
   decidedByRep: Map<string, 'SYSTEM' | 'MANAGER_OVERRIDE'>
+  servedAtByRep: Map<string, Date>
+  skippedRepIds: Set<string>
 }> {
   const bDate = businessDate(new Date())
   const pKey = periodKey(bDate)
@@ -47,6 +49,16 @@ async function computeRoster(): Promise<{
   const servedThisCycle = cycle
     ? await db.query.rrCycleAssignments.findMany({ where: eq(schema.rrCycleAssignments.cycleId, cycle.id) })
     : []
+  const servedAtByRep = new Map(servedThisCycle.map((row: any) => [row.repId, row.assignedAt]))
+  const skipEvents = cycle
+    ? await db.query.assignmentEvents.findMany({
+        where: and(
+          eq(schema.assignmentEvents.cycleNo, cycle.id),
+          eq(schema.assignmentEvents.eventType, 'SKIP'),
+        ),
+      })
+    : []
+  const skippedRepIds = new Set(skipEvents.flatMap((event: any) => event.repId ? [event.repId] : []))
 
   const statusByRep = new Map(statuses.map((s: any) => [s.repId, s]))
   const counterByRep = new Map(counters.map((c: any) => [c.repId, c]))
@@ -72,12 +84,12 @@ async function computeRoster(): Promise<{
     statuses.map((s: any) => [s.repId, s.decidedBy]),
   )
 
-  return { ranked: rankReps(rankInputs), decidedByRep }
+  return { ranked: rankReps(rankInputs), decidedByRep, servedAtByRep, skippedRepIds }
 }
 
 export const boardRouter = router({
   roster: publicProcedure.use(requirePerm('board.view')).query(async () => {
-    const { ranked, decidedByRep } = await computeRoster()
+    const { ranked, decidedByRep, servedAtByRep, skippedRepIds } = await computeRoster()
     const repRows = await selectActiveReps(db)
     const nameById = new Map(repRows.map((r: any) => [r.id, r.displayName]))
     return ranked.map((r) => ({
@@ -85,6 +97,8 @@ export const boardRouter = router({
       displayName: nameById.get(r.repId) ?? 'Unknown',
       // null when the rep has no rep_daily_status row for today.
       decidedBy: decidedByRep.get(r.repId) ?? null,
+      servedAt: servedAtByRep.get(r.repId)?.toISOString() ?? null,
+      skippedThisCycle: skippedRepIds.has(r.repId),
     }))
   }),
 
