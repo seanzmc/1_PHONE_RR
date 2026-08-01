@@ -22,6 +22,8 @@ export type AssignLeadResult = {
   assignedRepId: string | null
   queueSnapshot: RepRankInput[]
   duplicatePhone: boolean
+  customerName: string
+  assignedAt: string
 }
 
 function hashRepIdToSeed(repId: string): number {
@@ -41,11 +43,16 @@ export async function assignLead(db: DB, input: AssignLeadInput): Promise<Assign
     })
     if (existing) {
       const existingLead = await tx.query.lead.findFirst({ where: eq(schema.lead.id, existing.leadId!) })
+      const existingCustomer = existingLead
+        ? await tx.query.customer.findFirst({ where: eq(schema.customer.id, existingLead.customerId) })
+        : null
       return {
         leadId: existing.leadId!,
         assignedRepId: existingLead?.assignedRepId ?? null,
         queueSnapshot: existing.queueSnapshot as RepRankInput[],
         duplicatePhone: false,
+        customerName: existingCustomer?.fullName ?? input.customerName,
+        assignedAt: existingLead?.createdAt.toISOString() ?? existing.createdAt.toISOString(),
       }
     }
 
@@ -142,7 +149,14 @@ export async function assignLead(db: DB, input: AssignLeadInput): Promise<Assign
         })
         .returning()
       await tx.insert(schema.unassignedQueue).values({ leadId: lead.id, reason: 'NO_ELIGIBLE_REP' })
-      return { leadId: lead.id, assignedRepId: null, queueSnapshot: ranked, duplicatePhone: !!dup }
+      return {
+        leadId: lead.id,
+        assignedRepId: null,
+        queueSnapshot: ranked,
+        duplicatePhone: !!dup,
+        customerName: customer.fullName,
+        assignedAt: lead.createdAt.toISOString(),
+      }
     }
 
     // 11. write lead + ASSIGN ledger event + bump counters + consume cycle slot, same transaction
@@ -188,7 +202,14 @@ export async function assignLead(db: DB, input: AssignLeadInput): Promise<Assign
       await tx.insert(schema.rotationCycle).values({})
     }
 
-    return { leadId: lead.id, assignedRepId: chosen.repId, queueSnapshot: ranked, duplicatePhone: !!dup }
+    return {
+      leadId: lead.id,
+      assignedRepId: chosen.repId,
+      queueSnapshot: ranked,
+      duplicatePhone: !!dup,
+      customerName: customer.fullName,
+      assignedAt: lead.createdAt.toISOString(),
+    }
   })
 
   // 13. publish realtime event AFTER commit, never inside the transaction

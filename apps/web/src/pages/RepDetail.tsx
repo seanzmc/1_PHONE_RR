@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { mutate, query } from '../lib/api'
+import { mutationErrorMessage } from '../lib/mutationError'
 import { canMutateInCurrentView, useAuthStore } from '../state/authStore'
 import { digitsOnly } from '../state/clipboardStore'
 import { Badge, Button, Card, Field, Input, MetricCard, Select, Table, Textarea } from '../ui'
@@ -158,7 +159,7 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
       })
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'saving the note failed')
+      setError(mutationErrorMessage(err, 'The note could not be saved. Try again.'))
     }
   }
 
@@ -189,7 +190,7 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
       setMetricTarget(null)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'metric edit failed')
+      setError(mutationErrorMessage(err, 'The activity correction could not be saved. Try again.'))
     }
   }
 
@@ -222,7 +223,7 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
       closeReassign()
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'reassignment failed')
+      setError(mutationErrorMessage(err, 'The lead could not be reassigned. Try again.'))
     }
   }
 

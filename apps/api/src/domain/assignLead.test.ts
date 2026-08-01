@@ -34,6 +34,8 @@ describe('assignLead', () => {
     })
     expect(result.assignedRepId).toBeTruthy()
     expect(repIds).toContain(result.assignedRepId)
+    expect(result.customerName).toBe('Jane Doe')
+    expect(new Date(result.assignedAt).toString()).not.toBe('Invalid Date')
 
     const events = await db
       .select()

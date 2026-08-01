@@ -1,11 +1,18 @@
 import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
-import { assignLeadInputSchema, voidLeadInputSchema, reassignLeadInputSchema, hasPermission } from '@phoneup/contracts'
+import {
+  assignLeadInputSchema,
+  skipLeadInputSchema,
+  voidLeadInputSchema,
+  reassignLeadInputSchema,
+  hasPermission,
+} from '@phoneup/contracts'
 import { businessDate } from '@phoneup/core'
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
 import { assignLead } from '../domain/assignLead'
+import { skipLead } from '../domain/skipLead'
 import { voidLead } from '../domain/voidLead'
 import { reassignLead } from '../domain/reassignLead'
 
@@ -25,6 +32,24 @@ export const assignmentRouter = router({
     .input(reassignLeadInputSchema)
     .mutation(async ({ ctx, input }) => {
       return reassignLead(db, { ...input, actorUserId: ctx.session.userId })
+    }),
+
+  skip: publicProcedure
+    .use(requirePerm('lead.skip'))
+    .input(skipLeadInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const lead = await db.query.lead.findFirst({ where: eq(schema.lead.id, input.leadId) })
+      if (!lead) throw new TRPCError({ code: 'NOT_FOUND' })
+
+      const isOwnAssignment = lead.createdBy === ctx.session.userId
+      const canOverride = hasPermission(ctx.session.role, 'lead.assign.override')
+      if (!isOwnAssignment && !canOverride) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'can only skip reps on your own leads' })
+      }
+      if (lead.businessDate !== businessDate(new Date()) && !canOverride) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'skip window has closed for this business day' })
+      }
+      return skipLead(db, { ...input, actorUserId: ctx.session.userId })
     }),
 
   void: publicProcedure

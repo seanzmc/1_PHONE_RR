@@ -4,7 +4,7 @@ import { hasPermission } from './permissions'
 describe('hasPermission', () => {
   it('ADMIN has every permission', () => {
     const all = [
-      'board.view', 'lead.assign', 'lead.void', 'lead.assign.override',
+      'board.view', 'lead.assign', 'lead.skip', 'lead.void', 'lead.assign.override',
       'rep.override', 'schedule.manage', 'activity.self', 'reactivation.review',
       'reactivation.self', 'audit.view', 'user.manage', 'admin.*',
     ] as const
@@ -24,8 +24,9 @@ describe('hasPermission', () => {
     expect(hasPermission('REP', 'user.manage')).toBe(false)
   })
 
-  it('BDC can assign/void but not override or rep status', () => {
+  it('BDC can assign, skip and void but not override or rep status', () => {
     expect(hasPermission('BDC', 'lead.assign')).toBe(true)
+    expect(hasPermission('BDC', 'lead.skip')).toBe(true)
     expect(hasPermission('BDC', 'lead.void')).toBe(true)
     expect(hasPermission('BDC', 'lead.assign.override')).toBe(false)
     expect(hasPermission('BDC', 'rep.override')).toBe(false)
@@ -35,6 +36,7 @@ describe('hasPermission', () => {
     expect(hasPermission('REP', 'activity.self')).toBe(true)
     expect(hasPermission('REP', 'reactivation.self')).toBe(true)
     expect(hasPermission('REP', 'lead.assign')).toBe(false)
+    expect(hasPermission('REP', 'lead.skip')).toBe(false)
     expect(hasPermission('REP', 'reactivation.review')).toBe(false)
   })
 })

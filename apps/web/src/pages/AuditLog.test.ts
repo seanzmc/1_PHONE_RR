@@ -18,6 +18,11 @@ describe('audit event presentation', () => {
     expect(formatAuditAction('rep.override')).toBe('Changed rep status')
   })
 
+  it('names a manual skip as a lead pass, not an automatic status skip', () => {
+    const formatAuditAction = (AuditLogModule as any).formatAuditAction
+    expect(formatAuditAction('lead.skip')).toBe('Skipped rep and passed lead')
+  })
+
   it('summarizes changed fields without making raw JSON the primary view', () => {
     const summarizeAuditChanges = (AuditLogModule as any).summarizeAuditChanges
     expect(summarizeAuditChanges).toBeTypeOf('function')

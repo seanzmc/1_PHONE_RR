@@ -13,6 +13,13 @@ export const voidLeadInputSchema = z.object({
   reasonNote: z.string().min(1),
 })
 
+export const skipLeadInputSchema = z.object({
+  leadId: z.string().uuid(),
+  expectedRepId: z.string().uuid(),
+  reasonNote: z.string().trim().min(1),
+  idempotencyKey: z.string().uuid(),
+})
+
 export const reassignLeadInputSchema = z.object({
   leadId: z.string().uuid(),
   targetRepId: z.string().uuid(),
@@ -123,6 +130,7 @@ export const setDaysOffInputSchema = z.object({
 
 export type AssignLeadInput = z.infer<typeof assignLeadInputSchema>
 export type VoidLeadInput = z.infer<typeof voidLeadInputSchema>
+export type SkipLeadInput = z.infer<typeof skipLeadInputSchema>
 export type ReassignLeadInput = z.infer<typeof reassignLeadInputSchema>
 export type StatusOverrideInput = z.infer<typeof statusOverrideInputSchema>
 export type BulkStatusOverrideInput = z.infer<typeof bulkStatusOverrideInputSchema>

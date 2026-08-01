@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { mutate, query } from '../lib/api'
+import { mutationErrorMessage } from '../lib/mutationError'
 import { useBoardRealtime } from '../lib/useBoardRealtime'
 import { digitsOnly, useClipboardStore } from '../state/clipboardStore'
 import { canMutateInCurrentView, isReadOnlyViewAs, useAuthStore } from '../state/authStore'
@@ -36,6 +37,8 @@ type AssignResult = {
   assignedRepId: string | null
   queueSnapshot: RosterEntry[]
   duplicatePhone: boolean
+  customerName: string
+  assignedAt: string
 }
 
 function loadRoster(): Promise<RosterEntry[]> {
@@ -85,6 +88,29 @@ export function copyOutcomeMessage(succeeded: boolean): string {
     : 'Auto-copy blocked — press Alt+C or click Copy phone.'
 }
 
+export function canSubmitSkip(reason: string, skipping: boolean, readOnly: boolean): boolean {
+  return !!reason.trim() && !skipping && !readOnly
+}
+
+export function formatAssignmentTime(assignedAt: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'America/New_York',
+  }).format(new Date(assignedAt))
+}
+
+export function resultGuidance(result: Pick<AssignResult, 'assignedRepId' | 'duplicatePhone'>): string[] {
+  const guidance: string[] = []
+  if (!result.assignedRepId) {
+    guidance.push('The lead is saved in the unassigned queue. Keep the customer on the line and contact a Manager.')
+  }
+  if (result.duplicatePhone) {
+    guidance.push('Confirm the customer details and tell the rep this may be a duplicate before continuing.')
+  }
+  return guidance
+}
+
 /**
  * Four buckets, non-leaky — every rep appears in exactly one (design pass §B):
  *   nextUp   : the single rep the next lead goes to
@@ -117,6 +143,11 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   const [voidReasonOpen, setVoidReasonOpen] = useState(false)
   const [voidReason, setVoidReason] = useState('')
   const [voidError, setVoidError] = useState<string | null>(null)
+  const [skipReasonOpen, setSkipReasonOpen] = useState(false)
+  const [skipReason, setSkipReason] = useState('')
+  const [skipError, setSkipError] = useState<string | null>(null)
+  const [skipKey, setSkipKey] = useState('')
+  const [skipping, setSkipping] = useState(false)
   const [copyFailed, setCopyFailed] = useState(false)
   const [copyNotice, setCopyNotice] = useState<string | null>(null)
   const [hasLoadedRoster, setHasLoadedRoster] = useState(false)
@@ -131,6 +162,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
 
   const readOnly = isReadOnlyViewAs(viewAsUserId)
   const canVoid = canMutateInCurrentView(hasPermission('lead.void'), viewAsUserId)
+  const canSkip = canMutateInCurrentView(hasPermission('lead.skip'), viewAsUserId)
   const formErrors = assignFormErrors(name, phone)
   const formValid = !formErrors.name && !formErrors.phone
 
@@ -193,6 +225,10 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
     setVoidReasonOpen(false)
     setVoidReason('')
     setVoidError(null)
+    setSkipReasonOpen(false)
+    setSkipReason('')
+    setSkipError(null)
+    setSkipKey('')
   }, [lastResult])
 
   async function handleAssign() {
@@ -228,7 +264,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
       setTouched({ name: false, phone: false })
       refreshRoster()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'assign failed')
+      setError(mutationErrorMessage(err, 'The assignment could not be completed. Try again.'))
     } finally {
       setAssigning(false)
     }
@@ -290,7 +326,44 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
       refreshRoster()
       nameRef.current?.focus()
     } catch (err) {
-      setVoidError(err instanceof Error ? err.message : 'void failed')
+      setVoidError(mutationErrorMessage(err, 'This assignment could not be voided. Try again.'))
+    }
+  }
+
+  function openSkip() {
+    if (!lastResult?.assignedRepId || !canSkip) return
+    setSkipReason('')
+    setSkipError(null)
+    setSkipKey(crypto.randomUUID())
+    setSkipReasonOpen(true)
+  }
+
+  function closeSkip() {
+    if (skipping) return
+    setSkipReasonOpen(false)
+    setSkipReason('')
+    setSkipError(null)
+    setSkipKey('')
+  }
+
+  async function handleSkip() {
+    if (!lastResult?.assignedRepId || !skipKey || !canSkip) return
+    if (!canSubmitSkip(skipReason, skipping, readOnly)) return
+    setSkipping(true)
+    setSkipError(null)
+    try {
+      const result = await mutate<AssignResult>('assignment.skip', {
+        leadId: lastResult.leadId,
+        expectedRepId: lastResult.assignedRepId,
+        reasonNote: skipReason,
+        idempotencyKey: skipKey,
+      })
+      setLastResult(result)
+      refreshRoster()
+    } catch (err) {
+      setSkipError(mutationErrorMessage(err, 'This rep could not be skipped. Try again.'))
+    } finally {
+      setSkipping(false)
     }
   }
 
@@ -306,7 +379,20 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
   return (
     <div className="ui-page ui-split" onKeyDown={handleKeyDown}>
       <div>
-        <h2>Assign Lead</h2>
+        <div className="ui-assign-header">
+          <div>
+            <h2>Assign Lead</h2>
+            <p className="ui-hint">Enter the customer, then assign when you are ready. Opening this page does not lock the rotation.</p>
+          </div>
+          <Button
+            className="ui-assign-action"
+            variant="primary"
+            onClick={handleAssign}
+            disabled={!canSubmitWithRoster(formValid, hasLoadedRoster, assigning, readOnly)}
+          >
+            {assigning ? 'Assigning…' : 'Assign (Ctrl+Enter)'}
+          </Button>
+        </div>
         <div className="ui-stack">
           <Field label="Name *" error={touched.name ? formErrors.name : null}>
             <Input
@@ -349,31 +435,32 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
             />
           </Field>
           {error && <p className="ui-error" role="alert">{error}</p>}
-          <Button
-            variant="primary"
-            onClick={handleAssign}
-            disabled={!canSubmitWithRoster(formValid, hasLoadedRoster, assigning, readOnly)}
-          >
-            {assigning ? 'Assigning…' : 'Assign (Ctrl+Enter)'}
-          </Button>
         </div>
 
         {lastResult && (
           <Card title="Just Assigned" className="ui-stack">
             <div role="status" aria-live="polite">
               {lastResult.assignedRepId ? (
-                <p>
-                  Assigned to <strong>{nameById.get(lastResult.assignedRepId) ?? lastResult.assignedRepId}</strong>
+                <p><strong>{lastResult.customerName}</strong> assigned to{' '}
+                  <strong>{nameById.get(lastResult.assignedRepId) ?? lastResult.assignedRepId}</strong>{' '}
+                  at {formatAssignmentTime(lastResult.assignedAt)}.
                 </p>
               ) : (
-                <p>No eligible rep — lead queued as unassigned.</p>
+                <p><strong>{lastResult.customerName}</strong> was not assigned at {formatAssignmentTime(lastResult.assignedAt)}.</p>
               )}
-              {lastResult.duplicatePhone && <p className="ui-warn">Warning: this phone number already exists.</p>}
+              {resultGuidance(lastResult).map((message) => (
+                <p key={message} className={lastResult.duplicatePhone ? 'ui-warn' : 'ui-muted'}>{message}</p>
+              ))}
             </div>
             {lastResult.assignedRepId && (
               <>
                 <div className="ui-row">
                   <Button onClick={handleCopyClick}>Copy phone (digits only)</Button>
+                  {canSkip && (
+                    <Button onClick={openSkip} disabled={skipping}>
+                      {skipping ? 'Skipping…' : 'Skip rep'}
+                    </Button>
+                  )}
                   {canVoid && (
                     <Button variant="danger" onClick={() => setVoidReasonOpen(true)}>
                       Void (Alt+V)
@@ -420,7 +507,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
               {nextUp ? (
                 <div className="ui-nextup">{repName(nextUp)}</div>
               ) : (
-                <p className="ui-muted">No eligible unserved rep — the next lead queues as unassigned.</p>
+                <p className="ui-muted">No eligible unserved rep. Ask a Manager to confirm availability before assigning; otherwise the lead will be saved unassigned.</p>
               )}
             </div>
 
@@ -430,7 +517,7 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
                 <span className="ui-muted">{onDeck.length}</span>
               </div>
               {onDeck.length === 0 ? (
-                <p className="ui-muted">Nobody else is unserved this cycle.</p>
+                <p className="ui-muted">{nextUp ? 'Next Up is the final unserved rep; the rotation starts a new cycle after them.' : 'No additional unserved reps are available. Ask a Manager to check roster status.'}</p>
               ) : (
                 <ul className="ui-list">
                   {onDeck.map((r, i) => (
@@ -485,6 +572,21 @@ export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => voi
           </>
         )}
       </div>
+
+      <Modal
+        open={skipReasonOpen}
+        title={`Skip ${lastResult?.assignedRepId ? nameById.get(lastResult.assignedRepId) ?? 'this rep' : 'this rep'}?`}
+        onClose={closeSkip}
+        onSubmit={handleSkip}
+        submitDisabled={!canSubmitSkip(skipReason, skipping, readOnly)}
+        submitLabel={skipping ? 'Skipping…' : 'Skip rep and pass lead'}
+        hint="Review the rep and reason, then click Skip rep and pass lead. Esc cancels."
+      >
+        <p>The same lead will pass to the next available rep. This rep stays served for the current cycle.</p>
+        <Field label="Skip reason" error={skipError}>
+          <Input value={skipReason} onChange={(event) => setSkipReason(event.target.value)} disabled={skipping} />
+        </Field>
+      </Modal>
 
       <Modal
         open={voidReasonOpen}

@@ -11,6 +11,7 @@ const ACTION_LABELS: Record<string, string> = {
   'activity.metric.edit': 'Corrected activity metrics',
   'lead.note.set': 'Updated lead note',
   'lead.reassign': 'Reassigned lead',
+  'lead.skip': 'Skipped rep and passed lead',
   'lead.void': 'Voided lead',
   'policy.set': 'Updated activity policy',
   'rep.days_off.set': 'Changed recurring day off',

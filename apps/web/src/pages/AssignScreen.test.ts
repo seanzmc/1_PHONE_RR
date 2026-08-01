@@ -7,7 +7,10 @@ import {
   assignFormErrors,
   bucketRoster,
   canSubmitWithRoster,
+  canSubmitSkip,
   copyOutcomeMessage,
+  formatAssignmentTime,
+  resultGuidance,
 } from './AssignScreen'
 
 type Entry = Parameters<typeof bucketRoster>[0][number]
@@ -148,5 +151,33 @@ describe('copyOutcomeMessage', () => {
   it('provides explicit assistive-technology feedback for copy success and failure', () => {
     expect(copyOutcomeMessage(true)).toBe('Phone number copied — Alt+C copies it again.')
     expect(copyOutcomeMessage(false)).toBe('Auto-copy blocked — press Alt+C or click Copy phone.')
+  })
+})
+
+describe('skip confirmation guard', () => {
+  it('requires a reason and blocks repeated submissions while one skip is in flight', () => {
+    expect(canSubmitSkip('', false, false)).toBe(false)
+    expect(canSubmitSkip('   ', false, false)).toBe(false)
+    expect(canSubmitSkip('Rep stepped away', true, false)).toBe(false)
+    expect(canSubmitSkip('Rep stepped away', false, true)).toBe(false)
+    expect(canSubmitSkip('Rep stepped away', false, false)).toBe(true)
+  })
+})
+
+describe('assignment result guidance', () => {
+  it('shows the authoritative Eastern assignment time', () => {
+    expect(formatAssignmentTime('2026-08-01T14:05:00.000Z')).toBe('10:05 AM')
+  })
+
+  it('gives an actionable duplicate-number next step', () => {
+    expect(resultGuidance({ assignedRepId: 'rep-1', duplicatePhone: true })).toContain(
+      'Confirm the customer details and tell the rep this may be a duplicate before continuing.',
+    )
+  })
+
+  it('explains that an unassigned lead was preserved and what to do next', () => {
+    expect(resultGuidance({ assignedRepId: null, duplicatePhone: false })).toContain(
+      'The lead is saved in the unassigned queue. Keep the customer on the line and contact a Manager.',
+    )
   })
 })

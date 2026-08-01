@@ -1,6 +1,7 @@
 export { hasPermission, type Role, type Permission } from './permissions'
 export {
   assignLeadInputSchema,
+  skipLeadInputSchema,
   voidLeadInputSchema,
   reassignLeadInputSchema,
   statusOverrideInputSchema,
@@ -16,6 +17,7 @@ export {
   setLeadNoteInputSchema,
   setDaysOffInputSchema,
   type AssignLeadInput,
+  type SkipLeadInput,
   type VoidLeadInput,
   type ReassignLeadInput,
   type StatusOverrideInput,
