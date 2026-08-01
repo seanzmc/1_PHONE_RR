@@ -7,15 +7,16 @@ import { canMutateInCurrentView, isReadOnlyViewAs, useAuthStore } from '../state
 import { Badge, Button, Card, Field, Input, Textarea } from '../ui'
 import { Modal } from '../ui/Modal'
 import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
-
-type RosterEntry = {
-  repId: string
-  displayName: string
-  isEligible: boolean
-  ineligibleReason?: string
-  servedThisCycle: boolean
-  monthlyLoad: number
-}
+import {
+  assignFormErrors,
+  bucketRoster,
+  canSubmitSkip,
+  canSubmitWithRoster,
+  formatAssignmentTime,
+  resultGuidance,
+  type AssignResult,
+  type RosterEntry,
+} from './assignment/model'
 
 export function RosterRepName({
   entry,
@@ -32,15 +33,6 @@ export function RosterRepName({
   )
 }
 
-type AssignResult = {
-  leadId: string
-  assignedRepId: string | null
-  queueSnapshot: RosterEntry[]
-  duplicatePhone: boolean
-  customerName: string
-  assignedAt: string
-}
-
 function loadRoster(): Promise<RosterEntry[]> {
   return query<RosterEntry[]>('board.roster')
 }
@@ -52,83 +44,10 @@ function toE164(phone: string): string {
   return phone.startsWith('+') ? phone : `+1${phone}`
 }
 
-/**
- * Client-side mirror of the name/phone rules in assignLeadInputSchema. Without this, an
- * invalid submit reaches tRPC and the stringified Zod issues array renders as the error —
- * unreadable for a BDC agent mid-call. `toE164` accepts exactly these two digit shapes.
- */
-export function assignFormErrors(name: string, phone: string): { name?: string; phone?: string } {
-  const errors: { name?: string; phone?: string } = {}
-  if (!name.trim()) errors.name = "Enter the customer's name."
-  const digits = phone.replace(/\D/g, '')
-  if (!(digits.length === 10 || (digits.length === 11 && digits.startsWith('1')))) {
-    errors.phone = 'Enter the 10-digit phone number — we add the +1 for you.'
-  }
-  return errors
-}
-
-export function assignEnterAction(field: 'name' | 'phone' | 'notes'): 'phone' | 'notes' | 'assign' {
-  if (field === 'name') return 'phone'
-  if (field === 'phone') return 'notes'
-  return 'assign'
-}
-
-export function canSubmitWithRoster(
-  formValid: boolean,
-  hasLoadedRoster: boolean,
-  assigning = false,
-  readOnly = false,
-): boolean {
-  return formValid && hasLoadedRoster && !assigning && !readOnly
-}
-
 export function copyOutcomeMessage(succeeded: boolean): string {
   return succeeded
     ? 'Phone number copied — Alt+C copies it again.'
     : 'Auto-copy blocked — press Alt+C or click Copy phone.'
-}
-
-export function canSubmitSkip(reason: string, skipping: boolean, readOnly: boolean): boolean {
-  return !!reason.trim() && !skipping && !readOnly
-}
-
-export function formatAssignmentTime(assignedAt: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: 'America/New_York',
-  }).format(new Date(assignedAt))
-}
-
-export function resultGuidance(result: Pick<AssignResult, 'assignedRepId' | 'duplicatePhone'>): string[] {
-  const guidance: string[] = []
-  if (!result.assignedRepId) {
-    guidance.push('The lead is saved in the unassigned queue. Keep the customer on the line and contact a Manager.')
-  }
-  if (result.duplicatePhone) {
-    guidance.push('Confirm the customer details and tell the rep this may be a duplicate before continuing.')
-  }
-  return guidance
-}
-
-/**
- * Four buckets, non-leaky — every rep appears in exactly one (design pass §B):
- *   nextUp   : the single rep the next lead goes to
- *   onDeck   : eligible AND unserved this cycle, numbered from 2
- *   served   : eligible but already served this cycle (with their ups count)
- *   unavailable: not eligible (with reason)
- * Pure display partition — the ranking itself is untouched.
- */
-export function bucketRoster(roster: RosterEntry[]) {
-  const eligible = roster.filter((r) => r.isEligible)
-  const unserved = eligible.filter((r) => !r.servedThisCycle)
-  const [nextUp, ...onDeck] = unserved
-  return {
-    nextUp: nextUp ?? null,
-    onDeck,
-    served: eligible.filter((r) => r.servedThisCycle),
-    unavailable: roster.filter((r) => !r.isEligible),
-  }
 }
 
 export function AssignScreen({ onOpenRep }: { onOpenRep?: (repId: string) => void }) {

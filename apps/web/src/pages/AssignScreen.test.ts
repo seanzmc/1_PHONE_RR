@@ -1,90 +1,23 @@
-import { describe, it, expect } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
 import * as AssignScreenModule from './AssignScreen'
-import {
-  assignEnterAction,
-  assignFormErrors,
-  bucketRoster,
-  canSubmitWithRoster,
-  canSubmitSkip,
-  copyOutcomeMessage,
-  formatAssignmentTime,
-  resultGuidance,
-} from './AssignScreen'
+import type { RosterEntry } from './assignment/model'
 
-type Entry = Parameters<typeof bucketRoster>[0][number]
-
-function entry(over: Partial<Entry> & { repId: string }): Entry {
+function entry(over: Partial<RosterEntry> & { repId: string }): RosterEntry {
   return {
     displayName: over.repId,
     isEligible: true,
     servedThisCycle: false,
     monthlyLoad: 0,
+    lastAssignedAt: null,
+    rotationSeed: 0,
+    decidedBy: null,
+    servedAt: null,
+    skippedThisCycle: false,
     ...over,
   }
 }
-
-describe('bucketRoster', () => {
-  it('puts the first eligible unserved rep in Next Up and the rest On Deck', () => {
-    const { nextUp, onDeck } = bucketRoster([
-      entry({ repId: 'a' }),
-      entry({ repId: 'b' }),
-      entry({ repId: 'c' }),
-    ])
-    expect(nextUp?.repId).toBe('a')
-    expect(onDeck.map((r) => r.repId)).toEqual(['b', 'c'])
-  })
-
-  it('keeps served reps OUT of On Deck — the leak this replaces', () => {
-    const { nextUp, onDeck, served } = bucketRoster([
-      entry({ repId: 'unserved' }),
-      entry({ repId: 'alreadyServed', servedThisCycle: true, monthlyLoad: 3 }),
-    ])
-    expect(nextUp?.repId).toBe('unserved')
-    expect(onDeck).toEqual([])
-    expect(served.map((r) => r.repId)).toEqual(['alreadyServed'])
-    expect(served[0].monthlyLoad).toBe(3)
-  })
-
-  it('is non-leaky: every rep lands in exactly one bucket', () => {
-    const roster = [
-      entry({ repId: 'a' }),
-      entry({ repId: 'b' }),
-      entry({ repId: 'c', servedThisCycle: true }),
-      entry({ repId: 'd', isEligible: false, ineligibleReason: 'day off' }),
-      entry({ repId: 'e', isEligible: false, servedThisCycle: true, ineligibleReason: 'WEEK_DQ' }),
-    ]
-    const { nextUp, onDeck, served, unavailable } = bucketRoster(roster)
-
-    const ids = [
-      ...(nextUp ? [nextUp.repId] : []),
-      ...onDeck.map((r) => r.repId),
-      ...served.map((r) => r.repId),
-      ...unavailable.map((r) => r.repId),
-    ]
-    expect(ids.length).toBe(roster.length)
-    expect(new Set(ids).size).toBe(roster.length)
-  })
-
-  it('an ineligible rep is Unavailable even if they were served this cycle', () => {
-    const { served, unavailable } = bucketRoster([
-      entry({ repId: 'dq', isEligible: false, servedThisCycle: true, ineligibleReason: 'WEEK_DQ' }),
-    ])
-    expect(served).toEqual([])
-    expect(unavailable.map((r) => r.repId)).toEqual(['dq'])
-  })
-
-  it('handles an all-served cycle with no Next Up', () => {
-    const { nextUp, onDeck, served } = bucketRoster([
-      entry({ repId: 'a', servedThisCycle: true }),
-      entry({ repId: 'b', servedThisCycle: true }),
-    ])
-    expect(nextUp).toBeNull()
-    expect(onDeck).toEqual([])
-    expect(served.length).toBe(2)
-  })
-})
 
 describe('RosterRepName', () => {
   it('renders the Next Up rep as the same drill-down button used by every other roster bucket', () => {
@@ -98,86 +31,5 @@ describe('RosterRepName', () => {
     )
     expect(html).toContain('<button')
     expect(html).toContain('David Johnson')
-  })
-})
-
-describe('assignFormErrors', () => {
-  it('requires a non-blank customer name', () => {
-    expect(assignFormErrors('', '5551234567').name).toBeTruthy()
-    expect(assignFormErrors('   ', '5551234567').name).toBeTruthy()
-    expect(assignFormErrors('Jane Doe', '5551234567').name).toBeUndefined()
-  })
-
-  it('accepts 10 digits, or 11 starting with 1 — the shapes toE164 can normalize', () => {
-    expect(assignFormErrors('Jane', '5551234567').phone).toBeUndefined()
-    expect(assignFormErrors('Jane', '(555) 123-4567').phone).toBeUndefined()
-    expect(assignFormErrors('Jane', '15551234567').phone).toBeUndefined()
-    expect(assignFormErrors('Jane', '+1 (555) 123-4567').phone).toBeUndefined()
-  })
-
-  it('rejects anything else before it can become a server-side Zod blob', () => {
-    expect(assignFormErrors('Jane', '').phone).toBeTruthy()
-    expect(assignFormErrors('Jane', '555123456').phone).toBeTruthy()
-    expect(assignFormErrors('Jane', '25551234567').phone).toBeTruthy()
-  })
-})
-
-describe('assignEnterAction', () => {
-  it('steps through name, phone and notes before assigning', () => {
-    expect(assignEnterAction('name')).toBe('phone')
-    expect(assignEnterAction('phone')).toBe('notes')
-    expect(assignEnterAction('notes')).toBe('assign')
-  })
-})
-
-describe('canSubmitWithRoster', () => {
-  it('blocks assignment until the first roster request succeeds', () => {
-    expect(canSubmitWithRoster(true, false)).toBe(false)
-    expect(canSubmitWithRoster(true, true)).toBe(true)
-    expect(canSubmitWithRoster(false, true)).toBe(false)
-  })
-
-  it('blocks repeated submissions while an assignment is in flight', () => {
-    expect(canSubmitWithRoster(true, true, true)).toBe(false)
-    expect(canSubmitWithRoster(true, true, false)).toBe(true)
-  })
-
-  it('blocks assignment while an admin is viewing another profile', () => {
-    expect(canSubmitWithRoster(true, true, false, true)).toBe(false)
-  })
-})
-
-describe('copyOutcomeMessage', () => {
-  it('provides explicit assistive-technology feedback for copy success and failure', () => {
-    expect(copyOutcomeMessage(true)).toBe('Phone number copied — Alt+C copies it again.')
-    expect(copyOutcomeMessage(false)).toBe('Auto-copy blocked — press Alt+C or click Copy phone.')
-  })
-})
-
-describe('skip confirmation guard', () => {
-  it('requires a reason and blocks repeated submissions while one skip is in flight', () => {
-    expect(canSubmitSkip('', false, false)).toBe(false)
-    expect(canSubmitSkip('   ', false, false)).toBe(false)
-    expect(canSubmitSkip('Rep stepped away', true, false)).toBe(false)
-    expect(canSubmitSkip('Rep stepped away', false, true)).toBe(false)
-    expect(canSubmitSkip('Rep stepped away', false, false)).toBe(true)
-  })
-})
-
-describe('assignment result guidance', () => {
-  it('shows the authoritative Eastern assignment time', () => {
-    expect(formatAssignmentTime('2026-08-01T14:05:00.000Z')).toBe('10:05 AM')
-  })
-
-  it('gives an actionable duplicate-number next step', () => {
-    expect(resultGuidance({ assignedRepId: 'rep-1', duplicatePhone: true })).toContain(
-      'Confirm the customer details and tell the rep this may be a duplicate before continuing.',
-    )
-  })
-
-  it('explains that an unassigned lead was preserved and what to do next', () => {
-    expect(resultGuidance({ assignedRepId: null, duplicatePhone: false })).toContain(
-      'The lead is saved in the unassigned queue. Keep the customer on the line and contact a Manager.',
-    )
   })
 })
