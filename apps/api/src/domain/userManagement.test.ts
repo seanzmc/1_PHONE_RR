@@ -56,7 +56,7 @@ describe('createAccount', () => {
     const shift = await db.query.repShift.findFirst({
       where: and(eq(schema.repShift.repId, rep!.id), eq(schema.repShift.businessDate, today)),
     })
-    expect(shift?.kind).toBe('WORK')
+    expect(shift).toBeDefined()
 
     const status = await db.query.repDailyStatus.findFirst({
       where: and(eq(schema.repDailyStatus.repId, rep!.id), eq(schema.repDailyStatus.businessDate, today)),

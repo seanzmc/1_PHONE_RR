@@ -5,8 +5,7 @@ describe('hasPermission', () => {
   it('ADMIN has every permission', () => {
     const all = [
       'board.view', 'lead.assign', 'lead.skip', 'lead.void', 'lead.assign.override',
-      'rep.override', 'schedule.manage', 'activity.self', 'reactivation.review',
-      'reactivation.self', 'audit.view', 'user.manage', 'admin.*',
+      'rep.override', 'schedule.manage', 'activity.self', 'audit.view', 'user.manage', 'admin.*',
     ] as const
     for (const p of all) expect(hasPermission('ADMIN', p)).toBe(true)
   })
@@ -32,11 +31,9 @@ describe('hasPermission', () => {
     expect(hasPermission('BDC', 'rep.override')).toBe(false)
   })
 
-  it('REP can only view board (self), log own activity, and self-reactivate', () => {
+  it('REP can only view board data and log own activity', () => {
     expect(hasPermission('REP', 'activity.self')).toBe(true)
-    expect(hasPermission('REP', 'reactivation.self')).toBe(true)
     expect(hasPermission('REP', 'lead.assign')).toBe(false)
     expect(hasPermission('REP', 'lead.skip')).toBe(false)
-    expect(hasPermission('REP', 'reactivation.review')).toBe(false)
   })
 })

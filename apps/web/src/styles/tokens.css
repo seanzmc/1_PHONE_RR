@@ -46,7 +46,9 @@
   --color-surface: #e9e9ea;
   --color-text: #1d1f20;
   --color-accent: #5980a6;
+  --color-accent-strong: #416180;
   --color-accent-2: #728fab;
+  --color-muted: #5d5d60;
   --color-divider: color-mix(in srgb, #1d1f20 16%, transparent);
 
   /* Tonal ramps — one shared lightness scale, so the same step of any role

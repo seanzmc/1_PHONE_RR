@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Role } from '@phoneup/contracts'
+import { hasPermission as roleHasPermission, type Role } from '@phoneup/contracts'
 import { useAuthStore } from './state/authStore'
 import { Login } from './pages/Login'
 import { StaffList } from './pages/StaffList'
@@ -19,8 +19,83 @@ import type { AssignmentDrawerProps } from './pages/assignment/AssignmentDrawer'
 export type Page = 'staff' | 'dashboard' | 'users' | 'audit' | 'me' | 'rep' | 'import' | 'password'
 export type PublicAuthPage = 'login' | 'recovery' | 'reset'
 
-export function landingPage(role: Role): Page {
-  return role === 'REP' ? 'me' : 'dashboard'
+type NavigationDestination = {
+  page: Page
+  label: string
+}
+
+export type RoleNavigationModel = {
+  canAssign: boolean
+  primary: NavigationDestination[]
+  management: NavigationDestination[]
+}
+
+export function landingPage(_role: Role): Page {
+  return 'dashboard'
+}
+
+export function navigationForRole(role: Role): RoleNavigationModel {
+  const primary: NavigationDestination[] = []
+  const management: NavigationDestination[] = []
+
+  if (roleHasPermission(role, 'board.view')) primary.push({ page: 'dashboard', label: 'Team Dashboard' })
+  if (role === 'REP') primary.push({ page: 'me', label: 'My Dashboard' })
+  if (roleHasPermission(role, 'rep.override')) primary.push({ page: 'staff', label: 'Staff List' })
+  if (roleHasPermission(role, 'activity.import')) primary.push({ page: 'import', label: 'Import Activity' })
+  if (roleHasPermission(role, 'user.manage')) management.push({ page: 'users', label: 'User Management' })
+  if (roleHasPermission(role, 'audit.view')) management.push({ page: 'audit', label: 'Audit Log' })
+
+  return {
+    canAssign: roleHasPermission(role, 'lead.assign'),
+    primary,
+    management,
+  }
+}
+
+export function RoleNavigation({
+  role,
+  activePage,
+  onNavigate,
+}: {
+  role: Role
+  activePage: Page
+  onNavigate: (page: Page) => void
+}) {
+  const navigation = navigationForRole(role)
+  const managementActive = navigation.management.some((destination) => destination.page === activePage)
+
+  return (
+    <>
+      {navigation.primary.map((destination) => (
+        <Button
+          key={destination.page}
+          variant="ghost"
+          aria-current={activePage === destination.page ? 'page' : undefined}
+          onClick={() => onNavigate(destination.page)}
+        >
+          {destination.label}
+        </Button>
+      ))}
+      {navigation.management.length > 0 && (
+        <details className="ui-management-menu">
+          <summary aria-current={managementActive ? 'page' : undefined}>Management</summary>
+          <div className="ui-menu-panel">
+            {navigation.management.map((destination) => (
+              <Button
+                key={destination.page}
+                size="sm"
+                variant="ghost"
+                aria-current={activePage === destination.page ? 'page' : undefined}
+                onClick={() => onNavigate(destination.page)}
+              >
+                {destination.label}
+              </Button>
+            ))}
+          </div>
+        </details>
+      )}
+    </>
+  )
 }
 
 export function canOpenAssignmentDrawer(canAssign: boolean, viewAsUserId: string | null): boolean {
@@ -194,60 +269,7 @@ function App() {
             Assign lead
           </Button>
         )}
-        {effectiveRole === 'REP' && (
-          <Button
-            variant="ghost"
-            aria-current={activePage === 'me' ? 'page' : undefined}
-            onClick={() => setPage('me')}
-          >
-            My Dashboard
-          </Button>
-        )}
-        {hasPermission('rep.override') && (
-          <Button
-            variant="ghost"
-            aria-current={activePage === 'staff' ? 'page' : undefined}
-            onClick={() => setPage('staff')}
-          >
-            Staff List
-          </Button>
-        )}
-        {effectiveRole !== 'REP' && hasPermission('board.view') && (
-          <Button
-            variant="ghost"
-            aria-current={activePage === 'dashboard' ? 'page' : undefined}
-            onClick={() => setPage('dashboard')}
-          >
-            Team Dashboard
-          </Button>
-        )}
-        {hasPermission('activity.import') && (
-          <Button
-            variant="ghost"
-            aria-current={activePage === 'import' ? 'page' : undefined}
-            onClick={() => setPage('import')}
-          >
-            Import Activity
-          </Button>
-        )}
-        {hasPermission('user.manage') && (
-          <Button
-            variant="ghost"
-            aria-current={activePage === 'users' ? 'page' : undefined}
-            onClick={() => setPage('users')}
-          >
-            Users
-          </Button>
-        )}
-        {hasPermission('audit.view') && (
-          <Button
-            variant="ghost"
-            aria-current={activePage === 'audit' ? 'page' : undefined}
-            onClick={() => setPage('audit')}
-          >
-            Audit Log
-          </Button>
-        )}
+        {effectiveRole && <RoleNavigation role={effectiveRole} activePage={activePage} onNavigate={setPage} />}
 
         <span className="ui-toolbar-spacer" />
 
@@ -285,7 +307,7 @@ function App() {
           <summary>
             {session.displayName ?? session.email} ({session.role})
           </summary>
-          <div className="ui-profile-menu-panel">
+          <div className="ui-menu-panel">
             <Button
               size="sm"
               variant="ghost"

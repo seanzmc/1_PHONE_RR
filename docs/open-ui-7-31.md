@@ -5,16 +5,7 @@ No core rotation-correctness work remains open. Sections A–K of `next-design-p
 Highest-value UI work:
 
 - Assignment result guidance: the card still omits the customer/time, and duplicate-number, unassigned-lead, and empty “Next Up” states lack actionable next steps. [AssignScreen.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/AssignScreen.tsx:351)
-- Reactivation requests: the REP dashboard now explains status and says to contact a manager, but the role contract still promises submitting reactivation requests and no request workflow exists. [CLAUDE.md](/Users/seandm/Projects/1_PHONE_RR/CLAUDE.md:35)
 - Known server errors still pass through raw outside Login. Void, activity, staff, user, note, metric, and reassignment errors have no shared user-facing translation layer. [AssignScreen.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/AssignScreen.tsx:215)
-- Navigation/accessibility shell:
-
-  - “My Dashboard” and “Dashboard” remain ambiguous.
-  - Active-nav CSS targets `.ui-nav-tab`, which the buttons never receive.
-  - The wrapped ADMIN profile menu can still clip offscreen.
-  - Primary, muted, and table-header text still miss the documented AA contrast targets.
-
-  [App.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/App.tsx:110) · [ui.css](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/styles/ui.css:94)
 
 Remaining page-level polish:
 
@@ -39,5 +30,7 @@ Remaining page-level polish:
 - The multi-day recurring-day-off design is explicitly superseded by one optional Mon–Sat day.
 - The SHADOW→ENFORCE automatic-disqualification rollout is superseded by the manager-reviewed import decision. [CLAUDE.md](/Users/seandm/Projects/1_PHONE_RR/CLAUDE.md:30)
 - All seven net-new P1 findings added to the critique were subsequently fixed: roster loading, assignment busy state, View-as writes, auth bootstrap, dynamic announcements/page focus, password masking, and the Vite blank page.
+- Priority 3 navigation is resolved: every role lands on Team Dashboard; only Reps see My Dashboard; Manager+ administrative destinations are grouped under Management; active styling works; both menus stay within the 1024px and 390px viewports; and the documented small-text/action contrast failures now exceed 4.5:1.
+- The unimplemented self-service reactivation request is no longer promised by the role or permission contracts. Reps are directed to a Manager or Admin, preserving the existing audited account/status reactivation path.
 
-Validation: read-only audit; no files changed. Web tests passed `70/70`, production build passed, and lint completed with existing Fast Refresh warnings only. The commands ran under Node 26.5.0 while the repository declares Node 22.x.
+August 2 Priority 3 validation: App navigation tests passed `10/10`, contract tests passed `9/9`, a clean migrated-and-seeded API run passed `197/197`, all web tests passed `134/134`, and workspace typecheck, web lint, production build, and diff check exited successfully. Local fixture-backed browser proof covered Admin, Manager, and Rep navigation at 1024×768 and 390×844, including Admin profile-menu containment with View as visible; no deployment or production verification was performed. Remaining items outside Priority 3 were not re-audited. The commands ran under Node 26.5.0 while the repository declares Node 22.x.

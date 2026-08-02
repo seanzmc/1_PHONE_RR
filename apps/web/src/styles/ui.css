@@ -43,7 +43,7 @@ h6 {
 }
 
 p { margin: 0 0 var(--space-3); }
-a { color: var(--color-accent); text-underline-offset: 3px; }
+a { color: var(--color-accent-strong); text-underline-offset: 3px; }
 
 :focus { outline: none; }
 :focus-visible {
@@ -91,12 +91,12 @@ a { color: var(--color-accent); text-underline-offset: 3px; }
   max-width: 360px;
   margin: 12vh auto 0;
 }
-.ui-muted { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.ui-muted { color: var(--color-muted); }
 .ui-error { color: var(--color-danger); }
 .ui-warn { color: var(--color-warn); }
 .ui-hint {
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  color: var(--color-muted);
 }
 .ui-sr-only {
   position: absolute;
@@ -164,13 +164,13 @@ a { color: var(--color-accent); text-underline-offset: 3px; }
 }
 .ui-btn:not(:disabled):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .ui-btn-primary {
-  background: var(--color-accent);
+  background: var(--color-accent-strong);
   color: var(--color-bg);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-strong);
 }
-.ui-btn-primary:not(:disabled):hover { background: var(--color-accent-600); }
+.ui-btn-primary:not(:disabled):hover { background: var(--color-accent-800); }
 .ui-btn-ghost {
-  color: var(--color-accent);
+  color: var(--color-accent-strong);
   border-color: transparent;
   padding-inline: var(--space-2);
 }
@@ -234,7 +234,7 @@ textarea.ui-input {
 .ui-password-toggle {
   min-width: 58px;
   padding: 0 var(--space-3);
-  color: var(--color-accent);
+  color: var(--color-accent-strong);
   background: var(--color-surface);
   border: 1px solid var(--color-divider);
   border-left: 0;
@@ -274,7 +274,7 @@ textarea.ui-input {
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--color-accent);
+  color: var(--color-accent-strong);
 }
 .ui-card-metric {
   font-family: var(--font-heading);
@@ -318,7 +318,7 @@ textarea.ui-input {
 }
 .ui-badge-outline {
   border: 1px solid var(--color-accent);
-  color: var(--color-accent);
+  color: var(--color-accent-strong);
   background: transparent;
 }
 
@@ -333,7 +333,7 @@ textarea.ui-input {
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  color: var(--color-muted);
   padding: var(--space-2);
   border-bottom: 1px solid var(--color-divider);
   white-space: nowrap;
@@ -356,7 +356,7 @@ textarea.ui-input {
   cursor: pointer;
 }
 .ui-sortbtn:hover,
-.ui-sortbtn:focus-visible { color: var(--color-accent); }
+.ui-sortbtn:focus-visible { color: var(--color-accent-strong); }
 
 /* — link-styled button, for drill-down on a name — */
 .ui-linkbtn {
@@ -364,7 +364,7 @@ textarea.ui-input {
   border: 0;
   padding: 0;
   font: inherit;
-  color: var(--color-accent);
+  color: var(--color-accent-strong);
   cursor: pointer;
   text-align: left;
 }
@@ -384,23 +384,30 @@ textarea.ui-input {
   font-weight: var(--font-heading-weight);
   font-size: 18px;
 }
-.ui-nav-tab[aria-current='page'] {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
+.ui-nav .ui-btn[aria-current='page'],
+.ui-nav summary[aria-current='page'] {
+  color: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
+.ui-management-menu,
 .ui-profile-menu { position: relative; }
+.ui-profile-menu { margin-left: auto; }
+.ui-management-menu > summary,
 .ui-profile-menu > summary {
   cursor: pointer;
-  color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  color: var(--color-muted);
   font-size: 13px;
   list-style-position: inside;
+  padding: var(--space-2);
+  border: 1px solid transparent;
 }
-.ui-profile-menu-panel {
+.ui-menu-panel {
   position: absolute;
   z-index: 60;
-  right: 0;
   top: calc(100% + var(--space-2));
-  min-width: 170px;
+  min-width: min(190px, calc(100vw - (var(--space-3) * 2)));
+  max-width: calc(100vw - (var(--space-3) * 2));
   display: grid;
   gap: var(--space-1);
   padding: var(--space-2);
@@ -409,7 +416,9 @@ textarea.ui-input {
   background: var(--color-surface);
   box-shadow: var(--shadow-md);
 }
-.ui-profile-menu-panel .ui-btn { justify-content: flex-start; }
+.ui-management-menu > .ui-menu-panel { left: 0; }
+.ui-profile-menu > .ui-menu-panel { right: 0; }
+.ui-menu-panel .ui-btn { justify-content: flex-start; }
 
 /* — audit ledger — */
 .ui-audit-list {
@@ -639,7 +648,7 @@ textarea.ui-input {
 .ui-modal-hint {
   margin: 0;
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  color: var(--color-muted);
 }
 .ui-modal-actions {
   display: flex;
@@ -699,7 +708,7 @@ textarea.ui-input {
   margin: 0 0 var(--space-2);
   overflow-wrap: anywhere;
   font-size: 32px;
-  color: var(--color-accent);
+  color: var(--color-accent-strong);
 }
 .ui-assignment-result-customer {
   display: flex;

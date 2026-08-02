@@ -5,21 +5,80 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   AssignmentDrawerMount,
   AssignmentTriggerFocusRestorer,
+  RoleNavigation,
   bootstrapRecoveryVisible,
   canOpenAssignmentDrawer,
   focusPageHeading,
   landingPage,
+  navigationForRole,
   repBackPage,
 } from './App'
 import { resetTokenFromLocation } from './lib/publicAuth'
 import { createLifecycleContainer } from './test/reactLifecycle'
 
+function renderNavigationForRole(role: 'ADMIN' | 'MANAGER' | 'BDC' | 'REP'): string {
+  return renderToStaticMarkup(
+    createElement(RoleNavigation, {
+      role,
+      activePage: 'dashboard',
+      onNavigate: () => {},
+    }),
+  )
+}
+
 describe('app navigation', () => {
-  it('lands non-Reps on Team Dashboard and Reps on My Dashboard', () => {
+  it('lands every role on Team Dashboard', () => {
     expect(landingPage('ADMIN')).toBe('dashboard')
     expect(landingPage('MANAGER')).toBe('dashboard')
     expect(landingPage('BDC')).toBe('dashboard')
-    expect(landingPage('REP')).toBe('me')
+    expect(landingPage('REP')).toBe('dashboard')
+  })
+
+  it('orders role destinations around the daily workflow', () => {
+    expect(navigationForRole('REP')).toEqual({
+      canAssign: false,
+      primary: [
+        { page: 'dashboard', label: 'Team Dashboard' },
+        { page: 'me', label: 'My Dashboard' },
+      ],
+      management: [],
+    })
+    expect(navigationForRole('BDC')).toEqual({
+      canAssign: true,
+      primary: [{ page: 'dashboard', label: 'Team Dashboard' }],
+      management: [],
+    })
+    expect(navigationForRole('MANAGER')).toEqual({
+      canAssign: true,
+      primary: [
+        { page: 'dashboard', label: 'Team Dashboard' },
+        { page: 'staff', label: 'Staff List' },
+        { page: 'import', label: 'Import Activity' },
+      ],
+      management: [
+        { page: 'users', label: 'User Management' },
+        { page: 'audit', label: 'Audit Log' },
+      ],
+    })
+    expect(navigationForRole('ADMIN')).toEqual(navigationForRole('MANAGER'))
+  })
+
+  it('renders Team Dashboard for every role and keeps administrative pages in Management', () => {
+    const rep = renderNavigationForRole('REP')
+    expect(rep).toContain('Team Dashboard')
+    expect(rep).toContain('My Dashboard')
+    expect(rep).not.toContain('Management')
+
+    const bdc = renderNavigationForRole('BDC')
+    expect(bdc).toContain('Team Dashboard')
+    expect(bdc).not.toContain('My Dashboard')
+    expect(bdc).not.toContain('Management')
+
+    const manager = renderNavigationForRole('MANAGER')
+    expect(manager).toContain('<summary>Management</summary>')
+    expect(manager).toContain('User Management')
+    expect(manager).toContain('Audit Log')
+    expect(manager).not.toContain('>Users<')
   })
 
   it('does not expose assignment actions during View-as', () => {
@@ -106,7 +165,7 @@ describe('app navigation', () => {
     expect(repBackPage('staff', 'BDC')).toBe('staff')
     expect(repBackPage('dashboard', 'MANAGER')).toBe('dashboard')
     expect(repBackPage(null, 'BDC')).toBe('dashboard')
-    expect(repBackPage(null, 'REP')).toBe('me')
+    expect(repBackPage(null, 'REP')).toBe('dashboard')
   })
 })
 

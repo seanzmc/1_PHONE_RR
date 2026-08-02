@@ -38,7 +38,7 @@ export function Dashboard({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   if (loadError && !summary) {
     return (
       <div className="ui-page">
-        <h2>Dashboard</h2>
+        <h2>Team Dashboard</h2>
         <p className="ui-error" role="alert">
           Couldn't load the dashboard — check your connection.{' '}
           <button type="button" className="ui-linkbtn" onClick={load}>
@@ -48,11 +48,11 @@ export function Dashboard({ onOpenRep }: { onOpenRep?: (repId: string) => void }
       </div>
     )
   }
-  if (!summary) return <div className="ui-page"><h2>Dashboard</h2><p>Loading…</p></div>
+  if (!summary) return <div className="ui-page"><h2>Team Dashboard</h2><p>Loading…</p></div>
 
   return (
     <div className="ui-page">
-      <h2>Dashboard</h2>
+      <h2>Team Dashboard</h2>
 
       <h3>Team totals — {summary.periodKey}</h3>
       <div className="ui-card-grid ui-section-gap-sm">

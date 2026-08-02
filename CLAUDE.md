@@ -37,9 +37,9 @@ Assign a phone-up lead to the correct next rep, correctly, in under a few second
 | Role | Can do |
 |---|---|
 | ADMIN | Everything, including policy/enforcement-mode config and role grants |
-| MANAGER | Activate/deactivate any rep, override/reassign assignments, manage staff list & schedule, review reactivation requests, view audit log |
+| MANAGER | Activate/deactivate any rep, override/reassign assignments, manage staff list & schedule, manage user accounts, view audit log |
 | BDC | Assign/unassign leads (create + assign, void own within time window), log own activity |
-| REP | View own status/leads only, submit reactivation requests |
+| REP | View Team Dashboard and own status/leads; contact a Manager or Admin for reactivation |
 
 ## Explicitly cut from v1 (fusion-plan has these; do not build them without a real reason surfacing)
 
