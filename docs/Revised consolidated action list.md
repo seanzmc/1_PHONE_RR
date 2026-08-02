@@ -12,15 +12,14 @@ Completed and deployed on August 1, 2026 in `44d1cd4`. Focused validation passed
 
 ## Priority 2 — Assignment workflow — Complete
 
-- [x] Add BDC+ Skip next to Void. A skip keeps the current rep served for the cycle and passes the same lead to the next eligible rep, or leaves it unassigned when no rep is available.
-- [x] Allow deliberate repeated skips without making Skip spammable: every skip names the current rep, requires a reason and explicit confirmation, disables while submitting, and is protected by both an expected-rep check and an idempotency key.
-- [x] Audit each skip with the actor, lead, skipped rep, reason, and before/after assignment state.
-- [x] Make Assign the dominant persistent action in the header while preserving the behavior where the state lock begins only after assignment submission.
-- [x] Improve “Just Assigned” with the customer name, assignment time, copy action, and clear next steps for duplicate or unassigned leads.
-- [x] Improve empty Next Up and On Deck guidance.
-- [x] Add shared user-friendly error translation for assign, skip, void, reassign, notes, and metrics mutations.
+- [x] Replace the dedicated Assign page with a global BDC+ assignment drawer containing the form and live roster.
+- [x] Keep preset Skip reasons inline beneath the assignment result with deliberate confirmation and Audit Log-only reason visibility.
+- [x] Guard X, backdrop, and Escape against losing non-whitespace assignment or Skip drafts; saved and clean state close normally.
+- [x] Restore the primary Assign action beneath the form and preserve submit-time-only rotation locking.
+- [x] Make assignment confirmation rep-first, show customer plus phone, and remove assignment-workspace clipboard behavior.
+- [x] Present skipped reps first inside one neutral Served This Round list with a compact Skipped badge.
 
-Completed locally on August 1, 2026. Contract tests passed 9/9, web tests passed 99/99, affected assignment API tests passed 7/7, and type checking plus the production web build passed. A local BDC browser check confirmed the guarded skip flow and that Skip remains available after a successful pass. The full API suite passed 192/196; the four failures are pre-existing `voidLead` failures reproduced unchanged at the untouched `5c30fee` baseline. This Priority 2 work has not been deployed or production-verified.
+Completed locally on August 2, 2026. Affected assignment API tests passed 14/14; focused drawer-lifecycle tests passed 19/19; all web tests passed 125/125; and workspace type checking, web lint, and the production web build exited successfully. Authenticated local browser proof covered BDC assignment and repeatable inline Skip, every clean and guarded close path, mutation-time close blocking, exact focus restoration, result and served-list presentation, Manager/Admin access, REP and view-as absence, and the 390-pixel full-screen layout. The full serial API suite passed 196/197; its sole Sunday-sensitive `userManagement.test.ts` failure reproduced unchanged at parent `f283f9c`, while all seven `voidLead.test.ts` tests passed. Validation ran under Node 26.5.0 while the repository declares Node 22.x. Deployment and production verification remain outstanding.
 
 ## Priority 3 — Navigation and role flow
 
@@ -28,7 +27,7 @@ Start users on Team Dashboard.
 Show My Dashboard only to Rep accounts.
 Rename “Dashboard” to “Team Dashboard.”
 Reorder navigation around the actual daily workflow.
-Move User Management and Audit Log into the Manager+ profile menu.
+Move User Management and Audit Log into a new Manager+ menu option "Management".
 - [x] Make the Assign action visually prominent. Completed in Priority 2.
 Fix active-navigation styling, profile-menu clipping, and documented contrast failures.
 Implement the promised Rep reactivation-request workflow or remove the promise from the role contract.
