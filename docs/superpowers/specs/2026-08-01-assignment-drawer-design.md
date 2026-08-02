@@ -18,7 +18,7 @@ The current result card also overemphasizes the customer, exposes redundant phon
 - Make the assigned rep the dominant element in the success state.
 - Make skipped reps understandable without exposing Skip reasons outside Audit Log.
 - Remove assignment-screen clipboard behavior while preserving useful phone-copy controls on Rep Dashboard assignment records.
-- Keep closing the drawer simple: close means discard the local drawer state and start fresh next time.
+- Keep closing predictable: clean state closes immediately, while unsaved assignment or Skip input requires an explicit discard decision.
 
 ## Selected approach
 
@@ -72,11 +72,18 @@ The single drawer is preferred because it has one focus boundary, one close beha
 
 ### Closing
 
-- Close and idle-state Escape dismiss the drawer without a warning.
-- Closing clears the form, result, Skip, Void, and local error state.
+- The drawer exposes a top-right X button with the accessible name `Close Assign lead`.
+- The X button, a click on the drawer backdrop, and Escape all request the same close operation. No close path may bypass the guards below.
+- An assignment draft is dirty only while the assignment form is active and at least one of Customer name, Phone, or Notes contains a non-whitespace character. Whitespace-only values are clean.
+- An inline Skip draft is dirty when its editor is open and a preset is selected or `Other` detail contains a non-whitespace character.
+- A clean, idle drawer closes immediately from X, backdrop, or Escape.
+- If either draft is dirty, X, backdrop, or Escape opens one destructive confirmation titled `Discard unsaved changes?` with the message `Closing will clear the information you entered.`
+- The confirmation offers `Keep editing` as the default safe action and `Discard changes` as the destructive action. `Keep editing`, confirmation-backdrop click, and confirmation Escape all return to the unchanged drawer without discarding data and restore focus to the element that requested close.
+- `Discard changes` closes the drawer and clears the form, result, Skip, Void, and local error state.
+- A completed assignment result is saved state and does not itself require a warning. It closes immediately unless an inline Skip draft is dirty.
 - Reopening always starts a new assignment; no unresolved-assignment header indicator or restored confirmation is added.
 - Dashboard ups continue to update through their existing data path. Closing the drawer does not create a separate dashboard confirmation card or toast.
-- The drawer cannot close while Assign, Skip, or Void is in flight.
+- Assign, Skip, or Void in flight disables X and blocks backdrop, Escape, and destructive-confirmation closure. No warning opens while a mutation is active.
 
 ## Skip reasons
 
@@ -159,14 +166,15 @@ The exact filenames may follow the existing web component conventions, but these
 - Duplicate-phone and no-eligible-rep guidance remains in the result state.
 - Roster refresh continues to distinguish stale last-good data from a total load failure and retains Retry.
 - A stale or repeated Skip remains harmless through the existing expected-rep and idempotency checks.
-- Closing while idle intentionally discards unsaved form input without an extra warning.
+- Dirty assignment and inline Skip drafts use the shared guarded-close confirmation; clean saved or untouched states close immediately.
 
 ## Accessibility and responsive behavior
 
 - The drawer is one modal focus boundary with an accessible name.
 - Opening Skip does not create another focus boundary; the inline reason editor is part of the drawer's normal reading and tab order.
 - Background content becomes inert while the drawer is open.
-- Idle-state Escape closes the drawer; focus returns to the header `Assign lead` button.
+- Idle-state Escape follows the same clean/dirty close guard as X and backdrop. After actual drawer closure, focus returns to the header `Assign lead` button.
+- The discard confirmation is a permitted nested modal because it protects against destructive data loss rather than moving ordinary workflow into another overlay. Its safe action receives initial focus, and dismissing it restores focus inside the unchanged drawer.
 - During an in-flight mutation, close and Escape are disabled.
 - Keyboard assignment behavior remains intact, and every Skip preset is reachable and identifiable without color.
 - The `Skipped` label supplements the yellow badge color.
@@ -194,7 +202,7 @@ This list is directional rather than permission to touch every file. Implementat
 - Core ranking tests proving ranking remains unchanged.
 - Web tests covering:
   - header permission and View-as behavior;
-  - drawer open, close, reset, focus return, and in-flight close prevention;
+  - drawer open, clean close, trimmed dirty detection, discard/resume behavior, focus return, and in-flight close prevention across X, backdrop, and Escape;
   - assignment form and rep-first result transition;
   - removal of automatic copy, Copy button, copied notice, and `Alt+C`;
   - preset Skip choices, required `Other` detail, deliberate confirmation, repeated Skip, and error retention;
@@ -211,8 +219,9 @@ Run an authenticated local BDC flow:
 3. Assign a lead and verify the rep-first result, customer plus phone, live roster update, and absence of clipboard behavior.
 4. Expand the inline Skip editor beneath the result, choose a preset, and verify the same lead passes, the drawer stays open, and the skipped rep appears at the top of `Served This Round` with only the yellow badge.
 5. Expand another inline Skip editor, verify repeatability and confirmation safeguards, then cancel without closing the drawer.
-6. Close and reopen the drawer and verify a clean assignment state.
-7. Verify narrow-screen full-screen behavior and keyboard focus restoration.
+6. Type assignment data and verify X, backdrop, and Escape each preserve it behind the discard warning; verify `Keep editing`, warning-backdrop click, and warning Escape resume unchanged, then explicitly discard.
+7. Start an inline Skip reason and verify the same dirty-close protection. Verify a saved result without a Skip draft closes immediately.
+8. Reopen and verify a clean assignment state, narrow-screen full-screen behavior, and keyboard focus restoration.
 
 Also inspect the dashboard ups list after closing to confirm the existing count update remains intact.
 
@@ -239,4 +248,4 @@ Also inspect the dashboard ups list after closing to confirm the existing count 
 
 ## Acceptance criteria
 
-The design is implemented successfully when a BDC can complete the existing assignment workflow from a single header-opened drawer, wait in the rep-first result state, deliberately Skip or Void, close back to the underlying screen, and reopen a clean drawer. The roster must preserve core assignment ranking while presenting skipped reps first inside one neutral `Served This Round` list with badge-only identification and no reason leakage. Assignment-workspace clipboard behavior must be absent, dashboard ups must remain correct, and all automated and browser checks above must pass or have a specific documented external blocker.
+The design is implemented successfully when a BDC can complete the existing assignment workflow from a single header-opened drawer, wait in the rep-first result state, deliberately Skip or Void, close back to the underlying screen, and reopen a clean drawer. Clean or saved state must close conventionally, while assignment and inline Skip drafts cannot be lost through X, backdrop, or Escape without an explicit `Discard changes` action. The roster must preserve core assignment ranking while presenting skipped reps first inside one neutral `Served This Round` list with badge-only identification and no reason leakage. Assignment-workspace clipboard behavior must be absent, dashboard ups must remain correct, and all automated and browser checks above must pass or have a specific documented external blocker.
