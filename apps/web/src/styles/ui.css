@@ -710,7 +710,7 @@ textarea.ui-input {
 .ui-assignment-result-time {
   margin: 0;
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  color: var(--color-neutral-700);
 }
 
 @media (max-width: 700px) {

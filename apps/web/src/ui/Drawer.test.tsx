@@ -6,8 +6,10 @@ import { createLifecycleContainer } from '../test/reactLifecycle'
 import {
   canCloseDrawer,
   Drawer,
+  DrawerCloseRequesterLifecycle,
   DrawerFocusLifecycle,
   focusDrawerInitialElement,
+  requestDrawerClose,
   requestDrawerCloseFromBackdrop,
   restoreDrawerFocus,
 } from './Drawer'
@@ -53,6 +55,54 @@ describe('Drawer', () => {
       requestClose,
     )
     expect(requestClose).toHaveBeenCalledOnce()
+  })
+
+  it('carries the actual X, Escape, and pre-blur backdrop requesters through the shared close', async () => {
+    const body = {} as HTMLElement
+    const nameInput = {} as HTMLElement
+    const closeButton = {} as HTMLElement
+    const lifecycle = createLifecycleContainer(nameInput)
+    const panel = Object.assign(new EventTarget(), {
+      contains: (candidate: unknown) => candidate === nameInput || candidate === closeButton,
+    })
+    const panelRef = { current: panel as unknown as HTMLElement | null }
+    const requesterRef = { current: null as HTMLElement | null }
+    const onClose = vi.fn()
+    const root = createRoot(lifecycle.container)
+
+    try {
+      await act(async () => {
+        root.render(
+          <StrictMode>
+            <DrawerCloseRequesterLifecycle panelRef={panelRef} requesterRef={requesterRef} />
+          </StrictMode>,
+        )
+      })
+
+      expect(requesterRef.current).toBe(nameInput)
+      const requestClose = () => requestDrawerClose(false, false, requesterRef.current, onClose)
+      lifecycle.document.activeElement = body
+
+      const backdrop = {} as HTMLDivElement
+      requestDrawerCloseFromBackdrop(
+        { type: 'click', target: backdrop, currentTarget: backdrop },
+        requestClose,
+      )
+      expect(onClose).toHaveBeenNthCalledWith(1, nameInput)
+
+      lifecycle.document.activeElement = closeButton
+      panel.dispatchEvent(new Event('focusin'))
+      requestClose()
+      expect(onClose).toHaveBeenNthCalledWith(2, closeButton)
+
+      lifecycle.document.activeElement = nameInput
+      panel.dispatchEvent(new Event('focusin'))
+      requestClose()
+      expect(onClose).toHaveBeenNthCalledWith(3, nameInput)
+    } finally {
+      await act(async () => root.unmount())
+      lifecycle.cleanup()
+    }
   })
 
   it('focuses an explicit initial target while preserving first-focus fallback', () => {

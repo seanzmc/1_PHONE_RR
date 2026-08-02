@@ -11,13 +11,22 @@ export type DrawerProps = {
   busy?: boolean
   inactive?: boolean
   initialFocusRef?: Readonly<{ current: HTMLElement | null }>
-  onClose: () => void
+  onClose: (requester: HTMLElement | null) => void
   children: ReactNode
   overlays?: ReactNode
 }
 
 export function canCloseDrawer(busy: boolean, inactive: boolean): boolean {
   return !busy && !inactive
+}
+
+export function requestDrawerClose(
+  busy: boolean,
+  inactive: boolean,
+  requester: HTMLElement | null,
+  onClose: (requester: HTMLElement | null) => void,
+): void {
+  if (canCloseDrawer(busy, inactive)) onClose(requester)
 }
 
 export function requestDrawerCloseFromBackdrop(
@@ -44,6 +53,34 @@ export type DrawerFocusLifecycleProps = {
   open: boolean
   panelRef: Readonly<{ current: HTMLElement | null }>
   initialFocusRef?: Readonly<{ current: HTMLElement | null }>
+}
+
+export type DrawerCloseRequesterLifecycleProps = {
+  panelRef: Readonly<{ current: HTMLElement | null }>
+  requesterRef: { current: HTMLElement | null }
+}
+
+export function DrawerCloseRequesterLifecycle({
+  panelRef,
+  requesterRef,
+}: DrawerCloseRequesterLifecycleProps) {
+  useEffect(() => {
+    const panel = panelRef.current
+    if (!panel) return
+
+    function rememberFocusedDescendant() {
+      const activeElement = document.activeElement
+      if (activeElement && panel?.contains(activeElement)) {
+        requesterRef.current = activeElement as HTMLElement
+      }
+    }
+
+    panel.addEventListener('focusin', rememberFocusedDescendant)
+    rememberFocusedDescendant()
+    return () => panel.removeEventListener('focusin', rememberFocusedDescendant)
+  }, [panelRef, requesterRef])
+
+  return null
 }
 
 export function DrawerFocusLifecycle({ open, panelRef, initialFocusRef }: DrawerFocusLifecycleProps) {
@@ -74,9 +111,10 @@ export function Drawer({
   overlays,
 }: DrawerProps) {
   const panelRef = useRef<HTMLElement>(null)
+  const closeRequesterRef = useRef<HTMLElement>(null)
 
   const requestClose = useCallback(() => {
-    if (canCloseDrawer(busy, inactive)) onClose()
+    requestDrawerClose(busy, inactive, closeRequesterRef.current, onClose)
   }, [busy, inactive, onClose])
 
   const handleBackdropClick = useCallback(
@@ -113,6 +151,7 @@ export function Drawer({
 
   return (
     <>
+      <DrawerCloseRequesterLifecycle panelRef={panelRef} requesterRef={closeRequesterRef} />
       <DrawerFocusLifecycle open={open} panelRef={panelRef} initialFocusRef={initialFocusRef} />
       <div className="ui-drawer-backdrop" onClick={handleBackdropClick}>
         <section

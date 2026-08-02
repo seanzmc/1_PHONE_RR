@@ -301,10 +301,10 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
     return () => window.removeEventListener('keydown', onKeydown)
   }, [lastResult, canVoid, busy, discardChangesOpen, voidReasonOpen, skipEditorOpen])
 
-  function requestClose() {
+  function requestClose(requester: HTMLElement | null) {
     if (busy) return
     if (dirty) {
-      discardRequesterRef.current = document.activeElement as HTMLElement | null
+      discardRequesterRef.current = requester
       setDiscardChangesOpen(true)
       return
     }
