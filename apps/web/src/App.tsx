@@ -185,12 +185,13 @@ function App() {
         {canOpenAssignmentDrawer(canAssign, viewAsUserId) && (
           <Button
             variant="primary"
+            className="ui-assign-action"
             onClick={(event) => {
               assignmentTriggerRef.current = event.currentTarget
               setAssignmentDrawerOpen(true)
             }}
           >
-            Assign Lead
+            Assign lead
           </Button>
         )}
         {effectiveRole === 'REP' && (

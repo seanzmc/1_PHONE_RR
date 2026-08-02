@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  ReactNode,
+} from 'react'
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -18,6 +22,54 @@ export type ModalProps = {
   hint?: string
   initialFocus?: 'submit' | 'cancel'
   submitTone?: 'primary' | 'danger'
+  returnFocusRef?: Readonly<{ current: HTMLElement | null }>
+}
+
+export function requestModalCloseFromBackdrop(
+  event: Pick<ReactMouseEvent<HTMLDivElement>, 'type' | 'target' | 'currentTarget'>,
+  onClose: () => void,
+): void {
+  if (event.type === 'click' && event.target === event.currentTarget) onClose()
+}
+
+export function restoreModalFocus(
+  panelRef: Readonly<{ current: HTMLElement | null }>,
+  requester: HTMLElement | null,
+): void {
+  if (
+    panelRef.current
+    || !requester
+    || requester.isConnected === false
+    || requester.closest('[inert]')
+  ) return
+  requester.focus()
+}
+
+export type ModalFocusLifecycleProps = {
+  panelRef: Readonly<{ current: HTMLElement | null }>
+  initialFocusRef?: Readonly<{ current: HTMLElement | null }>
+  returnFocusRef?: Readonly<{ current: HTMLElement | null }>
+}
+
+export function ModalFocusLifecycle({
+  panelRef,
+  initialFocusRef,
+  returnFocusRef,
+}: ModalFocusLifecycleProps) {
+  const previouslyFocused = useRef<HTMLElement | null>(null)
+  const focusCaptured = useRef(false)
+
+  useEffect(() => {
+    if (!focusCaptured.current) {
+      previouslyFocused.current = returnFocusRef?.current ?? document.activeElement as HTMLElement | null
+      focusCaptured.current = true
+    }
+    const target = initialFocusRef?.current ?? panelRef.current?.querySelector<HTMLElement>(FOCUSABLE)
+    target?.focus()
+    return () => restoreModalFocus(panelRef, previouslyFocused.current)
+  }, [panelRef, initialFocusRef, returnFocusRef])
+
+  return null
 }
 
 /**
@@ -37,24 +89,16 @@ export function Modal({
   hint,
   initialFocus,
   submitTone = 'primary',
+  returnFocusRef,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const submitRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
-  const previouslyFocused = useRef<HTMLElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return
-    previouslyFocused.current = document.activeElement as HTMLElement | null
-    const first = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE)
-    const target = initialFocus === 'submit'
-      ? submitRef.current
-      : initialFocus === 'cancel'
-        ? cancelRef.current
-        : first
-    target?.focus()
-    return () => previouslyFocused.current?.focus?.()
-  }, [open, initialFocus])
+  const initialFocusRef = initialFocus === 'submit'
+    ? submitRef
+    : initialFocus === 'cancel'
+      ? cancelRef
+      : undefined
 
   const handleKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -85,7 +129,15 @@ export function Modal({
   if (!open) return null
 
   return (
-    <div className="ui-modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="ui-modal-backdrop"
+      onClick={(event) => requestModalCloseFromBackdrop(event, onClose)}
+    >
+      <ModalFocusLifecycle
+        panelRef={panelRef}
+        initialFocusRef={initialFocusRef}
+        returnFocusRef={returnFocusRef}
+      />
       <div
         className="ui-modal"
         role="dialog"

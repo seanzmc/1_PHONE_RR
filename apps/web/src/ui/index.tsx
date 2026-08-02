@@ -16,6 +16,7 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant
   size?: 'md' | 'sm'
   block?: boolean
+  ref?: Ref<HTMLButtonElement>
 }
 
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
@@ -25,7 +26,7 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
   danger: 'ui-btn-danger',
 }
 
-export function Button({ variant = 'default', size = 'md', block = false, className, type, ...rest }: ButtonProps) {
+export function Button({ variant = 'default', size = 'md', block = false, className, type, ref, ...rest }: ButtonProps) {
   const classes = [
     'ui-btn',
     VARIANT_CLASS[variant],
@@ -35,7 +36,7 @@ export function Button({ variant = 'default', size = 'md', block = false, classN
   ]
     .filter(Boolean)
     .join(' ')
-  return <button type={type ?? 'button'} className={classes} {...rest} />
+  return <button ref={ref} type={type ?? 'button'} className={classes} {...rest} />
 }
 
 /* ── Field ──────────────────────────────────────────────────────────────── */

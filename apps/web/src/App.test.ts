@@ -35,7 +35,9 @@ describe('app navigation', () => {
     }
 
     expect(renderToStaticMarkup(createElement(AssignmentDrawerMount, { ...props, open: false }))).toBe('')
-    expect(renderToStaticMarkup(createElement(AssignmentDrawerMount, { ...props, open: true }))).toContain('Assign Lead')
+    const html = renderToStaticMarkup(createElement(AssignmentDrawerMount, { ...props, open: true }))
+    expect(html).toContain('Assign lead')
+    expect(html).toContain('aria-label="Close Assign lead"')
   })
 
   it('restores the Assign Lead trigger once after a real close under Strict Mode', async () => {

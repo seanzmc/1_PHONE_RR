@@ -11,6 +11,7 @@ import { useSubmitOnEnter } from '../../ui/useSubmitOnEnter'
 import { DiscardChangesDialog } from './DiscardChangesDialog'
 import {
   assignFormErrors,
+  bucketRoster,
   canSubmitWithRoster,
   formatAssignmentTime,
   formatPhone,
@@ -39,11 +40,67 @@ export type AssignmentResultProps = {
   skipEditorOpen: boolean
   onSkip: () => void
   onVoid: () => void
+  focusRef?: Readonly<{ current: HTMLDivElement | null }>
+  skipTriggerRef?: Readonly<{ current: HTMLButtonElement | null }>
   children?: ReactNode
+}
+
+export type AssignmentFocusTarget = 'form' | 'result' | 'skip-editor' | 'skip-trigger'
+
+export type AssignmentFocusLifecycleProps = {
+  focusTarget: AssignmentFocusTarget | null
+  formRef: Readonly<{ current: HTMLElement | null }>
+  resultRef: Readonly<{ current: HTMLElement | null }>
+  skipEditorRef: Readonly<{ current: HTMLElement | null }>
+  skipTriggerRef: Readonly<{ current: HTMLElement | null }>
+}
+
+export function AssignmentFocusLifecycle({
+  focusTarget,
+  formRef,
+  resultRef,
+  skipEditorRef,
+  skipTriggerRef,
+}: AssignmentFocusLifecycleProps) {
+  useEffect(() => {
+    if (!focusTarget) return
+    const target = focusTarget === 'form'
+      ? formRef.current
+      : focusTarget === 'result'
+        ? resultRef.current
+        : focusTarget === 'skip-editor'
+          ? skipEditorRef.current
+          : skipTriggerRef.current
+    target?.focus()
+  }, [focusTarget, formRef, resultRef, skipEditorRef, skipTriggerRef])
+
+  return null
 }
 
 function loadRoster(): Promise<RosterEntry[]> {
   return query<RosterEntry[]>('board.roster')
+}
+
+export async function loadLatestRoster(
+  load: () => Promise<RosterEntry[]>,
+  requestId: number,
+  latestRequestRef: Readonly<{ current: number }>,
+  callbacks: {
+    onSuccess: (rows: RosterEntry[]) => void
+    onError: () => void
+    onSettled: () => void
+  },
+): Promise<void> {
+  try {
+    const rows = await load()
+    if (requestId !== latestRequestRef.current) return
+    callbacks.onSuccess(rows)
+  } catch {
+    if (requestId !== latestRequestRef.current) return
+    callbacks.onError()
+  } finally {
+    if (requestId === latestRequestRef.current) callbacks.onSettled()
+  }
 }
 
 function toE164(phone: string): string {
@@ -55,6 +112,21 @@ function toE164(phone: string): string {
 
 export function isAssignmentBusy(assigning: boolean, skipping: boolean, voiding: boolean): boolean {
   return assigning || skipping || voiding
+}
+
+export function assignmentButtonLabel(assigning: boolean, targetName: string | null): string {
+  if (assigning) return 'Assigning…'
+  return targetName ? `Assign to ${targetName} (Ctrl+Enter)` : 'Assign (Ctrl+Enter)'
+}
+
+export function freshAssignmentTargetName(
+  nextUp: Pick<RosterEntry, 'displayName'> | null,
+  hasLoadedRoster: boolean,
+  rosterLoading: boolean,
+  loadError: boolean,
+): string | null {
+  if (!hasLoadedRoster || rosterLoading || loadError) return null
+  return nextUp?.displayName ?? null
 }
 
 export function canOpenVoidShortcut(
@@ -80,20 +152,39 @@ export function AssignmentResult({
   skipEditorOpen,
   onSkip,
   onVoid,
+  focusRef,
+  skipTriggerRef,
   children,
 }: AssignmentResultProps) {
   const assignedName = repName ?? result.assignedRepId
 
   return (
-    <Card title="Assignment saved" className="ui-stack">
-      <div role="status" aria-live="polite">
+    <Card className="ui-stack">
+      <div
+        ref={focusRef}
+        className="ui-assignment-result-focus"
+        role="status"
+        aria-live="polite"
+        tabIndex={-1}
+      >
+        <p className="ui-card-kicker">Assignment saved</p>
         {result.assignedRepId ? (
-          <p>
-            <strong>{assignedName}</strong> will follow up with <strong>{result.customerName}</strong> at{' '}
-            <strong>{formatPhone(phoneE164)}</strong>.
-          </p>
+          <>
+            <h3 className="ui-assignment-result-rep">{assignedName}</h3>
+            <p className="ui-assignment-result-customer">
+              <strong>{result.customerName}</strong>
+              <span aria-hidden="true"> · </span>
+              <span>{formatPhone(phoneE164)}</span>
+            </p>
+            <p className="ui-assignment-result-time">
+              <time dateTime={result.assignedAt}>Assigned at {formatAssignmentTime(result.assignedAt)}</time>
+            </p>
+          </>
         ) : (
-          <p><strong>{result.customerName}</strong> was saved unassigned at {formatAssignmentTime(result.assignedAt)}.</p>
+          <p>
+            <strong>{result.customerName}</strong> was saved unassigned at{' '}
+            <time dateTime={result.assignedAt}>{formatAssignmentTime(result.assignedAt)}</time>.
+          </p>
         )}
         {resultGuidance(result).map((message) => (
           <p key={message} className={result.duplicatePhone ? 'ui-warn' : 'ui-muted'}>{message}</p>
@@ -102,7 +193,7 @@ export function AssignmentResult({
       {result.assignedRepId && (
         <div className="ui-row">
           {canSkip && !skipEditorOpen && (
-            <Button onClick={onSkip} disabled={busy}>Skip rep</Button>
+            <Button ref={skipTriggerRef} onClick={onSkip} disabled={busy}>Skip rep</Button>
           )}
           {canVoid && !skipEditorOpen && (
             <Button variant="danger" onClick={onVoid} disabled={busy}>Void (Alt+V)</Button>
@@ -125,6 +216,7 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
   const [resultPhoneE164, setResultPhoneE164] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [hasLoadedRoster, setHasLoadedRoster] = useState(false)
+  const [rosterLoading, setRosterLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [assigning, setAssigning] = useState(false)
   const [skipping, setSkipping] = useState(false)
@@ -139,9 +231,16 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
   const [skipKey, setSkipKey] = useState('')
   const [discardChangesOpen, setDiscardChangesOpen] = useState(false)
   const [touched, setTouched] = useState({ name: false, phone: false })
+  const [focusTarget, setFocusTarget] = useState<AssignmentFocusTarget | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
   const notesRef = useRef<HTMLTextAreaElement>(null)
+  const resultRef = useRef<HTMLDivElement>(null)
+  const skipEditorRef = useRef<HTMLDivElement>(null)
+  const skipTriggerRef = useRef<HTMLButtonElement>(null)
+  const discardRequesterRef = useRef<HTMLElement>(null)
+  const voidRequesterRef = useRef<HTMLElement>(null)
+  const latestRosterRequestRef = useRef(0)
 
   const readOnly = isReadOnlyViewAs(viewAsUserId)
   const canVoid = canMutateInCurrentView(hasPermission('lead.void'), viewAsUserId)
@@ -159,16 +258,23 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
     skipOtherDetail,
   })
   const nameById = new Map(roster.map((entry) => [entry.repId, entry.displayName]))
+  const nextUp = bucketRoster(roster).nextUp
+  const assignmentTargetName = freshAssignmentTargetName(nextUp, hasLoadedRoster, rosterLoading, loadError)
 
   const refreshRoster = useCallback(() => {
+    const requestId = latestRosterRequestRef.current + 1
+    latestRosterRequestRef.current = requestId
+    setRosterLoading(true)
     setLoadError(false)
-    loadRoster()
-      .then((rows) => {
+    void loadLatestRoster(loadRoster, requestId, latestRosterRequestRef, {
+      onSuccess: (rows) => {
         setRoster(rows)
         setHasLoadedRoster(true)
         setLoadError(false)
-      })
-      .catch(() => setLoadError(true))
+      },
+      onError: () => setLoadError(true),
+      onSettled: () => setRosterLoading(false),
+    })
   }, [])
 
   useEffect(() => {
@@ -187,6 +293,7 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
         && canOpenVoidShortcut(busy, discardChangesOpen, voidReasonOpen, skipEditorOpen)
       ) {
         event.preventDefault()
+        voidRequesterRef.current = document.activeElement as HTMLElement | null
         setVoidReasonOpen(true)
       }
     }
@@ -194,13 +301,10 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
     return () => window.removeEventListener('keydown', onKeydown)
   }, [lastResult, canVoid, busy, discardChangesOpen, voidReasonOpen, skipEditorOpen])
 
-  useEffect(() => {
-    if (lastResult?.assignedRepId) nameRef.current?.focus()
-  }, [lastResult])
-
   function requestClose() {
     if (busy) return
     if (dirty) {
+      discardRequesterRef.current = document.activeElement as HTMLElement | null
       setDiscardChangesOpen(true)
       return
     }
@@ -214,6 +318,7 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
     setSkipOtherDetail('')
     setSkipError(null)
     setSkipKey('')
+    setFocusTarget('skip-trigger')
   }
 
   function openSkip() {
@@ -223,6 +328,13 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
     setSkipOtherDetail('')
     setSkipError(null)
     setSkipKey(crypto.randomUUID())
+    setFocusTarget('skip-editor')
+  }
+
+  function openVoid() {
+    if (!lastResult?.assignedRepId || !canVoid || busy || skipEditorOpen) return
+    voidRequesterRef.current = document.activeElement as HTMLElement | null
+    setVoidReasonOpen(true)
   }
 
   async function handleAssign() {
@@ -245,6 +357,7 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
       setNotes('')
       setIdempotencyKey(crypto.randomUUID())
       setTouched({ name: false, phone: false })
+      setFocusTarget('result')
       refreshRoster()
     } catch (err) {
       setError(mutationErrorMessage(err, 'The assignment could not be completed. Try again.'))
@@ -298,6 +411,7 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
       setSkipOtherDetail('')
       setSkipError(null)
       setSkipKey('')
+      setFocusTarget('result')
       refreshRoster()
     } catch (err) {
       setSkipError(mutationErrorMessage(err, 'This rep could not be skipped. Try again.'))
@@ -328,8 +442,8 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
       setVoidReasonOpen(false)
       setVoidReason('')
       setVoidError(null)
+      setFocusTarget('form')
       refreshRoster()
-      nameRef.current?.focus()
     } catch (err) {
       setVoidError(mutationErrorMessage(err, 'This assignment could not be voided. Try again.'))
     } finally {
@@ -342,7 +456,7 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
   return (
     <Drawer
       open={open}
-      title="Assign Lead"
+      title="Assign lead"
       busy={busy}
       inactive={discardChangesOpen || voidReasonOpen}
       initialFocusRef={nameRef}
@@ -356,6 +470,7 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
               setDiscardChangesOpen(false)
               onClose()
             }}
+            returnFocusRef={discardRequesterRef}
           />
 
           <Modal
@@ -366,6 +481,7 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
             submitDisabled={!voidReason.trim() || voiding}
             submitLabel={voiding ? 'Voiding…' : 'Void'}
             submitTone="danger"
+            returnFocusRef={voidRequesterRef}
           >
             <Field label="Void reason" error={voidError}>
               <Input value={voidReason} onChange={(event) => setVoidReason(event.target.value)} onKeyDown={onVoidKeyDown} disabled={voiding} />
@@ -375,6 +491,13 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
         </>
       )}
     >
+      <AssignmentFocusLifecycle
+        focusTarget={focusTarget}
+        formRef={nameRef}
+        resultRef={resultRef}
+        skipEditorRef={skipEditorRef}
+        skipTriggerRef={skipTriggerRef}
+      />
       <div className="ui-assignment-workspace" onKeyDown={handleKeyDown}>
         <div className="ui-assignment-work">
           {lastResult ? (
@@ -387,21 +510,25 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
               busy={busy}
               skipEditorOpen={skipEditorOpen}
               onSkip={openSkip}
-              onVoid={() => setVoidReasonOpen(true)}
+              onVoid={openVoid}
+              focusRef={resultRef}
+              skipTriggerRef={skipTriggerRef}
             >
               {skipEditorOpen && (
-                <SkipReasonEditor
-                  repName={lastResult.assignedRepId ? nameById.get(lastResult.assignedRepId) ?? lastResult.assignedRepId : 'this rep'}
-                  preset={skipPreset}
-                  otherDetail={skipOtherDetail}
-                  skipping={skipping}
-                  error={skipError}
-                  readOnly={readOnly}
-                  onPresetChange={setSkipPreset}
-                  onOtherDetailChange={setSkipOtherDetail}
-                  onCancel={cancelSkip}
-                  onConfirm={handleSkip}
-                />
+                <div ref={skipEditorRef} tabIndex={-1} aria-labelledby="skip-editor-title">
+                  <SkipReasonEditor
+                    repName={lastResult.assignedRepId ? nameById.get(lastResult.assignedRepId) ?? lastResult.assignedRepId : 'this rep'}
+                    preset={skipPreset}
+                    otherDetail={skipOtherDetail}
+                    skipping={skipping}
+                    error={skipError}
+                    readOnly={readOnly}
+                    onPresetChange={setSkipPreset}
+                    onOtherDetailChange={setSkipOtherDetail}
+                    onCancel={cancelSkip}
+                    onConfirm={handleSkip}
+                  />
+                </div>
               )}
             </AssignmentResult>
           ) : (
@@ -449,7 +576,7 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
                 onClick={handleAssign}
                 disabled={!canSubmitWithRoster(formValid, hasLoadedRoster, assigning, readOnly)}
               >
-                {assigning ? 'Assigning…' : 'Assign (Ctrl+Enter)'}
+                {assignmentButtonLabel(assigning, assignmentTargetName)}
               </Button>
             </div>
           )}
