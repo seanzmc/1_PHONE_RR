@@ -1,17 +1,32 @@
 import { describe, expect, it, vi } from 'vitest'
-import { bootstrapRecoveryVisible, focusPageHeading, repBackPage } from './App'
+import {
+  bootstrapRecoveryVisible,
+  canOpenAssignmentDrawer,
+  focusPageHeading,
+  landingPage,
+  repBackPage,
+} from './App'
 import { resetTokenFromLocation } from './lib/publicAuth'
 
-describe('repBackPage', () => {
-  it('returns to the page that opened the rep detail', () => {
-    expect(repBackPage('staff', true)).toBe('staff')
-    expect(repBackPage('dashboard', true)).toBe('dashboard')
-    expect(repBackPage('assign', true)).toBe('assign')
+describe('app navigation', () => {
+  it('lands non-Reps on Team Dashboard and Reps on My Dashboard', () => {
+    expect(landingPage('ADMIN')).toBe('dashboard')
+    expect(landingPage('MANAGER')).toBe('dashboard')
+    expect(landingPage('BDC')).toBe('dashboard')
+    expect(landingPage('REP')).toBe('me')
   })
 
-  it('uses the role-safe landing page when no origin was captured', () => {
-    expect(repBackPage(null, true)).toBe('assign')
-    expect(repBackPage(null, false)).toBe('me')
+  it('does not expose assignment actions during View-as', () => {
+    expect(canOpenAssignmentDrawer(true, null)).toBe(true)
+    expect(canOpenAssignmentDrawer(true, 'viewed-user')).toBe(false)
+    expect(canOpenAssignmentDrawer(false, null)).toBe(false)
+  })
+
+  it('uses role-safe rep-detail fallback', () => {
+    expect(repBackPage('staff', 'BDC')).toBe('staff')
+    expect(repBackPage('dashboard', 'MANAGER')).toBe('dashboard')
+    expect(repBackPage(null, 'BDC')).toBe('dashboard')
+    expect(repBackPage(null, 'REP')).toBe('me')
   })
 })
 

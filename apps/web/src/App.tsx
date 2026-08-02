@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import type { Role } from '@phoneup/contracts'
 import { useAuthStore } from './state/authStore'
 import { Login } from './pages/Login'
-import { AssignScreen } from './pages/AssignScreen'
 import { StaffList } from './pages/StaffList'
 import { Dashboard } from './pages/Dashboard'
 import { UserManagement } from './pages/UserManagement'
@@ -13,13 +13,22 @@ import { PasswordRecovery } from './pages/PasswordRecovery'
 import { ResetPassword } from './pages/ResetPassword'
 import { resetTokenFromLocation } from './lib/publicAuth'
 import { Button, Card, Select } from './ui'
+import { AssignmentDrawer } from './pages/assignment/AssignmentDrawer'
 
-export type Page = 'assign' | 'staff' | 'dashboard' | 'users' | 'audit' | 'me' | 'rep' | 'import' | 'password'
+export type Page = 'staff' | 'dashboard' | 'users' | 'audit' | 'me' | 'rep' | 'import' | 'password'
 export type PublicAuthPage = 'login' | 'recovery' | 'reset'
 
-export function repBackPage(origin: Page | null, canAssign: boolean): Page {
+export function landingPage(role: Role): Page {
+  return role === 'REP' ? 'me' : 'dashboard'
+}
+
+export function canOpenAssignmentDrawer(canAssign: boolean, viewAsUserId: string | null): boolean {
+  return canAssign && viewAsUserId === null
+}
+
+export function repBackPage(origin: Page | null, role: Role): Page {
   if (origin && origin !== 'rep' && origin !== 'password') return origin
-  return canAssign ? 'assign' : 'me'
+  return landingPage(role)
 }
 
 export function bootstrapRecoveryVisible(hasSession: boolean, bootstrapError: string | null): boolean {
@@ -47,7 +56,7 @@ function App() {
     loadViewAsProfiles,
     setViewAsUserId,
   } = useAuthStore()
-  const [page, setPage] = useState<Page>('assign')
+  const [page, setPage] = useState<Page>('dashboard')
   const [resetToken] = useState(() =>
     typeof window === 'undefined' ? null : resetTokenFromLocation(window.location.search),
   )
@@ -56,9 +65,14 @@ function App() {
   )
   const [openRepId, setOpenRepId] = useState<string | null>(null)
   const [repOriginPage, setRepOriginPage] = useState<Page | null>(null)
+  const [assignmentDrawerOpen, setAssignmentDrawerOpen] = useState(false)
   const mainRef = useRef<HTMLElement>(null)
+  const viewedProfile = selectedViewAs()
+  const sessionRole = session?.role
+  const sessionUserId = session?.userId
+  const effectiveRole = viewedProfile?.role ?? session?.role ?? null
   const canAssign = hasPermission('lead.assign')
-  const activePage: Page = page === 'assign' && !canAssign ? 'me' : page
+  const activePage = page
 
   useEffect(() => {
     refresh().catch(() => {})
@@ -67,6 +81,10 @@ function App() {
   useEffect(() => {
     if (session?.role === 'ADMIN') loadViewAsProfiles().catch(() => {})
   }, [session?.role, session?.userId, loadViewAsProfiles])
+
+  useEffect(() => {
+    if (sessionRole) setPage(landingPage(sessionRole))
+  }, [sessionRole, sessionUserId])
 
   useEffect(() => {
     focusPageHeading(mainRef.current)
@@ -115,7 +133,6 @@ function App() {
   // rather than render screens that would only return PASSWORD_CHANGE_REQUIRED.
   if (session.mustChangePassword) return <main ref={mainRef}><ChangePassword forced /></main>
 
-  const viewedProfile = selectedViewAs()
   const isRealAdmin = session.role === 'ADMIN'
   const viewAsRoles = ['REP', 'BDC', 'MANAGER', 'ADMIN'] as const
 
@@ -125,27 +142,34 @@ function App() {
     setPage('rep')
   }
 
+  function openRepFromAssignmentDrawer(repId: string) {
+    setAssignmentDrawerOpen(false)
+    openRep(repId)
+  }
+
   return (
     <div>
+      <div inert={assignmentDrawerOpen}>
       <nav className="ui-nav">
         <span className="ui-nav-brand">PhoneUp</span>
 
-        {canAssign && (
+        {canOpenAssignmentDrawer(canAssign, viewAsUserId) && (
           <Button
-            variant="ghost"
-            aria-current={activePage === 'assign' ? 'page' : undefined}
-            onClick={() => setPage('assign')}
+            variant="primary"
+            onClick={() => setAssignmentDrawerOpen(true)}
           >
-            Assign
+            Assign Lead
           </Button>
         )}
-        <Button
-          variant="ghost"
-          aria-current={activePage === 'me' ? 'page' : undefined}
-          onClick={() => setPage('me')}
-        >
-          My Dashboard
-        </Button>
+        {effectiveRole === 'REP' && (
+          <Button
+            variant="ghost"
+            aria-current={activePage === 'me' ? 'page' : undefined}
+            onClick={() => setPage('me')}
+          >
+            My Dashboard
+          </Button>
+        )}
         {hasPermission('rep.override') && (
           <Button
             variant="ghost"
@@ -155,13 +179,13 @@ function App() {
             Staff List
           </Button>
         )}
-        {hasPermission('audit.view') && (
+        {effectiveRole !== 'REP' && hasPermission('board.view') && (
           <Button
             variant="ghost"
             aria-current={activePage === 'dashboard' ? 'page' : undefined}
             onClick={() => setPage('dashboard')}
           >
-            Dashboard
+            Team Dashboard
           </Button>
         )}
         {hasPermission('activity.import') && (
@@ -204,7 +228,7 @@ function App() {
                 const target = e.target.value
                 const profile = viewAsProfiles.find((candidate) => candidate.userId === target)
                 setViewAsUserId(target)
-                setPage(profile?.role === 'REP' ? 'me' : 'assign')
+                setPage(landingPage(profile?.role ?? session.role))
               }}
             >
               {viewAsRoles.map((role) => {
@@ -257,7 +281,7 @@ function App() {
             size="sm"
             onClick={() => {
               setViewAsUserId(null)
-              setPage('assign')
+              setPage(landingPage(session.role))
             }}
           >
             Exit
@@ -266,7 +290,6 @@ function App() {
       )}
 
       <main ref={mainRef}>
-        {activePage === 'assign' && <AssignScreen onOpenRep={openRep} />}
         {activePage === 'staff' && <StaffList onOpenRep={openRep} />}
         {activePage === 'dashboard' && <Dashboard onOpenRep={openRep} />}
         {activePage === 'users' && <UserManagement />}
@@ -274,12 +297,18 @@ function App() {
         {activePage === 'import' && <ActivityImport />}
         {activePage === 'me' && <RepDetail />}
         {activePage === 'password' && (
-          <ChangePassword onDone={() => setPage(canAssign ? 'assign' : 'me')} />
+          <ChangePassword onDone={() => setPage(landingPage(effectiveRole ?? session.role))} />
         )}
         {activePage === 'rep' && openRepId && (
-          <RepDetail repId={openRepId} onBack={() => setPage(repBackPage(repOriginPage, canAssign))} />
+          <RepDetail repId={openRepId} onBack={() => setPage(repBackPage(repOriginPage, effectiveRole ?? session.role))} />
         )}
       </main>
+      </div>
+      <AssignmentDrawer
+        open={assignmentDrawerOpen}
+        onClose={() => setAssignmentDrawerOpen(false)}
+        onOpenRep={openRepFromAssignmentDrawer}
+      />
     </div>
   )
 }

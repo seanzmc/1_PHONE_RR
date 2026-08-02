@@ -164,7 +164,7 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
   }
 
   function copyPhone(lead: LeadRow) {
-    // digits-only, matching the existing clipboard convention on AssignScreen
+    // Keep phone copies digits-only for dialer-friendly paste behavior.
     navigator.clipboard.writeText(digitsOnly(lead.customerPhoneE164)).catch(() => {})
     setCopiedLeadId(lead.id)
   }

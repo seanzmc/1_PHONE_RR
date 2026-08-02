@@ -12,8 +12,8 @@ export type SubmitOnEnterOptions = {
 }
 
 /**
- * Keyboard submission for modal fields, matching the convention already used on
- * AssignScreen: single-line inputs submit on Enter, textareas on Ctrl+Enter.
+ * Keyboard submission for modal fields. Single-line inputs submit on Enter,
+ * textareas on Ctrl+Enter.
  * Returns an onKeyDown handler; the modal itself owns Esc.
  */
 export function useSubmitOnEnter(
