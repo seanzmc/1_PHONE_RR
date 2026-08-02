@@ -677,9 +677,21 @@ textarea.ui-input {
   font-weight: var(--font-heading-weight);
   font-size: 20px;
 }
+.ui-assignment-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr);
+  gap: var(--space-6);
+  padding: var(--space-4);
+  align-items: start;
+}
+.ui-assignment-work,
+.ui-assignment-roster {
+  min-width: 0;
+}
 
 @media (max-width: 700px) {
   .ui-drawer { width: 100vw; }
+  .ui-assignment-workspace { grid-template-columns: 1fr; }
 }
 
 @keyframes ui-drawer-enter {
