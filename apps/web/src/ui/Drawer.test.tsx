@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { canCloseDrawer, Drawer, focusDrawerInitialElement } from './Drawer'
+import { canCloseDrawer, Drawer, focusDrawerInitialElement, restoreDrawerFocus } from './Drawer'
 
 describe('Drawer', () => {
   it('renders one named modal drawer with one accessible X disabled while busy', () => {
@@ -53,5 +53,21 @@ describe('Drawer', () => {
     expect(html).toContain('<section class="ui-drawer"')
     expect(html).toContain('inert=""')
     expect(html.indexOf('Discard unsaved changes?')).toBeGreaterThan(html.indexOf('</section>'))
+  })
+
+  it('defers an explicit restore target and preserves the captured-focus fallback', async () => {
+    const explicit = { focus: vi.fn() }
+    const captured = { focus: vi.fn() }
+
+    restoreDrawerFocus(explicit as unknown as HTMLElement, captured as unknown as HTMLElement)
+    expect(explicit.focus).not.toHaveBeenCalled()
+    expect(captured.focus).not.toHaveBeenCalled()
+
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    expect(explicit.focus).toHaveBeenCalledOnce()
+    expect(captured.focus).not.toHaveBeenCalled()
+
+    restoreDrawerFocus(null, captured as unknown as HTMLElement)
+    expect(captured.focus).toHaveBeenCalledOnce()
   })
 })

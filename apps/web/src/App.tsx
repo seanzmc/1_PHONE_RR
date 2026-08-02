@@ -72,6 +72,7 @@ function App() {
   const [openRepId, setOpenRepId] = useState<string | null>(null)
   const [repOriginPage, setRepOriginPage] = useState<Page | null>(null)
   const [assignmentDrawerOpen, setAssignmentDrawerOpen] = useState(false)
+  const assignmentTriggerRef = useRef<HTMLButtonElement>(null)
   const mainRef = useRef<HTMLElement>(null)
   const viewedProfile = selectedViewAs()
   const sessionRole = session?.role
@@ -149,6 +150,7 @@ function App() {
   }
 
   function openRepFromAssignmentDrawer(repId: string) {
+    assignmentTriggerRef.current = null
     setAssignmentDrawerOpen(false)
     openRep(repId)
   }
@@ -162,7 +164,10 @@ function App() {
         {canOpenAssignmentDrawer(canAssign, viewAsUserId) && (
           <Button
             variant="primary"
-            onClick={() => setAssignmentDrawerOpen(true)}
+            onClick={(event) => {
+              assignmentTriggerRef.current = event.currentTarget
+              setAssignmentDrawerOpen(true)
+            }}
           >
             Assign Lead
           </Button>
@@ -314,6 +319,7 @@ function App() {
         open={assignmentDrawerOpen}
         onClose={() => setAssignmentDrawerOpen(false)}
         onOpenRep={openRepFromAssignmentDrawer}
+        restoreFocusRef={assignmentTriggerRef}
       />
     </div>
   )

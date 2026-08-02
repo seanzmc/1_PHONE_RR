@@ -11,6 +11,7 @@ export type DrawerProps = {
   busy?: boolean
   inactive?: boolean
   initialFocusRef?: Readonly<{ current: HTMLElement | null }>
+  restoreFocusRef?: Readonly<{ current: HTMLElement | null }>
   onClose: () => void
   children: ReactNode
   overlays?: ReactNode
@@ -25,12 +26,25 @@ export function focusDrawerInitialElement(panel: HTMLElement | null, initialFocu
   target?.focus()
 }
 
+export function restoreDrawerFocus(explicitTarget: HTMLElement | null, capturedTarget: HTMLElement | null): void {
+  if (explicitTarget) {
+    queueMicrotask(() => explicitTarget.focus())
+    return
+  }
+  capturedTarget?.focus?.()
+}
+
+function currentFocusTarget(ref?: Readonly<{ current: HTMLElement | null }>): HTMLElement | null {
+  return ref?.current ?? null
+}
+
 export function Drawer({
   open,
   title,
   busy = false,
   inactive = false,
   initialFocusRef,
+  restoreFocusRef,
   onClose,
   children,
   overlays,
@@ -42,8 +56,8 @@ export function Drawer({
     if (!open) return
     previouslyFocused.current = document.activeElement as HTMLElement | null
     focusDrawerInitialElement(panelRef.current, initialFocusRef?.current ?? null)
-    return () => previouslyFocused.current?.focus?.()
-  }, [open, initialFocusRef])
+    return () => restoreDrawerFocus(currentFocusTarget(restoreFocusRef), previouslyFocused.current)
+  }, [open, initialFocusRef, restoreFocusRef])
 
   const requestClose = useCallback(() => {
     if (canCloseDrawer(busy, inactive)) onClose()
