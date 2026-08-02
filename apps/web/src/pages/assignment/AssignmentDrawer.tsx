@@ -57,6 +57,19 @@ export function isAssignmentBusy(assigning: boolean, skipping: boolean, voiding:
   return assigning || skipping || voiding
 }
 
+export function canOpenVoidShortcut(
+  busy: boolean,
+  discardChangesOpen: boolean,
+  voidReasonOpen: boolean,
+  skipEditorOpen = false,
+): boolean {
+  return !busy && !discardChangesOpen && !voidReasonOpen && !skipEditorOpen
+}
+
+export function canNavigateToRep(busy: boolean, dirty: boolean): boolean {
+  return !busy && !dirty
+}
+
 export function AssignmentResult({
   result,
   repName,
@@ -91,7 +104,7 @@ export function AssignmentResult({
           {canSkip && !skipEditorOpen && (
             <Button onClick={onSkip} disabled={busy}>Skip rep</Button>
           )}
-          {canVoid && (
+          {canVoid && !skipEditorOpen && (
             <Button variant="danger" onClick={onVoid} disabled={busy}>Void (Alt+V)</Button>
           )}
         </div>
@@ -166,14 +179,20 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
 
   useEffect(() => {
     function onKeydown(event: KeyboardEvent) {
-      if (event.altKey && event.code === 'KeyV' && lastResult?.assignedRepId && canVoid && !busy && !voidReasonOpen) {
+      if (
+        event.altKey
+        && event.code === 'KeyV'
+        && lastResult?.assignedRepId
+        && canVoid
+        && canOpenVoidShortcut(busy, discardChangesOpen, voidReasonOpen, skipEditorOpen)
+      ) {
         event.preventDefault()
         setVoidReasonOpen(true)
       }
     }
     window.addEventListener('keydown', onKeydown)
     return () => window.removeEventListener('keydown', onKeydown)
-  }, [lastResult, canVoid, busy, voidReasonOpen])
+  }, [lastResult, canVoid, busy, discardChangesOpen, voidReasonOpen, skipEditorOpen])
 
   useEffect(() => {
     if (lastResult?.assignedRepId) nameRef.current?.focus()
@@ -414,7 +433,7 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
             hasLoadedRoster={hasLoadedRoster}
             loadError={loadError}
             onRetry={refreshRoster}
-            onOpenRep={onOpenRep}
+            onOpenRep={canNavigateToRep(busy, dirty) ? onOpenRep : undefined}
           />
         </div>
       </div>
