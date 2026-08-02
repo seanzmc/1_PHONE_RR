@@ -1,8 +1,10 @@
-import { createElement } from 'react'
+import { StrictMode, act, createElement } from 'react'
+import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import {
   AssignmentDrawerMount,
+  AssignmentTriggerFocusRestorer,
   bootstrapRecoveryVisible,
   canOpenAssignmentDrawer,
   focusPageHeading,
@@ -10,6 +12,7 @@ import {
   repBackPage,
 } from './App'
 import { resetTokenFromLocation } from './lib/publicAuth'
+import { createLifecycleContainer } from './test/reactLifecycle'
 
 describe('app navigation', () => {
   it('lands non-Reps on Team Dashboard and Reps on My Dashboard', () => {
@@ -33,6 +36,68 @@ describe('app navigation', () => {
 
     expect(renderToStaticMarkup(createElement(AssignmentDrawerMount, { ...props, open: false }))).toBe('')
     expect(renderToStaticMarkup(createElement(AssignmentDrawerMount, { ...props, open: true }))).toContain('Assign Lead')
+  })
+
+  it('restores the Assign Lead trigger once after a real close under Strict Mode', async () => {
+    let shellInert = true
+    const trigger = {
+      focus: vi.fn(),
+      closest: vi.fn(() => (shellInert ? {} : null)),
+    }
+    const triggerRef = { current: trigger as unknown as HTMLElement | null }
+    const lifecycle = createLifecycleContainer(null)
+    const root = createRoot(lifecycle.container)
+
+    try {
+      await act(async () => {
+        root.render(
+          createElement(
+            StrictMode,
+            null,
+            createElement(AssignmentTriggerFocusRestorer, { open: true, triggerRef }),
+          ),
+        )
+      })
+      expect(trigger.focus).not.toHaveBeenCalled()
+
+      await act(async () => {
+        root.render(
+          createElement(
+            StrictMode,
+            null,
+            createElement(AssignmentTriggerFocusRestorer, { open: false, triggerRef }),
+          ),
+        )
+      })
+      expect(trigger.closest).toHaveBeenCalledWith('[inert]')
+      expect(trigger.focus).not.toHaveBeenCalled()
+
+      await act(async () => {
+        root.render(
+          createElement(
+            StrictMode,
+            null,
+            createElement(AssignmentTriggerFocusRestorer, { open: true, triggerRef }),
+          ),
+        )
+      })
+      shellInert = false
+      await act(async () => {
+        root.render(
+          createElement(
+            StrictMode,
+            null,
+            createElement(AssignmentTriggerFocusRestorer, { open: false, triggerRef }),
+          ),
+        )
+      })
+      expect(trigger.focus).toHaveBeenCalledOnce()
+
+      await act(async () => root.unmount())
+      expect(trigger.focus).toHaveBeenCalledOnce()
+    } finally {
+      lifecycle.cleanup()
+    }
   })
 
   it('uses role-safe rep-detail fallback', () => {

@@ -27,7 +27,6 @@ export type AssignmentDrawerProps = {
   open: boolean
   onClose: () => void
   onOpenRep?: (repId: string) => void
-  restoreFocusRef?: Readonly<{ current: HTMLElement | null }>
 }
 
 export type AssignmentResultProps = {
@@ -115,7 +114,7 @@ export function AssignmentResult({
   )
 }
 
-export function AssignmentDrawer({ open, onClose, onOpenRep, restoreFocusRef }: AssignmentDrawerProps) {
+export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerProps) {
   const { hasPermission, viewAsUserId } = useAuthStore()
   const [roster, setRoster] = useState<RosterEntry[]>([])
   const [name, setName] = useState('')
@@ -347,7 +346,6 @@ export function AssignmentDrawer({ open, onClose, onOpenRep, restoreFocusRef }: 
       busy={busy}
       inactive={discardChangesOpen || voidReasonOpen}
       initialFocusRef={nameRef}
-      restoreFocusRef={restoreFocusRef}
       onClose={requestClose}
       overlays={(
         <>

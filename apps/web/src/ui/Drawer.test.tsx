@@ -1,6 +1,15 @@
+import { StrictMode, act } from 'react'
+import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { canCloseDrawer, Drawer, focusDrawerInitialElement, restoreDrawerFocus } from './Drawer'
+import { createLifecycleContainer } from '../test/reactLifecycle'
+import {
+  canCloseDrawer,
+  Drawer,
+  DrawerFocusLifecycle,
+  focusDrawerInitialElement,
+  restoreDrawerFocus,
+} from './Drawer'
 
 describe('Drawer', () => {
   it('renders one named modal drawer with one accessible X disabled while busy', () => {
@@ -55,19 +64,49 @@ describe('Drawer', () => {
     expect(html.indexOf('Discard unsaved changes?')).toBeGreaterThan(html.indexOf('</section>'))
   })
 
-  it('defers an explicit restore target and preserves the captured-focus fallback', async () => {
-    const explicit = { focus: vi.fn() }
+  it('restores captured focus only after the drawer panel is unmounted', async () => {
+    const panel = { focus: vi.fn() }
     const captured = { focus: vi.fn() }
+    const panelRef = { current: panel as unknown as HTMLElement | null }
 
-    restoreDrawerFocus(explicit as unknown as HTMLElement, captured as unknown as HTMLElement)
-    expect(explicit.focus).not.toHaveBeenCalled()
-    expect(captured.focus).not.toHaveBeenCalled()
-
+    restoreDrawerFocus(panelRef, captured as unknown as HTMLElement)
     await new Promise<void>((resolve) => queueMicrotask(resolve))
-    expect(explicit.focus).toHaveBeenCalledOnce()
+    expect(panel.focus).not.toHaveBeenCalled()
     expect(captured.focus).not.toHaveBeenCalled()
 
-    restoreDrawerFocus(null, captured as unknown as HTMLElement)
+    panelRef.current = null
+    restoreDrawerFocus(panelRef, captured as unknown as HTMLElement)
     expect(captured.focus).toHaveBeenCalledOnce()
+  })
+
+  it('does not replay captured-focus restoration while mounted in Strict Mode', async () => {
+    const captured = { focus: vi.fn() }
+    const lifecycle = createLifecycleContainer(captured as unknown as HTMLElement)
+    const initial = {
+      focus: vi.fn(() => {
+        lifecycle.document.activeElement = initial as unknown as HTMLElement
+      }),
+    }
+    const panelRef = { current: {} as HTMLElement | null }
+    const initialFocusRef = { current: initial as unknown as HTMLElement | null }
+    const root = createRoot(lifecycle.container)
+
+    try {
+      await act(async () => {
+        root.render(
+          <StrictMode>
+            <DrawerFocusLifecycle open panelRef={panelRef} initialFocusRef={initialFocusRef} />
+          </StrictMode>,
+        )
+      })
+      expect(initial.focus).toHaveBeenCalledTimes(2)
+      expect(captured.focus).not.toHaveBeenCalled()
+
+      panelRef.current = null
+      await act(async () => root.unmount())
+      expect(captured.focus).toHaveBeenCalledOnce()
+    } finally {
+      lifecycle.cleanup()
+    }
   })
 })

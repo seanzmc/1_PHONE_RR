@@ -11,7 +11,6 @@ export type DrawerProps = {
   busy?: boolean
   inactive?: boolean
   initialFocusRef?: Readonly<{ current: HTMLElement | null }>
-  restoreFocusRef?: Readonly<{ current: HTMLElement | null }>
   onClose: () => void
   children: ReactNode
   overlays?: ReactNode
@@ -26,16 +25,35 @@ export function focusDrawerInitialElement(panel: HTMLElement | null, initialFocu
   target?.focus()
 }
 
-export function restoreDrawerFocus(explicitTarget: HTMLElement | null, capturedTarget: HTMLElement | null): void {
-  if (explicitTarget) {
-    queueMicrotask(() => explicitTarget.focus())
-    return
-  }
+export function restoreDrawerFocus(
+  panelRef: Readonly<{ current: HTMLElement | null }>,
+  capturedTarget: HTMLElement | null,
+): void {
+  if (panelRef.current) return
   capturedTarget?.focus?.()
 }
 
-function currentFocusTarget(ref?: Readonly<{ current: HTMLElement | null }>): HTMLElement | null {
-  return ref?.current ?? null
+export type DrawerFocusLifecycleProps = {
+  open: boolean
+  panelRef: Readonly<{ current: HTMLElement | null }>
+  initialFocusRef?: Readonly<{ current: HTMLElement | null }>
+}
+
+export function DrawerFocusLifecycle({ open, panelRef, initialFocusRef }: DrawerFocusLifecycleProps) {
+  const previouslyFocused = useRef<HTMLElement | null>(null)
+  const focusCaptured = useRef(false)
+
+  useEffect(() => {
+    if (!open) return
+    if (!focusCaptured.current) {
+      previouslyFocused.current = document.activeElement as HTMLElement | null
+      focusCaptured.current = true
+    }
+    focusDrawerInitialElement(panelRef.current, initialFocusRef?.current ?? null)
+    return () => restoreDrawerFocus(panelRef, previouslyFocused.current)
+  }, [open, panelRef, initialFocusRef])
+
+  return null
 }
 
 export function Drawer({
@@ -44,20 +62,11 @@ export function Drawer({
   busy = false,
   inactive = false,
   initialFocusRef,
-  restoreFocusRef,
   onClose,
   children,
   overlays,
 }: DrawerProps) {
   const panelRef = useRef<HTMLElement>(null)
-  const previouslyFocused = useRef<HTMLElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return
-    previouslyFocused.current = document.activeElement as HTMLElement | null
-    focusDrawerInitialElement(panelRef.current, initialFocusRef?.current ?? null)
-    return () => restoreDrawerFocus(currentFocusTarget(restoreFocusRef), previouslyFocused.current)
-  }, [open, initialFocusRef, restoreFocusRef])
 
   const requestClose = useCallback(() => {
     if (canCloseDrawer(busy, inactive)) onClose()
@@ -99,6 +108,7 @@ export function Drawer({
 
   return (
     <>
+      <DrawerFocusLifecycle open={open} panelRef={panelRef} initialFocusRef={initialFocusRef} />
       <div className="ui-drawer-backdrop" onMouseDown={handleBackdropMouseDown}>
         <section
           className="ui-drawer"

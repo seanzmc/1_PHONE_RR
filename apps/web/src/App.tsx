@@ -48,6 +48,27 @@ export function AssignmentDrawerMount(props: AssignmentDrawerProps) {
   return <AssignmentDrawer {...props} />
 }
 
+export type AssignmentTriggerFocusRestorerProps = {
+  open: boolean
+  triggerRef: Readonly<{ current: HTMLElement | null }>
+}
+
+export function AssignmentTriggerFocusRestorer({ open, triggerRef }: AssignmentTriggerFocusRestorerProps) {
+  const wasOpen = useRef(open)
+
+  useEffect(() => {
+    const justClosed = wasOpen.current && !open
+    wasOpen.current = open
+    if (!justClosed) return
+
+    const target = triggerRef.current
+    if (!target || target.isConnected === false || target.closest('[inert]')) return
+    target.focus()
+  }, [open, triggerRef])
+
+  return null
+}
+
 function App() {
   const {
     session,
@@ -315,11 +336,11 @@ function App() {
         )}
       </main>
       </div>
+      <AssignmentTriggerFocusRestorer open={assignmentDrawerOpen} triggerRef={assignmentTriggerRef} />
       <AssignmentDrawerMount
         open={assignmentDrawerOpen}
         onClose={() => setAssignmentDrawerOpen(false)}
         onOpenRep={openRepFromAssignmentDrawer}
-        restoreFocusRef={assignmentTriggerRef}
       />
     </div>
   )
