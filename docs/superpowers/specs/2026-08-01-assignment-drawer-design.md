@@ -22,7 +22,7 @@ The current result card also overemphasizes the customer, exposes redundant phon
 
 ## Selected approach
 
-Use one wide assignment drawer containing both the working area and the live roster. This replaces both the dedicated Assign page and the rejected two-overlay approach of opening a modal and a separate roster shelf simultaneously.
+Use one wide assignment drawer containing both the working area and the live roster. This replaces both the dedicated Assign page and the rejected two-overlay approach of opening a modal and a separate roster shelf simultaneously. Skip reasons also remain inside this same drawer; the workflow must not open a nested Skip modal.
 
 The single drawer is preferred because it has one focus boundary, one close behavior, and one responsive layout. It keeps Team Dashboard as the normal work surface while making Assign available from the header.
 
@@ -60,6 +60,8 @@ The single drawer is preferred because it has one focus boundary, one close beha
 - Only Skip and Void actions appear in this result state.
 - The drawer remains open for as long as the BDC needs to learn whether the rep accepts the lead.
 - The roster updates through the existing refresh and realtime paths.
+- Clicking Skip expands an inline reason editor in the unused space beneath the assignment result. The rep-first result remains visible above it and the roster remains visible beside it.
+- Cancel collapses the inline editor without passing the lead. It does not close the assignment drawer.
 
 ### Successful Skip
 
@@ -78,7 +80,7 @@ The single drawer is preferred because it has one focus boundary, one close beha
 
 ## Skip reasons
 
-The Skip dialog keeps the named-rep review and explicit confirmation but replaces free-text-only entry with fast preset choices:
+The inline Skip editor keeps the named-rep review and explicit confirmation in the assignment drawer while replacing free-text-only entry with fast preset choices:
 
 - Rep unavailable
 - Rep already assisting a customer
@@ -87,6 +89,8 @@ The Skip dialog keeps the named-rep review and explicit confirmation but replace
 - Other
 
 Selecting a preset does not submit immediately. The BDC selects a reason and then confirms `Skip rep and pass lead`. `Other` reveals required detail before confirmation can be enabled.
+
+The editor is controlled by `AssignmentDrawer` rather than owning a second overlay lifecycle. Opening it creates the Skip attempt key and resets the preset/detail state for the currently assigned rep. A successful Skip collapses the editor, refreshes the result in place for the next rep, and leaves Skip available again. Cancel clears the pending reason and collapses the editor. A failed Skip remains expanded with the selected reason and friendly inline error so the user can correct or retry it.
 
 The implementation may continue sending the existing `reasonNote` string, using the preset label or `Other: <detail>`. No database migration is needed. Full reasons remain visible only in Audit Log and are never returned in roster data.
 
@@ -143,7 +147,7 @@ The current `AssignScreen.tsx` owns too many independent responsibilities for th
 - `AssignmentForm`: field validation, keyboard progression, and assignment submission.
 - `AssignmentResult`: rep-first success hierarchy plus Skip and Void entry points.
 - `RosterPanel`: roster loading, four-bucket rendering, and presentation-only served ordering.
-- `SkipDialog`: preset selection, `Other` detail, confirmation, and inline errors.
+- `SkipReasonEditor`: a controlled, inline presentation component for preset selection, `Other` detail, explicit confirmation, Cancel, and inline errors. It does not render a modal or own drawer-level mutation state.
 
 The exact filenames may follow the existing web component conventions, but these responsibilities must remain independently testable. Do not refactor unrelated pages or introduce a new state-management dependency.
 
@@ -160,6 +164,7 @@ The exact filenames may follow the existing web component conventions, but these
 ## Accessibility and responsive behavior
 
 - The drawer is one modal focus boundary with an accessible name.
+- Opening Skip does not create another focus boundary; the inline reason editor is part of the drawer's normal reading and tab order.
 - Background content becomes inert while the drawer is open.
 - Idle-state Escape closes the drawer; focus returns to the header `Assign lead` button.
 - During an in-flight mutation, close and Escape are disabled.
@@ -204,8 +209,8 @@ Run an authenticated local BDC flow:
 1. Start on Team Dashboard.
 2. Open Assign from the header and confirm focus enters Customer name.
 3. Assign a lead and verify the rep-first result, customer plus phone, live roster update, and absence of clipboard behavior.
-4. Skip using a preset and verify the same lead passes, the drawer stays open, and the skipped rep appears at the top of `Served This Round` with only the yellow badge.
-5. Open another Skip, verify repeatability and confirmation safeguards, then cancel.
+4. Expand the inline Skip editor beneath the result, choose a preset, and verify the same lead passes, the drawer stays open, and the skipped rep appears at the top of `Served This Round` with only the yellow badge.
+5. Expand another inline Skip editor, verify repeatability and confirmation safeguards, then cancel without closing the drawer.
 6. Close and reopen the drawer and verify a clean assignment state.
 7. Verify narrow-screen full-screen behavior and keyboard focus restoration.
 
