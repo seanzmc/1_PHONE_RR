@@ -16,10 +16,12 @@ export type ModalProps = {
   children: ReactNode
   /** Hint line under the body, defaults to a keyboard summary. */
   hint?: string
+  initialFocus?: 'submit' | 'cancel'
+  submitTone?: 'primary' | 'danger'
 }
 
 /**
- * The one modal in the app: focus trap, Esc closes, backdrop click closes.
+ * Shared confirmation primitive: focus trap, Esc closes, backdrop click closes.
  * Enter/Ctrl+Enter submission lives in `useSubmitOnEnter`, applied to the fields
  * themselves so a single-line input submits on Enter while a textarea needs Ctrl+Enter.
  */
@@ -33,17 +35,26 @@ export function Modal({
   cancelLabel = 'Cancel',
   children,
   hint,
+  initialFocus,
+  submitTone = 'primary',
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const submitRef = useRef<HTMLButtonElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
   const previouslyFocused = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!open) return
     previouslyFocused.current = document.activeElement as HTMLElement | null
     const first = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE)
-    first?.focus()
+    const target = initialFocus === 'submit'
+      ? submitRef.current
+      : initialFocus === 'cancel'
+        ? cancelRef.current
+        : first
+    target?.focus()
     return () => previouslyFocused.current?.focus?.()
-  }, [open])
+  }, [open, initialFocus])
 
   const handleKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -88,11 +99,17 @@ export function Modal({
         <p className="ui-modal-hint">{hint ?? 'Enter to confirm, Esc to cancel'}</p>
         <div className="ui-modal-actions">
           {onSubmit && (
-            <button type="button" className="ui-btn ui-btn-primary" onClick={onSubmit} disabled={submitDisabled}>
+            <button
+              type="button"
+              className={`ui-btn ${submitTone === 'danger' ? 'ui-btn-danger' : 'ui-btn-primary'}`}
+              onClick={onSubmit}
+              disabled={submitDisabled}
+              ref={submitRef}
+            >
               {submitLabel}
             </button>
           )}
-          <button type="button" className="ui-btn" onClick={onClose}>
+          <button type="button" className="ui-btn" onClick={onClose} ref={cancelRef}>
             {cancelLabel}
           </button>
         </div>

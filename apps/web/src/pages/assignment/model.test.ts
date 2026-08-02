@@ -7,8 +7,11 @@ import {
   canSubmitWithRoster,
   formatAssignmentTime,
   formatPhone,
+  hasAssignmentDraft,
+  hasSkipDraft,
   resolveSkipReason,
   resultGuidance,
+  shouldConfirmDrawerClose,
   sortServedForDisplay,
 } from './model'
 
@@ -158,6 +161,34 @@ describe('skip reason', () => {
     expect(resolveSkipReason('Rep unavailable', '')).toBe('Rep unavailable')
     expect(resolveSkipReason('Other', '')).toBeNull()
     expect(resolveSkipReason('Other', 'Rep is in training')).toBe('Other: Rep is in training')
+  })
+})
+
+describe('drawer draft guards', () => {
+  it('treats only non-whitespace assignment input as a draft', () => {
+    expect(hasAssignmentDraft('   ', '\n', '\t')).toBe(false)
+    expect(hasAssignmentDraft('Kev Tom', '', '')).toBe(true)
+    expect(hasAssignmentDraft('', '3015550142', '')).toBe(true)
+    expect(hasAssignmentDraft('', '', 'Call after 3')).toBe(true)
+  })
+
+  it('protects only a started inline Skip editor', () => {
+    expect(hasSkipDraft(false, 'Rep unavailable', 'detail')).toBe(false)
+    expect(hasSkipDraft(true, null, '   ')).toBe(false)
+    expect(hasSkipDraft(true, 'Rep unavailable', '')).toBe(true)
+    expect(hasSkipDraft(true, null, 'Rep is in training')).toBe(true)
+  })
+
+  it('does not warn for a saved result unless a Skip draft is active', () => {
+    expect(shouldConfirmDrawerClose({
+      formActive: false,
+      name: 'already submitted',
+      phone: '3015550142',
+      notes: 'already submitted',
+      skipOpen: false,
+      skipPreset: null,
+      skipOtherDetail: '',
+    })).toBe(false)
   })
 })
 

@@ -9,15 +9,16 @@ export type DrawerProps = {
   open: boolean
   title: string
   busy?: boolean
+  inactive?: boolean
   onClose: () => void
   children: ReactNode
 }
 
-export function canCloseDrawer(busy: boolean): boolean {
-  return !busy
+export function canCloseDrawer(busy: boolean, inactive: boolean): boolean {
+  return !busy && !inactive
 }
 
-export function Drawer({ open, title, busy = false, onClose, children }: DrawerProps) {
+export function Drawer({ open, title, busy = false, inactive = false, onClose, children }: DrawerProps) {
   const panelRef = useRef<HTMLElement>(null)
   const previouslyFocused = useRef<HTMLElement | null>(null)
 
@@ -30,8 +31,8 @@ export function Drawer({ open, title, busy = false, onClose, children }: DrawerP
   }, [open])
 
   const requestClose = useCallback(() => {
-    if (canCloseDrawer(busy)) onClose()
-  }, [busy, onClose])
+    if (canCloseDrawer(busy, inactive)) onClose()
+  }, [busy, inactive, onClose])
 
   const handleBackdropMouseDown = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -76,11 +77,12 @@ export function Drawer({ open, title, busy = false, onClose, children }: DrawerP
         aria-label={title}
         ref={panelRef}
         onKeyDown={handleKeyDown}
+        inert={inactive}
       >
         <header className="ui-drawer-header">
           <h2>{title}</h2>
-          <Button aria-label={`Close ${title}`} onClick={requestClose} disabled={busy}>
-            Close
+          <Button aria-label={`Close ${title}`} onClick={requestClose} disabled={busy || inactive}>
+            ×
           </Button>
         </header>
         {children}

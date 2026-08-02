@@ -100,6 +100,27 @@ export const SKIP_PRESETS = [
 
 export type SkipPreset = typeof SKIP_PRESETS[number]
 
+export function hasAssignmentDraft(name: string, phone: string, notes: string): boolean {
+  return [name, phone, notes].some((value) => value.trim().length > 0)
+}
+
+export function hasSkipDraft(open: boolean, preset: SkipPreset | null, otherDetail: string): boolean {
+  return open && (!!preset || otherDetail.trim().length > 0)
+}
+
+export function shouldConfirmDrawerClose(input: {
+  formActive: boolean
+  name: string
+  phone: string
+  notes: string
+  skipOpen: boolean
+  skipPreset: SkipPreset | null
+  skipOtherDetail: string
+}): boolean {
+  return (input.formActive && hasAssignmentDraft(input.name, input.phone, input.notes))
+    || hasSkipDraft(input.skipOpen, input.skipPreset, input.skipOtherDetail)
+}
+
 export function resolveSkipReason(preset: SkipPreset | null, otherDetail: string): string | null {
   if (!preset) return null
   if (preset !== 'Other') return preset
