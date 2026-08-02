@@ -1,5 +1,4 @@
 import { Badge } from '../../ui'
-import { RosterRepName } from '../AssignScreen'
 import { bucketRoster, type RosterEntry } from './model'
 
 export type RosterPanelProps = {
@@ -8,6 +7,15 @@ export type RosterPanelProps = {
   loadError: boolean
   onRetry: () => void
   onOpenRep?: (repId: string) => void
+}
+
+function RosterRepName({ entry, onOpenRep }: { entry: RosterEntry, onOpenRep?: (repId: string) => void }) {
+  if (!onOpenRep) return <>{entry.displayName}</>
+  return (
+    <button type="button" className="ui-linkbtn" onClick={() => onOpenRep(entry.repId)}>
+      {entry.displayName}
+    </button>
+  )
 }
 
 export function RosterPanel({ roster, hasLoadedRoster, loadError, onRetry, onOpenRep }: RosterPanelProps) {

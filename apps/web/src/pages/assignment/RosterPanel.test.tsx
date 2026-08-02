@@ -61,6 +61,22 @@ describe('RosterPanel', () => {
     expect(html).toContain('Day off')
   })
 
+  it('renders every rep name as a drill-down button when opening reps is available', () => {
+    const html = renderRoster({
+      roster: [
+        entry({ repId: 'next', displayName: 'Next Rep' }),
+        entry({ repId: 'deck', displayName: 'On Deck Rep' }),
+        entry({ repId: 'served', displayName: 'Served Rep', servedThisCycle: true }),
+        entry({ repId: 'away', displayName: 'Away Rep', isEligible: false }),
+      ],
+      onOpenRep: () => {},
+    })
+
+    for (const name of ['Next Rep', 'On Deck Rep', 'Served Rep', 'Away Rep']) {
+      expect(html).toContain(`>${name}</button>`)
+    }
+  })
+
   it('distinguishes loading, stale last-good data, and total load failure with Retry', () => {
     expect(renderRoster({ hasLoadedRoster: false, loadError: false })).toContain('Loading roster…')
     expect(renderRoster({ roster: [entry({ repId: 'known' })], loadError: true })).toContain('refresh — showing the last good roster.')

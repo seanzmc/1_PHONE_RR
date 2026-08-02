@@ -1,15 +1,16 @@
-import { useEffect, useState } from 'react'
 import { Button, Field, Input } from '../../ui'
-import { Modal } from '../../ui/Modal'
 import { resolveSkipReason, SKIP_PRESETS, type SkipPreset } from './model'
 
-export type SkipDialogProps = {
-  open: boolean
+export type SkipReasonEditorProps = {
   repName: string
+  preset: SkipPreset | null
+  otherDetail: string
   skipping: boolean
   error: string | null
   readOnly: boolean
-  onClose: () => void
+  onPresetChange: (preset: SkipPreset) => void
+  onOtherDetailChange: (detail: string) => void
+  onCancel: () => void
   onConfirm: (reasonNote: string) => void
 }
 
@@ -22,30 +23,27 @@ export function canConfirmSkip(
   return !!resolveSkipReason(preset, otherDetail) && !skipping && !readOnly
 }
 
-export function SkipDialog({ open, repName, skipping, error, readOnly, onClose, onConfirm }: SkipDialogProps) {
-  const [preset, setPreset] = useState<SkipPreset | null>(null)
-  const [otherDetail, setOtherDetail] = useState('')
-
-  useEffect(() => {
-    setPreset(null)
-    setOtherDetail('')
-  }, [open, repName])
-
-  function submit() {
-    const reason = resolveSkipReason(preset, otherDetail)
-    if (reason) onConfirm(reason)
-  }
-
+export function SkipReasonEditor({
+  repName,
+  preset,
+  otherDetail,
+  skipping,
+  error,
+  readOnly,
+  onPresetChange,
+  onOtherDetailChange,
+  onCancel,
+  onConfirm,
+}: SkipReasonEditorProps) {
   return (
-    <Modal
-      open={open}
-      title={`Skip ${repName}?`}
-      onClose={onClose}
-      onSubmit={submit}
-      submitDisabled={!canConfirmSkip(preset, otherDetail, skipping, readOnly)}
-      submitLabel={skipping ? 'Skipping…' : 'Skip rep and pass lead'}
-      hint="Choose a reason, then click Skip rep and pass lead. Esc cancels."
-    >
+    <section className="ui-skip-editor ui-stack" aria-labelledby="skip-editor-title">
+      <div className="ui-skip-editor-head">
+        <div>
+          <p className="ui-eyebrow">Pass this lead</p>
+          <h3 id="skip-editor-title">Skip {repName}</h3>
+        </div>
+        <Button size="sm" onClick={onCancel} disabled={skipping}>Cancel</Button>
+      </div>
       <p>The same lead will pass to the next available rep. This rep stays served for the current round.</p>
       <div className="ui-skip-presets" role="group" aria-label="Skip reason">
         {SKIP_PRESETS.map((option) => (
@@ -55,7 +53,7 @@ export function SkipDialog({ open, repName, skipping, error, readOnly, onClose, 
             size="sm"
             aria-pressed={option === preset}
             disabled={skipping || readOnly}
-            onClick={() => setPreset(option)}
+            onClick={() => onPresetChange(option)}
           >
             {option}
           </Button>
@@ -65,14 +63,23 @@ export function SkipDialog({ open, repName, skipping, error, readOnly, onClose, 
         <Field label="Other reason" error={error}>
           <Input
             value={otherDetail}
-            onChange={(event) => setOtherDetail(event.target.value)}
+            onChange={(event) => onOtherDetailChange(event.target.value)}
             disabled={skipping || readOnly}
             placeholder="Describe the reason"
-            autoFocus
           />
         </Field>
       )}
       {preset !== 'Other' && error && <p className="ui-error" role="alert">{error}</p>}
-    </Modal>
+      <Button
+        variant="primary"
+        onClick={() => {
+          const reason = resolveSkipReason(preset, otherDetail)
+          if (reason) onConfirm(reason)
+        }}
+        disabled={!canConfirmSkip(preset, otherDetail, skipping, readOnly)}
+      >
+        {skipping ? 'Skipping…' : 'Skip rep and pass lead'}
+      </Button>
+    </section>
   )
 }
