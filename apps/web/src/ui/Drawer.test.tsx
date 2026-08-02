@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
-import { canCloseDrawer, Drawer } from './Drawer'
+import { describe, expect, it, vi } from 'vitest'
+import { canCloseDrawer, Drawer, focusDrawerInitialElement } from './Drawer'
 
 describe('Drawer', () => {
   it('renders one named modal drawer with one accessible X disabled while busy', () => {
@@ -22,5 +22,36 @@ describe('Drawer', () => {
     expect(canCloseDrawer(false, false)).toBe(true)
     expect(canCloseDrawer(true, false)).toBe(false)
     expect(canCloseDrawer(false, true)).toBe(false)
+  })
+
+  it('focuses an explicit initial target while preserving first-focus fallback', () => {
+    const fallback = { focus: vi.fn() }
+    const preferred = { focus: vi.fn() }
+    const panel = { querySelector: vi.fn(() => fallback) }
+
+    focusDrawerInitialElement(panel as unknown as HTMLElement, preferred as unknown as HTMLElement)
+    expect(preferred.focus).toHaveBeenCalledOnce()
+    expect(panel.querySelector).not.toHaveBeenCalled()
+
+    focusDrawerInitialElement(panel as unknown as HTMLElement, null)
+    expect(fallback.focus).toHaveBeenCalledOnce()
+  })
+
+  it('renders nested confirmations outside the inert drawer section', () => {
+    const html = renderToStaticMarkup(
+      <Drawer
+        open
+        title="Assign lead"
+        inactive
+        onClose={() => {}}
+        overlays={<div role="dialog">Discard unsaved changes?</div>}
+      >
+        <p>Drawer body</p>
+      </Drawer>,
+    )
+
+    expect(html).toContain('<section class="ui-drawer"')
+    expect(html).toContain('inert=""')
+    expect(html.indexOf('Discard unsaved changes?')).toBeGreaterThan(html.indexOf('</section>'))
   })
 })

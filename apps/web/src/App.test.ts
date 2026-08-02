@@ -1,5 +1,8 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  AssignmentDrawerMount,
   bootstrapRecoveryVisible,
   canOpenAssignmentDrawer,
   focusPageHeading,
@@ -20,6 +23,16 @@ describe('app navigation', () => {
     expect(canOpenAssignmentDrawer(true, null)).toBe(true)
     expect(canOpenAssignmentDrawer(true, 'viewed-user')).toBe(false)
     expect(canOpenAssignmentDrawer(false, null)).toBe(false)
+  })
+
+  it('mounts a fresh assignment drawer only while it is open', () => {
+    const props = {
+      onClose: () => {},
+      onOpenRep: () => {},
+    }
+
+    expect(renderToStaticMarkup(createElement(AssignmentDrawerMount, { ...props, open: false }))).toBe('')
+    expect(renderToStaticMarkup(createElement(AssignmentDrawerMount, { ...props, open: true }))).toContain('Assign Lead')
   })
 
   it('uses role-safe rep-detail fallback', () => {

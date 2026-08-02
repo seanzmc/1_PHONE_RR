@@ -14,6 +14,7 @@ import { ResetPassword } from './pages/ResetPassword'
 import { resetTokenFromLocation } from './lib/publicAuth'
 import { Button, Card, Select } from './ui'
 import { AssignmentDrawer } from './pages/assignment/AssignmentDrawer'
+import type { AssignmentDrawerProps } from './pages/assignment/AssignmentDrawer'
 
 export type Page = 'staff' | 'dashboard' | 'users' | 'audit' | 'me' | 'rep' | 'import' | 'password'
 export type PublicAuthPage = 'login' | 'recovery' | 'reset'
@@ -40,6 +41,11 @@ export function focusPageHeading(main: HTMLElement | null): void {
   if (!heading) return
   heading.tabIndex = -1
   heading.focus()
+}
+
+export function AssignmentDrawerMount(props: AssignmentDrawerProps) {
+  if (!props.open) return null
+  return <AssignmentDrawer {...props} />
 }
 
 function App() {
@@ -304,7 +310,7 @@ function App() {
         )}
       </main>
       </div>
-      <AssignmentDrawer
+      <AssignmentDrawerMount
         open={assignmentDrawerOpen}
         onClose={() => setAssignmentDrawerOpen(false)}
         onOpenRep={openRepFromAssignmentDrawer}

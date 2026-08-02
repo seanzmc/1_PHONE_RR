@@ -10,25 +10,40 @@ export type DrawerProps = {
   title: string
   busy?: boolean
   inactive?: boolean
+  initialFocusRef?: Readonly<{ current: HTMLElement | null }>
   onClose: () => void
   children: ReactNode
+  overlays?: ReactNode
 }
 
 export function canCloseDrawer(busy: boolean, inactive: boolean): boolean {
   return !busy && !inactive
 }
 
-export function Drawer({ open, title, busy = false, inactive = false, onClose, children }: DrawerProps) {
+export function focusDrawerInitialElement(panel: HTMLElement | null, initialFocusTarget: HTMLElement | null): void {
+  const target = initialFocusTarget ?? panel?.querySelector<HTMLElement>(FOCUSABLE)
+  target?.focus()
+}
+
+export function Drawer({
+  open,
+  title,
+  busy = false,
+  inactive = false,
+  initialFocusRef,
+  onClose,
+  children,
+  overlays,
+}: DrawerProps) {
   const panelRef = useRef<HTMLElement>(null)
   const previouslyFocused = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!open) return
     previouslyFocused.current = document.activeElement as HTMLElement | null
-    const first = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE)
-    first?.focus()
+    focusDrawerInitialElement(panelRef.current, initialFocusRef?.current ?? null)
     return () => previouslyFocused.current?.focus?.()
-  }, [open])
+  }, [open, initialFocusRef])
 
   const requestClose = useCallback(() => {
     if (canCloseDrawer(busy, inactive)) onClose()
@@ -69,24 +84,27 @@ export function Drawer({ open, title, busy = false, inactive = false, onClose, c
   if (!open) return null
 
   return (
-    <div className="ui-drawer-backdrop" onMouseDown={handleBackdropMouseDown}>
-      <section
-        className="ui-drawer"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        ref={panelRef}
-        onKeyDown={handleKeyDown}
-        inert={inactive}
-      >
-        <header className="ui-drawer-header">
-          <h2>{title}</h2>
-          <Button aria-label={`Close ${title}`} onClick={requestClose} disabled={busy || inactive}>
-            ×
-          </Button>
-        </header>
-        {children}
-      </section>
-    </div>
+    <>
+      <div className="ui-drawer-backdrop" onMouseDown={handleBackdropMouseDown}>
+        <section
+          className="ui-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          ref={panelRef}
+          onKeyDown={handleKeyDown}
+          inert={inactive}
+        >
+          <header className="ui-drawer-header">
+            <h2>{title}</h2>
+            <Button aria-label={`Close ${title}`} onClick={requestClose} disabled={busy || inactive}>
+              ×
+            </Button>
+          </header>
+          {children}
+        </section>
+      </div>
+      {overlays}
+    </>
   )
 }

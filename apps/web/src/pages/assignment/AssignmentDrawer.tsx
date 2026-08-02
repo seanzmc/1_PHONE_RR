@@ -345,7 +345,35 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
       title="Assign Lead"
       busy={busy}
       inactive={discardChangesOpen || voidReasonOpen}
+      initialFocusRef={nameRef}
       onClose={requestClose}
+      overlays={(
+        <>
+          <DiscardChangesDialog
+            open={discardChangesOpen}
+            onKeepEditing={() => setDiscardChangesOpen(false)}
+            onDiscard={() => {
+              setDiscardChangesOpen(false)
+              onClose()
+            }}
+          />
+
+          <Modal
+            open={voidReasonOpen}
+            title="Void this assignment"
+            onClose={closeVoid}
+            onSubmit={handleVoid}
+            submitDisabled={!voidReason.trim() || voiding}
+            submitLabel={voiding ? 'Voiding…' : 'Void'}
+            submitTone="danger"
+          >
+            <Field label="Void reason" error={voidError}>
+              <Input value={voidReason} onChange={(event) => setVoidReason(event.target.value)} onKeyDown={onVoidKeyDown} disabled={voiding} />
+            </Field>
+            <p className="ui-hint">The up goes straight back to this rep — they become Next Up again.</p>
+          </Modal>
+        </>
+      )}
     >
       <div className="ui-assignment-workspace" onKeyDown={handleKeyDown}>
         <div className="ui-assignment-work">
@@ -438,29 +466,6 @@ export function AssignmentDrawer({ open, onClose, onOpenRep }: AssignmentDrawerP
         </div>
       </div>
 
-      <DiscardChangesDialog
-        open={discardChangesOpen}
-        onKeepEditing={() => setDiscardChangesOpen(false)}
-        onDiscard={() => {
-          setDiscardChangesOpen(false)
-          onClose()
-        }}
-      />
-
-      <Modal
-        open={voidReasonOpen}
-        title="Void this assignment"
-        onClose={closeVoid}
-        onSubmit={handleVoid}
-        submitDisabled={!voidReason.trim() || voiding}
-        submitLabel={voiding ? 'Voiding…' : 'Void'}
-        submitTone="danger"
-      >
-        <Field label="Void reason" error={voidError}>
-          <Input value={voidReason} onChange={(event) => setVoidReason(event.target.value)} onKeyDown={onVoidKeyDown} disabled={voiding} />
-        </Field>
-        <p className="ui-hint">The up goes straight back to this rep — they become Next Up again.</p>
-      </Modal>
     </Drawer>
   )
 }
