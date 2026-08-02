@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { Button } from './index'
 
 const FOCUSABLE =
@@ -18,6 +18,13 @@ export type DrawerProps = {
 
 export function canCloseDrawer(busy: boolean, inactive: boolean): boolean {
   return !busy && !inactive
+}
+
+export function requestDrawerCloseFromBackdrop(
+  event: Pick<ReactMouseEvent<HTMLDivElement>, 'type' | 'target' | 'currentTarget'>,
+  requestClose: () => void,
+): void {
+  if (event.type === 'click' && event.target === event.currentTarget) requestClose()
 }
 
 export function focusDrawerInitialElement(panel: HTMLElement | null, initialFocusTarget: HTMLElement | null): void {
@@ -72,10 +79,8 @@ export function Drawer({
     if (canCloseDrawer(busy, inactive)) onClose()
   }, [busy, inactive, onClose])
 
-  const handleBackdropMouseDown = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      if (event.target === event.currentTarget) requestClose()
-    },
+  const handleBackdropClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => requestDrawerCloseFromBackdrop(event, requestClose),
     [requestClose],
   )
 
@@ -109,7 +114,7 @@ export function Drawer({
   return (
     <>
       <DrawerFocusLifecycle open={open} panelRef={panelRef} initialFocusRef={initialFocusRef} />
-      <div className="ui-drawer-backdrop" onMouseDown={handleBackdropMouseDown}>
+      <div className="ui-drawer-backdrop" onClick={handleBackdropClick}>
         <section
           className="ui-drawer"
           role="dialog"

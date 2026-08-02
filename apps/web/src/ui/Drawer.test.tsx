@@ -8,6 +8,7 @@ import {
   Drawer,
   DrawerFocusLifecycle,
   focusDrawerInitialElement,
+  requestDrawerCloseFromBackdrop,
   restoreDrawerFocus,
 } from './Drawer'
 
@@ -31,6 +32,27 @@ describe('Drawer', () => {
     expect(canCloseDrawer(false, false)).toBe(true)
     expect(canCloseDrawer(true, false)).toBe(false)
     expect(canCloseDrawer(false, true)).toBe(false)
+  })
+
+  it('waits for the completed backdrop click before requesting close', () => {
+    const backdrop = {} as HTMLDivElement
+    const requestClose = vi.fn()
+
+    requestDrawerCloseFromBackdrop(
+      { type: 'mousedown', target: backdrop, currentTarget: backdrop },
+      requestClose,
+    )
+    requestDrawerCloseFromBackdrop(
+      { type: 'mouseup', target: backdrop, currentTarget: backdrop },
+      requestClose,
+    )
+    expect(requestClose).not.toHaveBeenCalled()
+
+    requestDrawerCloseFromBackdrop(
+      { type: 'click', target: backdrop, currentTarget: backdrop },
+      requestClose,
+    )
+    expect(requestClose).toHaveBeenCalledOnce()
   })
 
   it('focuses an explicit initial target while preserving first-focus fallback', () => {
