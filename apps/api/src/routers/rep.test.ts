@@ -18,6 +18,10 @@ function caller(role: Role) {
   return t.createCallerFactory(repRouter)({ session: fakeSession('rep-router-test', role), ...fakeReqRes })
 }
 
+function callerFor(userId: string, role: Role) {
+  return t.createCallerFactory(repRouter)({ session: fakeSession(userId, role), ...fakeReqRes })
+}
+
 let repWithDayOff: string
 let repWithout: string
 let managerUserId: string
@@ -68,5 +72,33 @@ describe('rep.allDaysOff', () => {
     // other files create and clean up reps concurrently.
     expect(result).toHaveProperty(repWithDayOff)
     expect(result).toHaveProperty(repWithout)
+  })
+})
+
+describe('rep.bulkSetDaysOff', () => {
+  it('allows a manager to save the batch and returns the saved shape', async () => {
+    const result = await callerFor(managerUserId, 'MANAGER').bulkSetDaysOff({
+      changes: [
+        { repId: repWithDayOff, daysOfWeek: [0, 2] },
+        { repId: repWithout, daysOfWeek: [] },
+      ],
+    })
+
+    expect(result).toEqual({
+      changedRepIds: [repWithDayOff],
+      daysOffByRep: { [repWithDayOff]: [2], [repWithout]: [] },
+    })
+  })
+
+  it('rejects a BDC agent', async () => {
+    await expect(caller('BDC').bulkSetDaysOff({
+      changes: [{ repId: repWithDayOff, daysOfWeek: [2] }],
+    })).rejects.toThrow(/FORBIDDEN/)
+  })
+
+  it('rejects a REP', async () => {
+    await expect(caller('REP').bulkSetDaysOff({
+      changes: [{ repId: repWithDayOff, daysOfWeek: [2] }],
+    })).rejects.toThrow(/FORBIDDEN/)
   })
 })

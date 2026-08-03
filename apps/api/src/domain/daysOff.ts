@@ -1,8 +1,11 @@
 import { sql, eq, inArray } from 'drizzle-orm'
+import type { BulkSetDaysOffInput } from '@phoneup/contracts'
 import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
-import { materializeShifts } from '../jobs/eligibility'
+import { materializeShiftsLocked } from '../jobs/eligibility'
+import { publishAssignment } from '../realtime/bus'
+import { selectActiveReps } from './activeReps'
 
 const ADVISORY_LOCK_KEY = 42_100_1 // changing days off changes ordering — same lock (CLAUDE.md)
 
@@ -13,6 +16,99 @@ export type SetDaysOffInput = {
   actorUserId: string
 }
 
+export type BulkSetDaysOffDomainInput = BulkSetDaysOffInput & { actorUserId: string }
+
+function normalizeRecurringDaysOff(daysOfWeek: number[]): number[] {
+  // Sunday needs no rep-level entry (the store is closed) and shouldn't consume one.
+  const requested = Array.from(new Set(daysOfWeek.filter((day) => day >= 1 && day <= 6))).sort()
+
+  if (requested.length > 1) {
+    throw new Error(
+      `a rep can have at most one recurring day off, got ${requested.length}: ${requested.join(', ')}`,
+    )
+  }
+
+  return requested
+}
+
+function sameDays(left: number[], right: number[]): boolean {
+  return left.length === right.length && left.every((day, index) => day === right[index])
+}
+
+/**
+ * Save one or more reps' recurring days off atomically under the rotation lock.
+ * Every target must still be active when the lock is held; changed rows, their audit
+ * events, and forward shift materialization all commit or roll back together.
+ */
+export async function bulkSetRecurringDaysOff(db: DB, input: BulkSetDaysOffDomainInput) {
+  const normalized = input.changes.map(({ repId, daysOfWeek }) => ({
+    repId,
+    daysOff: normalizeRecurringDaysOff(daysOfWeek),
+  }))
+
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
+
+    const activeRepIds = new Set((await selectActiveReps(tx)).map((rep: any) => rep.id))
+    const invalidRepIds = normalized
+      .map(({ repId }) => repId)
+      .filter((repId) => !activeRepIds.has(repId))
+    if (invalidRepIds.length > 0) {
+      throw new Error(`bulkSetRecurringDaysOff: unknown or inactive repId(s): ${invalidRepIds.join(', ')}`)
+    }
+
+    const targetRepIds = normalized.map(({ repId }) => repId)
+    const currentRows = await tx
+      .select()
+      .from(schema.repRecurringDayOff)
+      .where(inArray(schema.repRecurringDayOff.repId, targetRepIds))
+    const currentByRep = new Map<string, number[]>()
+    for (const row of currentRows) {
+      if (!currentByRep.has(row.repId)) currentByRep.set(row.repId, [])
+      currentByRep.get(row.repId)!.push(row.dayOfWeek)
+    }
+    for (const days of currentByRep.values()) days.sort()
+
+    const changedRepIds: string[] = []
+    const daysOffByRep: Record<string, number[]> = {}
+    for (const { repId, daysOff } of normalized) {
+      const beforeDays = currentByRep.get(repId) ?? []
+      daysOffByRep[repId] = daysOff
+      if (sameDays(beforeDays, daysOff)) continue
+
+      await tx.delete(schema.repRecurringDayOff).where(eq(schema.repRecurringDayOff.repId, repId))
+      if (daysOff.length > 0) {
+        await tx
+          .insert(schema.repRecurringDayOff)
+          .values(daysOff.map((dayOfWeek) => ({ repId, dayOfWeek })))
+      }
+      await tx.insert(schema.auditEvents).values({
+        actorUserId: input.actorUserId,
+        action: 'rep.days_off.set',
+        entityType: 'sales_rep',
+        entityId: repId,
+        before: { daysOfWeek: beforeDays },
+        after: { daysOfWeek: daysOff },
+      })
+      changedRepIds.push(repId)
+    }
+
+    if (changedRepIds.length > 0) {
+      await materializeShiftsLocked(tx, {
+        fromDate: businessDate(new Date()),
+        repIds: changedRepIds,
+      })
+    }
+
+    return { changedRepIds, daysOffByRep }
+  })
+
+  if (result.changedRepIds.length > 0) {
+    publishAssignment({ type: 'ELIGIBILITY_UPDATED', statusDate: businessDate(new Date()) })
+  }
+  return result
+}
+
 /**
  * Set a rep's recurring weekly day off — at most one, or none — and re-materialize their
  * FUTURE shift rows only; a past date is eligibility evidence and is never rewritten.
@@ -20,50 +116,11 @@ export type SetDaysOffInput = {
  * rows it generated itself. Multi-day absence belongs in those shift kinds, not here.
  */
 export async function setRecurringDaysOff(db: DB, input: SetDaysOffInput): Promise<{ daysOff: number[] }> {
-  // Sunday needs no rep-level entry (the store is closed) and shouldn't consume one.
-  const requested = Array.from(new Set(input.daysOfWeek.filter((d) => d >= 1 && d <= 6))).sort()
-
-  // At most one recurring day off, checked after Sunday is dropped so [0, 3] — Sunday
-  // plus Wednesday — reads as the one working day off it is. A plain Error, like every
-  // other domain guard in this codebase; the router maps it and the client renders the
-  // message. Checked before the transaction opens: there is nothing to roll back, and
-  // holding the ordering lock to reject an argument makes a BDC agent wait to assign.
-  if (requested.length > 1) {
-    throw new Error(
-      `a rep can have at most one recurring day off, got ${requested.length}: ${requested.join(', ')}`,
-    )
-  }
-
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
-
-    const before = await tx
-      .select()
-      .from(schema.repRecurringDayOff)
-      .where(eq(schema.repRecurringDayOff.repId, input.repId))
-    const beforeDays = before.map((r: any) => r.dayOfWeek).sort()
-
-    await tx.delete(schema.repRecurringDayOff).where(eq(schema.repRecurringDayOff.repId, input.repId))
-    if (requested.length > 0) {
-      await tx
-        .insert(schema.repRecurringDayOff)
-        .values(requested.map((dayOfWeek) => ({ repId: input.repId, dayOfWeek })))
-    }
-
-    await tx.insert(schema.auditEvents).values({
-      actorUserId: input.actorUserId,
-      action: 'rep.days_off.set',
-      entityType: 'sales_rep',
-      entityId: input.repId,
-      before: { daysOfWeek: beforeDays },
-      after: { daysOfWeek: requested },
-    })
+  const result = await bulkSetRecurringDaysOff(db, {
+    actorUserId: input.actorUserId,
+    changes: [{ repId: input.repId, daysOfWeek: input.daysOfWeek }],
   })
-
-  // Re-materialize forward from today only — never a past date.
-  await materializeShifts(db, { fromDate: businessDate(new Date()), repIds: [input.repId] })
-
-  return { daysOff: requested }
+  return { daysOff: result.daysOffByRep[input.repId] }
 }
 
 export async function getRecurringDaysOff(db: DB, repId: string): Promise<number[]> {
@@ -88,4 +145,3 @@ export async function getRecurringDaysOffForReps(db: DB, repIds: string[]): Prom
   for (const list of out.values()) list.sort()
   return out
 }
-

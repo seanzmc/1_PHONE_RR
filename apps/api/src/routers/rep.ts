@@ -1,11 +1,17 @@
 import { z } from 'zod'
 import { db } from '@phoneup/db'
-import { statusOverrideInputSchema, bulkStatusOverrideInputSchema, setDaysOffInputSchema } from '@phoneup/contracts'
+import {
+  statusOverrideInputSchema,
+  bulkStatusOverrideInputSchema,
+  setDaysOffInputSchema,
+  bulkSetDaysOffInputSchema,
+} from '@phoneup/contracts'
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
 import { overrideStatus } from '../domain/overrideStatus'
 import { bulkOverrideStatus } from '../domain/bulkOverrideStatus'
 import {
+  bulkSetRecurringDaysOff,
   getRecurringDaysOffForReps,
   setRecurringDaysOff,
 } from '../domain/daysOff'
@@ -51,6 +57,13 @@ export const repRouter = router({
     .input(setDaysOffInputSchema)
     .mutation(async ({ ctx, input }) => {
       return setRecurringDaysOff(db, { ...input, actorUserId: ctx.session.userId })
+    }),
+
+  bulkSetDaysOff: publicProcedure
+    .use(requirePerm('schedule.manage'))
+    .input(bulkSetDaysOffInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      return bulkSetRecurringDaysOff(db, { ...input, actorUserId: ctx.session.userId })
     }),
 
   /** Manual kick of the shift materializer, for setup and after a bulk roster import. */
