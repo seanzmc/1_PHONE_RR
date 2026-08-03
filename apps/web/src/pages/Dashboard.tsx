@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { query } from '../lib/api'
+import { useBoardRealtime } from '../lib/useBoardRealtime'
 import { Card, MetricCard } from '../ui'
 
 type Summary = {
@@ -30,6 +31,8 @@ export function Dashboard({ onOpenRep }: { onOpenRep?: (repId: string) => void }
       // from a slow connection and with no way out.
       .catch(() => setLoadError(true))
   }, [])
+
+  useBoardRealtime(load)
 
   useEffect(() => {
     load()
