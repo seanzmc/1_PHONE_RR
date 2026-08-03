@@ -3,10 +3,15 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { useAuthStore } from '../state/authStore'
 import {
+  AdministratorIssuedPasswordField,
+  GeneratedTemporaryPasswordModal,
+  SetTemporaryPasswordModal,
   UserAccountRow,
+  UserAccountSections,
   UserManagement,
   accountTargetName,
   adminPasswordInputProps,
+  buildAccountSortHeader,
   partitionAccounts,
   sortAccounts,
   type Account,
@@ -127,6 +132,108 @@ describe('User Management row control targets', () => {
     expect(markup).toContain('aria-label="Role for Admin User"')
     expect(markup).toContain('title="You cannot change your own role"')
     expect(markup).toContain('disabled=""')
+  })
+
+  it('disables every mutation control when user management is read-only', () => {
+    const markup = renderToStaticMarkup(
+      createElement(UserAccountRow, {
+        account: account({ id: 'x', displayName: 'Taylor Reed' }),
+        sessionUserId: 'someone-else',
+        canManageUsers: false,
+        onRole: () => {},
+        onToggleActive: () => {},
+        onGenerateTemporary: () => {},
+        onSetTemporary: () => {},
+      }),
+    )
+
+    expect(markup.match(/disabled=""/g)).toHaveLength(4)
+    expect(markup).toContain('aria-label="Role for Taylor Reed"')
+    expect(markup).toContain('aria-label="Disable Taylor Reed"')
+    expect(markup).toContain('aria-label="Generate temporary password for Taylor Reed"')
+    expect(markup).toContain('aria-label="Set temporary password for Taylor Reed"')
+  })
+})
+
+describe('User Management password dialogs', () => {
+  const temporaryHint =
+    'Minimum 8 characters. This password is temporary; the user must replace it at next sign-in.'
+
+  it('renders the approved temporary-password hint for the initial password field', () => {
+    const markup = renderToStaticMarkup(
+      createElement(AdministratorIssuedPasswordField, {
+        fieldLabel: 'Initial password',
+        inputLabel: 'Initial password',
+        value: '',
+        onChange: () => {},
+      }),
+    )
+
+    expect(markup).toContain(temporaryHint)
+    expect(markup).toContain('aria-label="Initial password"')
+    expect(markup).toContain('autoComplete="new-password"')
+  })
+
+  it('renders the approved manual modal title and temporary-password hint', () => {
+    const markup = renderToStaticMarkup(
+      createElement(SetTemporaryPasswordModal, {
+        open: true,
+        target: account({ id: 'x', displayName: 'Taylor Reed' }),
+        value: '',
+        onChange: () => {},
+        onClose: () => {},
+        onSubmit: () => {},
+      }),
+    )
+
+    expect(markup).toContain('aria-label="Set temporary password — Taylor Reed"')
+    expect(markup).toContain(temporaryHint)
+    expect(markup).toContain('aria-label="Temporary password for Taylor Reed"')
+    expect(markup).toContain('autoComplete="new-password"')
+  })
+
+  it('preserves the generated result shown-once and security explanations', () => {
+    const markup = renderToStaticMarkup(
+      createElement(GeneratedTemporaryPasswordModal, {
+        account: account({ id: 'x', displayName: 'Taylor Reed' }),
+        password: 'temp-pass',
+        copied: false,
+        onCopy: () => {},
+        onClose: () => {},
+      }),
+    )
+
+    expect(markup).toContain('Shown once — generate another if it&#x27;s lost.')
+    expect(markup).toContain('They must choose their own password the first time they sign in')
+    expect(markup).toContain('It isn&#x27;t stored anywhere in readable form')
+    expect(markup).toContain('if it&#x27;s lost just reset again')
+  })
+})
+
+describe('User Management account table compositions', () => {
+  it('applies the same semantic sort headers to enabled and inactive tables', () => {
+    const headers = [
+      buildAccountSortHeader('Name', 'name', 'name', 'asc', () => {}),
+      buildAccountSortHeader('Email', 'email', 'name', 'asc', () => {}),
+      buildAccountSortHeader('Role', 'role', 'name', 'asc', () => {}),
+      buildAccountSortHeader('Account status', 'status', 'name', 'asc', () => {}),
+      'Actions',
+    ]
+    const markup = renderToStaticMarkup(
+      createElement(UserAccountSections, {
+        enabledAccounts: [account({ id: 'enabled' })],
+        disabledAccounts: [account({ id: 'disabled', isActive: false })],
+        headers,
+        renderRows: (rows: Account[]) =>
+          rows.map((row) => createElement('tr', { key: row.id }, createElement('td', null, row.id))),
+      }),
+    )
+
+    expect(markup.match(/aria-sort="ascending"/g)).toHaveLength(2)
+    expect(markup.match(/aria-label="Sort by Name"/g)).toHaveLength(2)
+    expect(markup.match(/aria-label="Sort by Email"/g)).toHaveLength(2)
+    expect(markup.match(/aria-label="Sort by Role"/g)).toHaveLength(2)
+    expect(markup.match(/aria-label="Sort by Account status"/g)).toHaveLength(2)
   })
 })
 

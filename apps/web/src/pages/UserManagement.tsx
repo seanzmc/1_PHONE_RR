@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ChangeEventHandler, type KeyboardEventHandler, type ReactNode } from 'react'
 import { mutate, query } from '../lib/api'
 import { canMutateInCurrentView, useAuthStore } from '../state/authStore'
 import { Badge, Button, Field, Input, Select, Table, type TableHeader } from '../ui'
@@ -59,8 +59,145 @@ export const adminPasswordInputProps = {
   autoComplete: 'new-password',
 } as const
 
+const ADMINISTRATOR_ISSUED_PASSWORD_HINT =
+  'Minimum 8 characters. This password is temporary; the user must replace it at next sign-in.'
+
 export function accountTargetName(account: Account): string {
   return account.displayName ?? account.email
+}
+
+export function buildAccountSortHeader(
+  label: string,
+  key: AccountSortKey,
+  sortKey: AccountSortKey,
+  sortDirection: SortDirection,
+  onSort: (key: AccountSortKey) => void,
+): TableHeader {
+  const active = key === sortKey
+  return {
+    content: (
+      <button
+        type="button"
+        className="ui-sortbtn"
+        aria-label={`Sort by ${label}`}
+        onClick={() => onSort(key)}
+      >
+        {label} {active ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+      </button>
+    ),
+    ariaSort: active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined,
+  }
+}
+
+export type AdministratorIssuedPasswordFieldProps = {
+  fieldLabel: string
+  inputLabel: string
+  value: string
+  onChange: ChangeEventHandler<HTMLInputElement>
+  onKeyDown?: KeyboardEventHandler<HTMLInputElement | HTMLTextAreaElement>
+  placeholder?: string
+}
+
+export function AdministratorIssuedPasswordField({
+  fieldLabel,
+  inputLabel,
+  value,
+  onChange,
+  onKeyDown,
+  placeholder,
+}: AdministratorIssuedPasswordFieldProps) {
+  return (
+    <Field label={fieldLabel} hint={ADMINISTRATOR_ISSUED_PASSWORD_HINT}>
+      <PasswordInput
+        label={inputLabel}
+        {...adminPasswordInputProps}
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+      />
+    </Field>
+  )
+}
+
+export type SetTemporaryPasswordModalProps = {
+  open: boolean
+  target: Account | undefined
+  value: string
+  onChange: ChangeEventHandler<HTMLInputElement>
+  onKeyDown?: KeyboardEventHandler<HTMLInputElement | HTMLTextAreaElement>
+  onClose: () => void
+  onSubmit: () => void
+}
+
+export function SetTemporaryPasswordModal({
+  open,
+  target,
+  value,
+  onChange,
+  onKeyDown,
+  onClose,
+  onSubmit,
+}: SetTemporaryPasswordModalProps) {
+  const targetName = target ? accountTargetName(target) : ''
+  const inputTargetName = target?.displayName ?? target?.email ?? 'user'
+  return (
+    <Modal
+      open={open}
+      title={`Set temporary password — ${targetName}`}
+      onClose={onClose}
+      onSubmit={onSubmit}
+      submitDisabled={value.length < 8}
+    >
+      <AdministratorIssuedPasswordField
+        fieldLabel="New password"
+        inputLabel={managerPasswordLabels(inputTargetName).manualReset}
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        placeholder="new password"
+      />
+    </Modal>
+  )
+}
+
+export type GeneratedTemporaryPasswordModalProps = {
+  account: Account | null
+  password: string
+  copied: boolean
+  onCopy: () => void
+  onClose: () => void
+}
+
+export function GeneratedTemporaryPasswordModal({
+  account,
+  password,
+  copied,
+  onCopy,
+  onClose,
+}: GeneratedTemporaryPasswordModalProps) {
+  return (
+    <Modal
+      open={!!account}
+      title={`Temporary password — ${account ? accountTargetName(account) : ''}`}
+      onClose={onClose}
+      submitLabel="Done"
+      onSubmit={onClose}
+      cancelLabel="Close"
+      hint="Shown once — generate another if it's lost."
+    >
+      <p>Read this to them, or copy it:</p>
+      <p className="ui-temppw">{password}</p>
+      <div className="ui-row">
+        <Button onClick={onCopy}>{copied ? 'Copied' : 'Copy'}</Button>
+      </div>
+      <p className="ui-hint">
+        They must choose their own password the first time they sign in — until they do, this
+        account can't use anything else. It isn't stored anywhere in readable form, so if it's
+        lost just reset again.
+      </p>
+    </Modal>
+  )
 }
 
 export type UserAccountRowProps = {
@@ -144,6 +281,34 @@ export function UserAccountRow({
         </div>
       </td>
     </tr>
+  )
+}
+
+export type UserAccountSectionsProps = {
+  enabledAccounts: Account[]
+  disabledAccounts: Account[]
+  headers: Array<ReactNode | TableHeader>
+  renderRows: (accounts: Account[]) => ReactNode
+}
+
+export function UserAccountSections({
+  enabledAccounts,
+  disabledAccounts,
+  headers,
+  renderRows,
+}: UserAccountSectionsProps) {
+  return (
+    <>
+      <h3>Enabled accounts</h3>
+      <Table headers={headers}>{renderRows(enabledAccounts)}</Table>
+
+      <h3 style={{ marginTop: 'var(--space-6)' }}>Inactive accounts</h3>
+      {disabledAccounts.length === 0 ? (
+        <p className="ui-muted">No disabled accounts.</p>
+      ) : (
+        <Table headers={headers}>{renderRows(disabledAccounts)}</Table>
+      )}
+    </>
   )
 }
 
@@ -286,20 +451,7 @@ export function UserManagement() {
   }
 
   function sortHeader(label: string, key: AccountSortKey) {
-    const active = key === sortKey
-    return {
-      content: (
-        <button
-          type="button"
-          className="ui-sortbtn"
-          aria-label={`Sort by ${label}`}
-          onClick={() => changeSort(key)}
-        >
-          {label} {active ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
-        </button>
-      ),
-      ariaSort: active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined,
-    } satisfies TableHeader
+    return buildAccountSortHeader(label, key, sortKey, sortDirection, changeSort)
   }
 
   function accountRows(rows: Account[]) {
@@ -346,36 +498,20 @@ export function UserManagement() {
         </p>
       )}
 
-      <h3>Enabled accounts</h3>
-      <Table headers={accountHeaders}>{accountRows(enabledAccounts)}</Table>
+      <UserAccountSections
+        enabledAccounts={enabledAccounts}
+        disabledAccounts={disabledAccounts}
+        headers={accountHeaders}
+        renderRows={accountRows}
+      />
 
-      <h3 style={{ marginTop: 'var(--space-6)' }}>Inactive accounts</h3>
-      {disabledAccounts.length === 0 ? (
-        <p className="ui-muted">No disabled accounts.</p>
-      ) : (
-        <Table headers={accountHeaders}>{accountRows(disabledAccounts)}</Table>
-      )}
-
-      <Modal
-        open={!!issuedFor}
-        title={`Temporary password — ${issuedFor?.displayName ?? issuedFor?.email ?? ''}`}
+      <GeneratedTemporaryPasswordModal
+        account={issuedFor}
+        password={issuedPassword}
+        copied={issuedCopied}
+        onCopy={copyIssued}
         onClose={() => setIssuedFor(null)}
-        submitLabel="Done"
-        onSubmit={() => setIssuedFor(null)}
-        cancelLabel="Close"
-        hint="Shown once — generate another if it's lost."
-      >
-        <p>Read this to them, or copy it:</p>
-        <p className="ui-temppw">{issuedPassword}</p>
-        <div className="ui-row">
-          <Button onClick={copyIssued}>{issuedCopied ? 'Copied' : 'Copy'}</Button>
-        </div>
-        <p className="ui-hint">
-          They must choose their own password the first time they sign in — until they do, this
-          account can't use anything else. It isn't stored anywhere in readable form, so if it's
-          lost just reset again.
-        </p>
-      </Modal>
+      />
 
       <Modal
         open={addOpen}
@@ -400,41 +536,24 @@ export function UserManagement() {
             ))}
           </Select>
         </Field>
-        <Field
-          label="Initial password"
-          hint="Minimum 8 characters. This password is temporary; the user must replace it at next sign-in."
-        >
-          <PasswordInput
-            label={managerPasswordLabels(newName.trim() || 'new account').initial}
-            {...adminPasswordInputProps}
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            onKeyDown={onAddKeyDown}
-          />
-        </Field>
+        <AdministratorIssuedPasswordField
+          fieldLabel="Initial password"
+          inputLabel={managerPasswordLabels(newName.trim() || 'new account').initial}
+          value={newPassword}
+          onChange={(event) => setNewPassword(event.target.value)}
+          onKeyDown={onAddKeyDown}
+        />
       </Modal>
 
-      <Modal
+      <SetTemporaryPasswordModal
         open={!!resetTargetId}
-        title={`Set temporary password — ${resetTarget ? accountTargetName(resetTarget) : ''}`}
+        target={resetTarget}
+        value={resetValue}
+        onChange={(event) => setResetValue(event.target.value)}
+        onKeyDown={onResetKeyDown}
         onClose={closeReset}
         onSubmit={submitReset}
-        submitDisabled={resetValue.length < 8}
-      >
-        <Field
-          label="New password"
-          hint="Minimum 8 characters. This password is temporary; the user must replace it at next sign-in."
-        >
-          <PasswordInput
-            label={managerPasswordLabels(resetTarget?.displayName ?? resetTarget?.email ?? 'user').manualReset}
-            {...adminPasswordInputProps}
-            value={resetValue}
-            onChange={(e) => setResetValue(e.target.value)}
-            onKeyDown={onResetKeyDown}
-            placeholder="new password"
-          />
-        </Field>
-      </Modal>
+      />
     </div>
   )
 }
