@@ -6,6 +6,9 @@ import {
   reasonNoteFor,
   selectedDayOff,
   dayOffPayload,
+  dayOffDisplay,
+  changedDayOffRows,
+  reconcileDayOffDraft,
   sortRoster,
 } from './StaffList'
 
@@ -135,6 +138,27 @@ describe('dayOffPayload', () => {
 
   it('sends a one-element array for a weekday', () => {
     expect(dayOffPayload(3)).toEqual([3])
+  })
+})
+
+describe('days-off draft helpers', () => {
+  it('displays no, one, and ambiguous saved days', () => {
+    expect(dayOffDisplay([])).toBe('None')
+    expect(dayOffDisplay([3])).toBe('Wed')
+    expect(dayOffDisplay([4, 5])).toBe('Thu, Fri — needs correction')
+  })
+
+  it('returns only active rows whose draft differs from the baseline', () => {
+    expect(changedDayOffRows({ a: [2], b: [] }, { a: [3], b: [] }, ['a', 'b'])).toEqual([
+      { repId: 'a', daysOfWeek: [3] },
+    ])
+  })
+
+  it('keeps active drafts and initializes newly active reps from saved days', () => {
+    expect(reconcileDayOffDraft({ a: [3], gone: [2] }, { a: [2], added: [] }, ['a', 'added'])).toEqual({
+      a: [3],
+      added: [],
+    })
   })
 })
 

@@ -101,6 +101,30 @@ const WEEKDAYS: Array<{ dow: number; label: string }> = [
   { dow: 6, label: 'Sat' },
 ]
 
+export type DayOffMap = Record<string, number[]>
+
+/** A saved recurring-day-off value formatted for the roster table. */
+export function dayOffDisplay(days: number[]): string {
+  if (days.length === 0) return 'None'
+  const display = days.map((dow) => WEEKDAYS.find((weekday) => weekday.dow === dow)?.label ?? String(dow)).join(', ')
+  return days.length === 1 ? display : `${display} — needs correction`
+}
+
+/** The active draft rows whose saved value would change if submitted. */
+export function changedDayOffRows(baseline: DayOffMap, draft: DayOffMap, activeIds: string[]) {
+  return activeIds.flatMap((repId) => {
+    const before = baseline[repId] ?? []
+    const after = draft[repId] ?? []
+    return before.length === after.length && before.every((day, i) => day === after[i])
+      ? [] : [{ repId, daysOfWeek: after }]
+  })
+}
+
+/** Retain edits for active reps and initialize newcomers from the latest saved values. */
+export function reconcileDayOffDraft(draft: DayOffMap, saved: DayOffMap, activeIds: string[]): DayOffMap {
+  return Object.fromEntries(activeIds.map((repId) => [repId, draft[repId] ?? saved[repId] ?? []]))
+}
+
 /**
  * Which radio is selected for a rep. A rep gets one recurring day off or none, so more
  * than one stored day is data this UI cannot represent — surface it rather than picking
