@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { useAuthStore } from '../state/authStore'
+import * as StaffListModule from './StaffList'
 import {
   RecurringDayOffEditor,
   StaffList,
@@ -224,17 +225,66 @@ describe('days-off draft helpers', () => {
     expect(dayOffDisplay([4, 5])).toBe('Thu, Fri — needs correction')
   })
 
-  it('returns only active rows whose draft differs from the baseline', () => {
-    expect(changedDayOffRows({ a: [2], b: [] }, { a: [3], b: [] }, ['a', 'b'])).toEqual([
+  it('submits only touched active rows that differ from the latest baseline', () => {
+    const changesForTouched = changedDayOffRows as unknown as (
+      baseline: Record<string, number[]>,
+      draft: Record<string, number[]>,
+      activeIds: string[],
+      touchedIds: string[],
+    ) => Array<{ repId: string; daysOfWeek: number[] }>
+
+    expect(changesForTouched(
+      { a: [2], untouched: [4], gone: [] },
+      { a: [3], untouched: [5], gone: [1] },
+      ['a', 'untouched'],
+      ['a', 'gone'],
+    )).toEqual([
       { repId: 'a', daysOfWeek: [3] },
     ])
   })
 
-  it('keeps active drafts and initializes newly active reps from saved days', () => {
-    expect(reconcileDayOffDraft({ a: [3], gone: [2] }, { a: [2], added: [] }, ['a', 'added'])).toEqual({
-      a: [3],
-      added: [],
+  it('preserves touched rows while untouched and newly active rows adopt remote saved values', () => {
+    const reconcileTouched = reconcileDayOffDraft as unknown as (
+      draft: Record<string, number[]>,
+      saved: Record<string, number[]>,
+      activeIds: string[],
+      touchedIds: string[],
+    ) => Record<string, number[]>
+
+    expect(reconcileTouched(
+      { touched: [3], untouched: [2], gone: [1] },
+      { touched: [4], untouched: [5], added: [6] },
+      ['touched', 'untouched', 'added'],
+      ['touched', 'gone'],
+    )).toEqual({
+      touched: [3],
+      untouched: [5],
+      added: [6],
     })
+  })
+
+  it('does not enter edit while the latest day-off baseline is still loading', () => {
+    const canEnter = (StaffListModule as unknown as {
+      canEnterDayOffEdit?: (input: {
+        canManageSchedule: boolean
+        daysOffLoaded: boolean
+        daysOffRefreshing: boolean
+        savingDaysOff: boolean
+      }) => boolean
+    }).canEnterDayOffEdit
+
+    expect(canEnter?.({
+      canManageSchedule: true,
+      daysOffLoaded: true,
+      daysOffRefreshing: true,
+      savingDaysOff: false,
+    })).toBe(false)
+    expect(canEnter?.({
+      canManageSchedule: true,
+      daysOffLoaded: true,
+      daysOffRefreshing: false,
+      savingDaysOff: false,
+    })).toBe(true)
   })
 })
 

@@ -116,8 +116,15 @@ export function dayOffDisplay(days: number[]): string {
 }
 
 /** The active draft rows whose saved value would change if submitted. */
-export function changedDayOffRows(baseline: DayOffMap, draft: DayOffMap, activeIds: string[]) {
+export function changedDayOffRows(
+  baseline: DayOffMap,
+  draft: DayOffMap,
+  activeIds: string[],
+  touchedIds: Iterable<string> = activeIds,
+) {
+  const touched = new Set(touchedIds)
   return activeIds.flatMap((repId) => {
+    if (!touched.has(repId)) return []
     const before = baseline[repId] ?? []
     const after = draft[repId] ?? []
     return before.length === after.length && before.every((day, i) => day === after[i])
@@ -125,9 +132,32 @@ export function changedDayOffRows(baseline: DayOffMap, draft: DayOffMap, activeI
   })
 }
 
-/** Retain edits for active reps and initialize newcomers from the latest saved values. */
-export function reconcileDayOffDraft(draft: DayOffMap, saved: DayOffMap, activeIds: string[]): DayOffMap {
-  return Object.fromEntries(activeIds.map((repId) => [repId, draft[repId] ?? saved[repId] ?? []]))
+/** Retain touched active edits; every other active row adopts the latest saved value. */
+export function reconcileDayOffDraft(
+  draft: DayOffMap,
+  saved: DayOffMap,
+  activeIds: string[],
+  touchedIds: Iterable<string> = activeIds,
+): DayOffMap {
+  const touched = new Set(touchedIds)
+  return Object.fromEntries(activeIds.map((repId) => [
+    repId,
+    touched.has(repId) ? draft[repId] ?? saved[repId] ?? [] : saved[repId] ?? [],
+  ]))
+}
+
+export function canEnterDayOffEdit({
+  canManageSchedule,
+  daysOffLoaded,
+  daysOffRefreshing,
+  savingDaysOff,
+}: {
+  canManageSchedule: boolean
+  daysOffLoaded: boolean
+  daysOffRefreshing: boolean
+  savingDaysOff: boolean
+}): boolean {
+  return canManageSchedule && daysOffLoaded && !daysOffRefreshing && !savingDaysOff
 }
 
 export type ResponseGeneration = { current: number }
@@ -325,6 +355,8 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   const [editingDaysOff, setEditingDaysOff] = useState(false)
   const [dayOffDraft, setDayOffDraft] = useState<DayOffMap>({})
   const [savingDaysOff, setSavingDaysOff] = useState(false)
+  const [daysOffRefreshing, setDaysOffRefreshing] = useState(false)
+  const dayOffTouchedIds = useRef<Set<string>>(new Set())
   const refreshGeneration = useRef(0)
 
   const canViewSchedule = hasPermission('schedule.manage')
@@ -333,6 +365,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
 
   const refresh = useCallback(() => {
     const isLatest = beginLatestResponse(refreshGeneration)
+    if (canViewSchedule) setDaysOffRefreshing(true)
     query<RosterEntry[]>('board.roster')
       .then(async (rows) => {
         if (!isLatest()) return
@@ -340,6 +373,10 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         setLoadError(false)
         setSelected((prev) => reconcileSelection(prev, rows))
         const activeIds = rows.map((r) => r.repId)
+        const activeSet = new Set(activeIds)
+        dayOffTouchedIds.current = new Set(
+          [...dayOffTouchedIds.current].filter((repId) => activeSet.has(repId)),
+        )
         // Drop departed reps as soon as the live roster arrives. New reps are initialized
         // below from the days-off response, never from status fields on the roster row.
         setDayOffDraft((current) =>
@@ -349,7 +386,10 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
             ),
           ),
         )
-        if (!canViewSchedule) return
+        if (!canViewSchedule) {
+          setDaysOffRefreshing(false)
+          return
+        }
         // One query for the whole column. This runs on every board realtime event, so the
         // per-rep loop it replaces was ~30 requests per assign, void and status change.
         // Its own try/catch: a failure here must not be swallowed by the outer .catch, and
@@ -359,17 +399,28 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
           const saved = await query<DayOffMap>('rep.allDaysOff')
           if (!isLatest()) return
           setDaysOffByRep(saved)
-          setDayOffDraft((current) => reconcileDayOffDraft(current, saved, activeIds))
+          setDayOffDraft((current) => reconcileDayOffDraft(
+            current,
+            saved,
+            activeIds,
+            dayOffTouchedIds.current,
+          ))
           setDaysOffLoaded(true)
+          setDaysOffRefreshing(false)
         } catch (err) {
           if (!isLatest()) return
           setDaysOffLoaded(false)
+          setDaysOffRefreshing(false)
           setError(err instanceof Error ? err.message : 'loading days off failed')
         }
       })
       // A silent failure leaves a stale (or empty) list looking authoritative.
       .catch(() => {
-        if (isLatest()) setLoadError(true)
+        if (isLatest()) {
+          setLoadError(true)
+          setDaysOffLoaded(false)
+          setDaysOffRefreshing(false)
+        }
       })
   }, [canViewSchedule])
   const currentRefresh = useRef(refresh)
@@ -384,6 +435,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
     if (canManageSchedule) return
     setEditingDaysOff(false)
     setDayOffDraft({})
+    dayOffTouchedIds.current.clear()
   }, [canManageSchedule])
 
   // OTHER is the only preset that requires typing; every other one submits with no input.
@@ -470,8 +522,14 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   }
 
   function editDaysOff() {
-    if (!canManageSchedule || !daysOffLoaded || savingDaysOff) return
-    setDayOffDraft(reconcileDayOffDraft({}, daysOffByRep, roster.map((r) => r.repId)))
+    if (!canEnterDayOffEdit({
+      canManageSchedule,
+      daysOffLoaded,
+      daysOffRefreshing,
+      savingDaysOff,
+    })) return
+    dayOffTouchedIds.current.clear()
+    setDayOffDraft(reconcileDayOffDraft({}, daysOffByRep, roster.map((r) => r.repId), []))
     setEditingDaysOff(true)
     setError(null)
     setNotice(null)
@@ -481,12 +539,18 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
     if (savingDaysOff) return
     setEditingDaysOff(false)
     setDayOffDraft({})
+    dayOffTouchedIds.current.clear()
     setError(null)
   }
 
   async function saveDaysOff() {
-    const changes = changedDayOffRows(daysOffByRep, dayOffDraft, roster.map((r) => r.repId))
-    if (!canManageSchedule || changes.length === 0 || savingDaysOff) return
+    const changes = changedDayOffRows(
+      daysOffByRep,
+      dayOffDraft,
+      roster.map((r) => r.repId),
+      dayOffTouchedIds.current,
+    )
+    if (!canManageSchedule || changes.length === 0 || savingDaysOff || daysOffRefreshing) return
     setSavingDaysOff(true)
     setError(null)
     setNotice(null)
@@ -502,6 +566,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
           setDaysOffByRep((current) => ({ ...current, ...result.daysOffByRep }))
           setEditingDaysOff(false)
           setDayOffDraft({})
+          dayOffTouchedIds.current.clear()
           setNotice(`Recurring days off saved for ${result.changedRepIds.length} reps.`)
         },
       })
@@ -546,7 +611,12 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   }
 
   const displayedRoster = sortRoster(roster, sortKey, sortDirection)
-  const dayOffChanges = changedDayOffRows(daysOffByRep, dayOffDraft, roster.map((r) => r.repId))
+  const dayOffChanges = changedDayOffRows(
+    daysOffByRep,
+    dayOffDraft,
+    roster.map((r) => r.repId),
+    dayOffTouchedIds.current,
+  )
   const daysOffEditActive = editingDaysOff && canManageSchedule
 
   const headers = [
@@ -616,7 +686,7 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
                 <Button
                   size="sm"
                   variant="primary"
-                  disabled={dayOffChanges.length === 0 || savingDaysOff}
+                  disabled={dayOffChanges.length === 0 || savingDaysOff || daysOffRefreshing}
                   onClick={saveDaysOff}
                 >
                   {savingDaysOff ? 'Saving…' : 'Save days off'}
@@ -628,8 +698,8 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
             ) : (
               <Button
                 size="sm"
-                disabled={!daysOffLoaded}
-                title={!daysOffLoaded ? 'Recurring days off are still loading' : undefined}
+                disabled={!daysOffLoaded || daysOffRefreshing}
+                title={!daysOffLoaded || daysOffRefreshing ? 'Recurring days off are still loading' : undefined}
                 onClick={editDaysOff}
               >
                 Edit days off
@@ -706,10 +776,13 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
                     days={daysOffEditActive ? dayOffDraft[r.repId] ?? [] : daysOffByRep[r.repId] ?? []}
                     editing={daysOffEditActive}
                     disabled={savingDaysOff}
-                    onChange={(dow) => setDayOffDraft((current) => ({
-                      ...current,
-                      [r.repId]: dayOffPayload(dow),
-                    }))}
+                    onChange={(dow) => {
+                      dayOffTouchedIds.current.add(r.repId)
+                      setDayOffDraft((current) => ({
+                        ...current,
+                        [r.repId]: dayOffPayload(dow),
+                      }))
+                    }}
                   />
                 )}
               </td>
