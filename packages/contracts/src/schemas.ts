@@ -128,6 +128,20 @@ export const setDaysOffInputSchema = z.object({
   daysOfWeek: z.array(z.number().int().min(0).max(6)),
 })
 
+const dayOffChangeSchema = setDaysOffInputSchema
+
+export const bulkSetDaysOffInputSchema = z.object({
+  changes: z.array(dayOffChangeSchema).min(1).max(200),
+}).superRefine(({ changes }, ctx) => {
+  const seen = new Set<string>()
+  changes.forEach((change, index) => {
+    if (seen.has(change.repId)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['changes', index, 'repId'], message: 'duplicate repId' })
+    }
+    seen.add(change.repId)
+  })
+})
+
 export type AssignLeadInput = z.infer<typeof assignLeadInputSchema>
 export type VoidLeadInput = z.infer<typeof voidLeadInputSchema>
 export type SkipLeadInput = z.infer<typeof skipLeadInputSchema>
@@ -144,3 +158,4 @@ export type ActivityImportCommitInput = z.infer<typeof activityImportCommitInput
 export type SetMetricInput = z.infer<typeof setMetricInputSchema>
 export type SetLeadNoteInput = z.infer<typeof setLeadNoteInputSchema>
 export type SetDaysOffInput = z.infer<typeof setDaysOffInputSchema>
+export type BulkSetDaysOffInput = z.infer<typeof bulkSetDaysOffInputSchema>

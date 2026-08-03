@@ -16,6 +16,7 @@ export {
   setMetricInputSchema,
   setLeadNoteInputSchema,
   setDaysOffInputSchema,
+  bulkSetDaysOffInputSchema,
   type AssignLeadInput,
   type SkipLeadInput,
   type VoidLeadInput,
@@ -32,4 +33,5 @@ export {
   type SetMetricInput,
   type SetLeadNoteInput,
   type SetDaysOffInput,
+  type BulkSetDaysOffInput,
 } from './schemas'
