@@ -13,6 +13,10 @@ import {
 } from './activityImport'
 import { publishAssignment } from '../realtime/bus'
 import { selectActiveReps } from '../domain/activeReps'
+import {
+  managerStatusBlocksSystemWrite,
+  managerStatusSkipsActivityEvaluation,
+} from '../domain/statusAuthority'
 
 const ADVISORY_LOCK_KEY = 42_100_1
 const PREVIEW_TOKEN_SECRET = randomBytes(32)
@@ -250,11 +254,11 @@ async function prepareDailyActivity(
     }
 
     const existingStatus = statusByRep.get(rep.id)
-    if (existingStatus?.decidedBy === 'MANAGER_OVERRIDE') {
+    if (managerStatusSkipsActivityEvaluation(existingStatus)) {
       notEvaluatedReps.push({
         repId: rep.id,
         displayName: rep.displayName,
-        reason: 'manager override already decides today',
+        reason: 'already inactive by manager decision',
       })
       continue
     }
@@ -517,7 +521,7 @@ async function upsertSystemStatus(
       eq(schema.repDailyStatus.businessDate, statusDate),
     ),
   })
-  if (existing?.decidedBy === 'MANAGER_OVERRIDE') return
+  if (managerStatusBlocksSystemWrite(existing, status, 'ACTIVITY')) return
   if (existing) {
     await tx
       .update(schema.repDailyStatus)

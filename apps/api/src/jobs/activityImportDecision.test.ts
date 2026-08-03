@@ -103,7 +103,7 @@ beforeEach(async () => {
     source: 'IMPORT',
   })
 
-  // Explicit manager decisions must never appear in the system's proposed DQ list.
+  // A manager activation remains subject to later failing activity evidence.
   await db.insert(schema.repDailyStatus).values({
     repId: overrideRep.id,
     businessDate: STATUS_DATE,
@@ -152,7 +152,7 @@ describe('activity import preview', () => {
 
     const result = await preview()
 
-    expect(result.ineligibleReps.map((r) => r.repId)).toEqual([failingRep.id])
+    expect(result.ineligibleReps.map((r) => r.repId)).toEqual([failingRep.id, overrideRep.id])
     expect(result.ineligibleReps[0]).toMatchObject({
       displayName: failingRep.displayName,
       callsFound: 3,
@@ -219,14 +219,20 @@ describe('activity import decision', () => {
       where: eq(schema.repDailyStatus.repId, failingRep.id),
     })
     expect(failStatuses).toEqual([])
+    expect(await db.query.repDailyStatus.findFirst({
+      where: and(
+        eq(schema.repDailyStatus.repId, overrideRep.id),
+        eq(schema.repDailyStatus.businessDate, STATUS_DATE),
+      ),
+    })).toMatchObject({ status: 'ELIGIBLE', decidedBy: 'MANAGER_OVERRIDE' })
     expect(await db.query.eligibilitySnapshot.findMany({
-      where: inArray(schema.eligibilitySnapshot.repId, [passingRep.id, failingRep.id, dayOffRep.id]),
-    })).toHaveLength(3)
+      where: inArray(schema.eligibilitySnapshot.repId, repIds),
+    })).toHaveLength(4)
 
     const events = await db.query.auditEvents.findMany({
       where: eq(schema.auditEvents.action, 'activity.import'),
     })
-    expect(events.at(-1)?.after).toMatchObject({ decision: 'LOG_ONLY', ineligibleReps: 1 })
+    expect(events.at(-1)?.after).toMatchObject({ decision: 'LOG_ONLY', ineligibleReps: 2 })
   })
 
   it('rejects a replayed preview token without duplicating snapshots or audit events', async () => {
@@ -330,8 +336,10 @@ describe('activity import decision', () => {
     ).toHaveLength(auditsBefore.length + 1)
   })
 
-  it('LOG_AND_DEACTIVATE saves metrics and writes the failing rep through Saturday only', async () => {
+  it('LOG_AND_DEACTIVATE writes failing reps through Saturday including manager-active', async () => {
     const p = await preview()
+    expect(p.ineligibleReps.map((rep) => rep.repId)).toContain(overrideRep.id)
+
     const result = await commitDailyActivity(
       db,
       {
@@ -345,7 +353,7 @@ describe('activity import decision', () => {
       { policyId },
     )
 
-    expect(result.deactivatedCount).toBe(1)
+    expect(result.deactivatedCount).toBe(2)
     const failStatuses = await db.query.repDailyStatus.findMany({
       where: eq(schema.repDailyStatus.repId, failingRep.id),
     })
@@ -372,7 +380,89 @@ describe('activity import decision', () => {
         eq(schema.repDailyStatus.businessDate, STATUS_DATE),
       ),
     })
-    expect(override).toMatchObject({ status: 'ELIGIBLE', decidedBy: 'MANAGER_OVERRIDE' })
+    expect(override).toMatchObject({ status: 'INELIGIBLE', decidedBy: 'SYSTEM' })
+  })
+
+  it('leaves a passing manager-active rep eligible without an activation write', async () => {
+    const [managerStatus] = await db
+      .insert(schema.repDailyStatus)
+      .values({
+        repId: passingRep.id,
+        businessDate: STATUS_DATE,
+        status: 'ELIGIBLE',
+        reason: 'manager kept passing rep active',
+        decidedBy: 'MANAGER_OVERRIDE',
+      })
+      .returning()
+    const p = await preview()
+    expect(p.eligibleReps.map((rep) => rep.repId)).toContain(passingRep.id)
+
+    await commitDailyActivity(
+      db,
+      {
+        csv: csv(),
+        businessDate: REPORT_DATE,
+        statusDate: STATUS_DATE,
+        previewToken: p.previewToken,
+        decision: 'LOG_AND_DEACTIVATE',
+        actorUserId,
+      },
+      { policyId },
+    )
+
+    const statuses = await db.query.repDailyStatus.findMany({
+      where: eq(schema.repDailyStatus.repId, passingRep.id),
+    })
+    expect(statuses).toHaveLength(1)
+    expect(statuses[0]).toMatchObject({
+      id: managerStatus.id,
+      status: 'ELIGIBLE',
+      reason: 'manager kept passing rep active',
+      decidedBy: 'MANAGER_OVERRIDE',
+    })
+  })
+
+  it('skips manager-inactive without presenting an auto-reactivation candidate', async () => {
+    await db
+      .update(schema.repDailyStatus)
+      .set({ status: 'INELIGIBLE', reason: 'manager kept rep inactive' })
+      .where(
+        and(
+          eq(schema.repDailyStatus.repId, overrideRep.id),
+          eq(schema.repDailyStatus.businessDate, STATUS_DATE),
+        ),
+      )
+    const p = await preview()
+    expect(p.eligibleReps.map((rep) => rep.repId)).not.toContain(overrideRep.id)
+    expect(p.ineligibleReps.map((rep) => rep.repId)).not.toContain(overrideRep.id)
+    expect(p.notEvaluatedReps).toContainEqual({
+      repId: overrideRep.id,
+      displayName: overrideRep.displayName,
+      reason: 'already inactive by manager decision',
+    })
+
+    await commitDailyActivity(
+      db,
+      {
+        csv: csv(),
+        businessDate: REPORT_DATE,
+        statusDate: STATUS_DATE,
+        previewToken: p.previewToken,
+        decision: 'LOG_AND_DEACTIVATE',
+        actorUserId,
+      },
+      { policyId },
+    )
+
+    const statuses = await db.query.repDailyStatus.findMany({
+      where: eq(schema.repDailyStatus.repId, overrideRep.id),
+    })
+    expect(statuses).toHaveLength(1)
+    expect(statuses[0]).toMatchObject({
+      status: 'INELIGIBLE',
+      reason: 'manager kept rep inactive',
+      decidedBy: 'MANAGER_OVERRIDE',
+    })
   })
 
   it('rejects a stale preview and leaves the report uncommitted', async () => {
@@ -430,9 +520,9 @@ describe('activity import decision', () => {
       statusDate: STATUS_DATE,
       policyId,
     })
-    expect(p.ineligibleReps).toEqual([
+    expect(p.ineligibleReps).toContainEqual(
       expect.objectContaining({ repId: failingRep.id, callsFound: 0 }),
-    ])
+    )
 
     await commitDailyActivity(
       db,
