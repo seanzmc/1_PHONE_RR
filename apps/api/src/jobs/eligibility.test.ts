@@ -73,6 +73,16 @@ async function statusOn(id: string, date: string) {
   })
 }
 
+async function setManagerStatus(id: string, date: string, status: 'ELIGIBLE' | 'INELIGIBLE') {
+  await db.insert(schema.repDailyStatus).values({
+    repId: id,
+    businessDate: date,
+    status,
+    reason: status === 'ELIGIBLE' ? 'manager reactivated' : 'manager deactivated',
+    decidedBy: 'MANAGER_OVERRIDE',
+  })
+}
+
 beforeAll(async () => {
   const manager = await db.query.appUser.findFirst({ where: eq(schema.appUser.role, 'ADMIN') })
   managerUserId = manager!.id
@@ -232,6 +242,82 @@ describe('week suspension (ENFORCE)', () => {
     })
     expect(snapshot?.callsFound).toBe(0)
     expect((await statusOn(repId, TUESDAY))?.status).toBe('INELIGIBLE')
+  })
+})
+
+describe('manager/system status authority', () => {
+  it('lets failing activity replace manager-active with a SYSTEM suspension through Saturday', async () => {
+    await setManagerStatus(repId, TUESDAY, 'ELIGIBLE')
+    await setCalls(repId, MONDAY, 3)
+    await setCalls(otherRepId, MONDAY, 12)
+
+    await evaluateRepEligibility(db, { repId, businessDate: TUESDAY, policyId: enforcePolicyId })
+
+    for (const date of [TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY]) {
+      expect(await statusOn(repId, date)).toMatchObject({
+        status: 'INELIGIBLE',
+        decidedBy: 'SYSTEM',
+      })
+    }
+  })
+
+  it('evaluates passing activity without replacing manager-active', async () => {
+    await setManagerStatus(repId, TUESDAY, 'ELIGIBLE')
+    await setCalls(repId, MONDAY, 10)
+
+    await evaluateRepEligibility(db, { repId, businessDate: TUESDAY, policyId: enforcePolicyId })
+
+    expect(await statusOn(repId, TUESDAY)).toMatchObject({
+      status: 'ELIGIBLE',
+      decidedBy: 'MANAGER_OVERRIDE',
+      reason: 'manager reactivated',
+    })
+    expect(await statusOn(repId, WEDNESDAY)).toBeUndefined()
+    expect(await db.query.eligibilitySnapshot.findFirst({
+      where: and(
+        eq(schema.eligibilitySnapshot.repId, repId),
+        eq(schema.eligibilitySnapshot.businessDate, TUESDAY),
+      ),
+    })).toMatchObject({ wouldBeStatus: 'ELIGIBLE' })
+  })
+
+  it.each([
+    ['passing', 10],
+    ['failing', 3],
+  ])('skips %s activity for manager-inactive', async (_outcome, calls) => {
+    await setManagerStatus(repId, TUESDAY, 'INELIGIBLE')
+    await setCalls(repId, MONDAY, calls)
+    await setCalls(otherRepId, MONDAY, 12)
+
+    await evaluateRepEligibility(db, { repId, businessDate: TUESDAY, policyId: enforcePolicyId })
+
+    expect(await statusOn(repId, TUESDAY)).toMatchObject({
+      status: 'INELIGIBLE',
+      decidedBy: 'MANAGER_OVERRIDE',
+      reason: 'manager deactivated',
+    })
+    expect(await db.query.eligibilitySnapshot.findFirst({
+      where: and(
+        eq(schema.eligibilitySnapshot.repId, repId),
+        eq(schema.eligibilitySnapshot.businessDate, TUESDAY),
+      ),
+    })).toBeUndefined()
+  })
+
+  it('keeps manager-active precedence for a scheduled day off', async () => {
+    await setManagerStatus(repId, TUESDAY, 'ELIGIBLE')
+    await db
+      .update(schema.repShift)
+      .set({ kind: 'OFF' })
+      .where(and(eq(schema.repShift.repId, repId), eq(schema.repShift.businessDate, TUESDAY)))
+
+    await evaluateRepEligibility(db, { repId, businessDate: TUESDAY, policyId: enforcePolicyId })
+
+    expect(await statusOn(repId, TUESDAY)).toMatchObject({
+      status: 'ELIGIBLE',
+      decidedBy: 'MANAGER_OVERRIDE',
+      reason: 'manager reactivated',
+    })
   })
 })
 

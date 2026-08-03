@@ -4,6 +4,7 @@ import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
 import { selectActiveReps } from '../domain/activeReps'
+import { managerStatusBlocksSystemWrite, managerStatusSkipsActivityEvaluation } from '../domain/statusAuthority'
 
 const ADVISORY_LOCK_KEY = 42_100_1
 
@@ -57,11 +58,10 @@ export async function evaluateRepEligibility(db: DB, input: EvaluateInput): Prom
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
 
-    // override always wins — never overwrite a manager-decided status
     const existing = await tx.query.repDailyStatus.findFirst({
       where: and(eq(schema.repDailyStatus.repId, input.repId), eq(schema.repDailyStatus.businessDate, input.businessDate)),
     })
-    if (existing?.decidedBy === 'MANAGER_OVERRIDE') return
+    if (managerStatusSkipsActivityEvaluation(existing)) return
 
     const policy = await tx.query.workRequirementPolicy.findFirst({
       where: eq(schema.workRequirementPolicy.id, input.policyId),
@@ -78,10 +78,8 @@ export async function evaluateRepEligibility(db: DB, input: EvaluateInput): Prom
       return
     }
 
-    // Precedence (design pass §I, written down once):
-    //   MANAGER_OVERRIDE > day off / closure > WEEK_DQ > eligible
-    // The override case returned above. A non-WORK day is ineligible-for-that-reason, but it must
-    // NOT erase a WEEK_DQ reason already written for the day.
+    // A non-WORK day is ineligible-for-that-reason, but it must NOT erase a WEEK_DQ reason
+    // already written for the day. Manager status retains precedence for this non-activity write.
     if (todayShift.kind !== 'WORK') {
       const dqReason = existing?.reason?.startsWith('WEEK_DQ') ? ` (${existing.reason})` : ''
       await upsertStatus(
@@ -162,7 +160,7 @@ export async function evaluateRepEligibility(db: DB, input: EvaluateInput): Prom
     // manager's later reactivation alone. The write never crosses into next week, so "resets every
     // Monday" is automatic and needs no separate reset job.
     for (const date of businessDatesThroughSaturday(input.businessDate)) {
-      await upsertStatus(tx, input.repId, date, 'INELIGIBLE', dqReason)
+      await upsertStatus(tx, input.repId, date, 'INELIGIBLE', dqReason, 'ACTIVITY')
     }
   })
 }
@@ -173,13 +171,13 @@ async function upsertStatus(
   businessDateStr: string,
   status: 'ELIGIBLE' | 'INELIGIBLE' | 'CONFIGURATION_ERROR',
   reason: string | null,
+  source: 'ACTIVITY' | 'OTHER' = 'OTHER',
 ): Promise<void> {
   const existing = await tx.query.repDailyStatus.findFirst({
     where: and(eq(schema.repDailyStatus.repId, repId), eq(schema.repDailyStatus.businessDate, businessDateStr)),
   })
   if (existing) {
-    // never trample a manager decision on a future date either
-    if (existing.decidedBy === 'MANAGER_OVERRIDE') return
+    if (managerStatusBlocksSystemWrite(existing, status, source)) return
     await tx
       .update(schema.repDailyStatus)
       .set({ status, reason, decidedBy: 'SYSTEM', updatedAt: new Date() })
