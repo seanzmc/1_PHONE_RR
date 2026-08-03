@@ -31,7 +31,15 @@ describe('rankReps', () => {
     expect(out.map((r) => r.repId)).toEqual(['b', 'a'])
   })
 
-  it('then by lower monthly load', () => {
+  it('uses the preceding served order before monthly load when a new cycle opens', () => {
+    const out = rankReps([
+      rep({ repId: 'first-served', priorCycleOrder: 0, monthlyLoad: 99 }),
+      rep({ repId: 'second-served', priorCycleOrder: 1, monthlyLoad: 0 }),
+    ])
+    expect(out.map((r) => r.repId)).toEqual(['first-served', 'second-served'])
+  })
+
+  it('then by lower monthly load when there is no preceding served order', () => {
     const out = rankReps([
       rep({ repId: 'a', monthlyLoad: 5 }),
       rep({ repId: 'b', monthlyLoad: 2 }),
