@@ -138,6 +138,25 @@ export function invalidatePendingResponses(generation: ResponseGeneration): void
   generation.current += 1
 }
 
+/** Apply a successful Save before refreshing through the callback for the current authority. */
+export async function commitStaffListDaysOffSave<T>({
+  execute,
+  responseGeneration,
+  currentRefresh,
+  applyResult,
+}: {
+  execute: () => Promise<T>
+  responseGeneration: ResponseGeneration
+  currentRefresh: { current: () => void }
+  applyResult: (result: T) => void
+}): Promise<T> {
+  const result = await execute()
+  invalidatePendingResponses(responseGeneration)
+  applyResult(result)
+  currentRefresh.current()
+  return result
+}
+
 /**
  * Which radio is selected for a rep. A rep gets one recurring day off or none, so more
  * than one stored day is data this UI cannot represent — surface it rather than picking
@@ -310,6 +329,8 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         if (isLatest()) setLoadError(true)
       })
   }, [canViewSchedule])
+  const currentRefresh = useRef(refresh)
+  currentRefresh.current = refresh
 
   useEffect(() => {
     refresh()
@@ -427,16 +448,20 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
     setError(null)
     setNotice(null)
     try {
-      const result = await mutate<{ changedRepIds: string[]; daysOffByRep: DayOffMap }>(
-        'rep.bulkSetDaysOff',
-        { changes },
-      )
-      invalidatePendingResponses(refreshGeneration)
-      setDaysOffByRep((current) => ({ ...current, ...result.daysOffByRep }))
-      setEditingDaysOff(false)
-      setDayOffDraft({})
-      setNotice(`Recurring days off saved for ${result.changedRepIds.length} reps.`)
-      refresh()
+      await commitStaffListDaysOffSave({
+        execute: () => mutate<{ changedRepIds: string[]; daysOffByRep: DayOffMap }>(
+          'rep.bulkSetDaysOff',
+          { changes },
+        ),
+        responseGeneration: refreshGeneration,
+        currentRefresh,
+        applyResult: (result) => {
+          setDaysOffByRep((current) => ({ ...current, ...result.daysOffByRep }))
+          setEditingDaysOff(false)
+          setDayOffDraft({})
+          setNotice(`Recurring days off saved for ${result.changedRepIds.length} reps.`)
+        },
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'saving recurring days off failed')
     } finally {

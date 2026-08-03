@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   RecurringDayOffEditor,
   beginLatestResponse,
+  commitStaffListDaysOffSave,
   invalidatePendingResponses,
   reconcileSelection,
   splitByNoOp,
@@ -261,6 +262,33 @@ describe('latest Staff List response guard', () => {
     await pendingWork
 
     expect(visible).toBe('successful save')
+  })
+})
+
+describe('Staff List Save wiring', () => {
+  it('uses the current authority refresh after Save resolves instead of the captured callback', async () => {
+    const response = deferred<{
+      changedRepIds: string[]
+      daysOffByRep: Record<string, number[]>
+    }>()
+    const generation = { current: 4 }
+    const events: string[] = []
+    const adminRefresh = () => { events.push('stale admin refresh') }
+    const viewAsRefresh = () => { events.push('current View-as refresh') }
+    const currentRefresh = { current: adminRefresh }
+
+    const saving = commitStaffListDaysOffSave({
+      execute: () => response.promise,
+      responseGeneration: generation,
+      currentRefresh,
+      applyResult: () => { events.push('apply response baseline') },
+    })
+    currentRefresh.current = viewAsRefresh
+    response.resolve({ changedRepIds: ['rep-1'], daysOffByRep: { 'rep-1': [3] } })
+    await saving
+
+    expect(events).toEqual(['apply response baseline', 'current View-as refresh'])
+    expect(generation.current).toBe(5)
   })
 })
 
