@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
-import { eq, and, inArray } from 'drizzle-orm'
+import { eq, and, inArray, sql } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import {
   businessDatesThroughSaturday,
   dayOfWeek,
   evaluateRepEligibility,
+  materializeShiftsLocked,
   materializeShifts,
   shiftDate,
 } from './eligibility'
@@ -339,6 +340,37 @@ describe('manual reactivation vs the week tail', () => {
 })
 
 describe('materializeShifts + recurring days off', () => {
+  it('rolls back recurring-day and generated-shift changes when called inside a locked transaction', async () => {
+    const { businessDate } = await import('@phoneup/core')
+    const today = businessDate(new Date())
+    let targetDate = shiftDate(today, 1)
+    while (dayOfWeek(targetDate) === 0) targetDate = shiftDate(targetDate, 1)
+    const targetDow = dayOfWeek(targetDate)
+    const baselineDow = targetDow === 1 ? 2 : 1
+
+    await db.insert(schema.repRecurringDayOff).values({ repId, dayOfWeek: baselineDow })
+    await db.insert(schema.repShift).values({ repId, businessDate: targetDate, kind: 'WORK' })
+
+    await expect(db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(${42_100_1})`)
+      await tx.delete(schema.repRecurringDayOff).where(eq(schema.repRecurringDayOff.repId, repId))
+      await tx.insert(schema.repRecurringDayOff).values({ repId, dayOfWeek: targetDow })
+      const materialized = await materializeShiftsLocked(tx, { fromDate: today, days: 7, repIds: [repId] })
+      expect(materialized).toEqual({ inserted: 6, updated: 1 })
+      throw new Error('simulated rollback')
+    })).rejects.toThrow('simulated rollback')
+
+    const recurringDays = await db.query.repRecurringDayOff.findMany({
+      where: eq(schema.repRecurringDayOff.repId, repId),
+    })
+    const shift = await db.query.repShift.findFirst({
+      where: and(eq(schema.repShift.repId, repId), eq(schema.repShift.businessDate, targetDate)),
+    })
+
+    expect(recurringDays.map((row: any) => row.dayOfWeek)).toEqual([baselineDow])
+    expect(shift?.kind).toBe('WORK')
+  })
+
   it('generates WORK/OFF rows ahead, with Sunday always OFF', async () => {
     await db.delete(schema.repShift).where(eq(schema.repShift.repId, repId))
 

@@ -201,68 +201,74 @@ async function upsertStatus(
  */
 const GENERATED_KINDS = new Set(['WORK', 'OFF'])
 
-export async function materializeShifts(
-  db: DB,
-  opts: { fromDate?: string; days?: number; repIds?: string[] } = {},
+export type MaterializeShiftsOptions = { fromDate?: string; days?: number; repIds?: string[] }
+
+/** Caller must already hold the rotation advisory lock in this transaction. */
+export async function materializeShiftsLocked(
+  tx: any,
+  opts: MaterializeShiftsOptions = {},
 ): Promise<{ inserted: number; updated: number }> {
+  const fromDate = opts.fromDate ?? businessDate(new Date())
+  const days = opts.days ?? 14
+  const activeReps = await selectActiveReps(tx)
+  const requested = opts.repIds?.length ? new Set(opts.repIds) : null
+  const reps = requested ? activeReps.filter((rep: any) => requested.has(rep.id)) : activeReps
+  if (reps.length === 0) return { inserted: 0, updated: 0 }
+
+  const repIds = reps.map((r: any) => r.id)
+  const daysOff = await tx
+    .select()
+    .from(schema.repRecurringDayOff)
+    .where(inArray(schema.repRecurringDayOff.repId, repIds))
+  const offByRep = new Map<string, Set<number>>()
+  for (const row of daysOff) {
+    if (!offByRep.has(row.repId)) offByRep.set(row.repId, new Set())
+    offByRep.get(row.repId)!.add(row.dayOfWeek)
+  }
+
+  const dates = Array.from({ length: days }, (_, i) => shiftDate(fromDate, i))
+  const closures = await tx
+    .select()
+    .from(schema.storeClosure)
+    .where(inArray(schema.storeClosure.closureDate, dates))
+  const closureDates = new Set(closures.map((c: any) => c.closureDate))
+  const existing = await tx
+    .select()
+    .from(schema.repShift)
+    .where(and(inArray(schema.repShift.repId, repIds), gte(schema.repShift.businessDate, fromDate)))
+  const existingByKey = new Map<string, any>(existing.map((s: any) => [`${s.repId}:${s.businessDate}`, s]))
+
+  let inserted = 0
+  let updated = 0
+  for (const rep of reps) {
+    const repOff = offByRep.get(rep.id) ?? new Set<number>()
+    for (const date of dates) {
+      const dow = dayOfWeek(date)
+      // Sunday is closed for everyone — hardcoded, no config surface, and it must not
+      // consume one of a rep's recurring day-off entries.
+      const isOff = dow === 0 || repOff.has(dow) || closureDates.has(date)
+      const kind = isOff ? 'OFF' : 'WORK'
+      const prior = existingByKey.get(`${rep.id}:${date}`)
+      if (!prior) {
+        await tx.insert(schema.repShift).values({ repId: rep.id, businessDate: date, kind })
+        inserted++
+        continue
+      }
+      // a manually-set PTO/SICK/TRAINING/SUSPENDED row survives re-materialization
+      if (!GENERATED_KINDS.has(prior.kind)) continue
+      if (prior.kind === kind) continue
+      await tx.update(schema.repShift).set({ kind }).where(eq(schema.repShift.id, prior.id))
+      updated++
+    }
+  }
+
+  return { inserted, updated }
+}
+
+export async function materializeShifts(db: DB, opts: MaterializeShiftsOptions = {}) {
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
-
-    const fromDate = opts.fromDate ?? businessDate(new Date())
-    const days = opts.days ?? 14
-    const activeReps = await selectActiveReps(tx)
-    const requested = opts.repIds?.length ? new Set(opts.repIds) : null
-    const reps = requested ? activeReps.filter((rep: any) => requested.has(rep.id)) : activeReps
-    if (reps.length === 0) return { inserted: 0, updated: 0 }
-
-    const repIds = reps.map((r: any) => r.id)
-    const daysOff = await tx
-      .select()
-      .from(schema.repRecurringDayOff)
-      .where(inArray(schema.repRecurringDayOff.repId, repIds))
-    const offByRep = new Map<string, Set<number>>()
-    for (const row of daysOff) {
-      if (!offByRep.has(row.repId)) offByRep.set(row.repId, new Set())
-      offByRep.get(row.repId)!.add(row.dayOfWeek)
-    }
-
-    const dates = Array.from({ length: days }, (_, i) => shiftDate(fromDate, i))
-    const closures = await tx
-      .select()
-      .from(schema.storeClosure)
-      .where(inArray(schema.storeClosure.closureDate, dates))
-    const closureDates = new Set(closures.map((c: any) => c.closureDate))
-    const existing = await tx
-      .select()
-      .from(schema.repShift)
-      .where(and(inArray(schema.repShift.repId, repIds), gte(schema.repShift.businessDate, fromDate)))
-    const existingByKey = new Map(existing.map((s: any) => [`${s.repId}:${s.businessDate}`, s]))
-
-    let inserted = 0
-    let updated = 0
-    for (const rep of reps) {
-      const repOff = offByRep.get(rep.id) ?? new Set<number>()
-      for (const date of dates) {
-        const dow = dayOfWeek(date)
-        // Sunday is closed for everyone — hardcoded, no config surface, and it must not
-        // consume one of a rep's recurring day-off entries.
-        const isOff = dow === 0 || repOff.has(dow) || closureDates.has(date)
-        const kind = isOff ? 'OFF' : 'WORK'
-        const prior = existingByKey.get(`${rep.id}:${date}`)
-        if (!prior) {
-          await tx.insert(schema.repShift).values({ repId: rep.id, businessDate: date, kind })
-          inserted++
-          continue
-        }
-        // a manually-set PTO/SICK/TRAINING/SUSPENDED row survives re-materialization
-        if (!GENERATED_KINDS.has(prior.kind)) continue
-        if (prior.kind === kind) continue
-        await tx.update(schema.repShift).set({ kind }).where(eq(schema.repShift.id, prior.id))
-        updated++
-      }
-    }
-
-    return { inserted, updated }
+    return materializeShiftsLocked(tx, opts)
   })
 }
 
