@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { useAuthStore } from '../state/authStore'
 import {
   RecurringDayOffEditor,
+  StaffList,
+  StaffStatusActions,
   beginLatestResponse,
   commitStaffListDaysOffSave,
   invalidatePendingResponses,
@@ -16,6 +19,7 @@ import {
   changedDayOffRows,
   reconcileDayOffDraft,
   sortRoster,
+  staffTargetName,
 } from './StaffList'
 
 function deferred<T>() {
@@ -37,6 +41,64 @@ function entry(over: Partial<Entry> & { repId: string }): Entry {
     ...over,
   }
 }
+
+describe('Staff List page guidance and sort semantics', () => {
+  it('explains the page and empty bulk selection while exposing the active sort state', () => {
+    const previousAuth = useAuthStore.getState()
+    useAuthStore.setState({
+      session: {
+        userId: 'admin-1',
+        role: 'ADMIN',
+        email: 'admin@example.test',
+        displayName: 'Admin',
+        mustChangePassword: false,
+      },
+      loading: false,
+      viewAsUserId: null,
+    })
+
+    try {
+      const markup = renderToStaticMarkup(createElement(StaffList))
+
+      expect(markup).toContain(
+        'Manage rotation status, availability overrides, and one recurring day off for each rep.',
+      )
+      expect(markup).toContain(
+        'Select reps with the checkboxes to reactivate or deactivate several at once.',
+      )
+      expect(markup).toContain(
+        'Choose None or one recurring day off, Monday through Saturday. Changes are saved together.',
+      )
+      expect(markup).toContain('aria-sort="ascending"')
+      expect(markup).toContain('aria-label="Sort by Rep"')
+      expect(markup).toContain('<th><button type="button" class="ui-sortbtn" aria-label="Sort by Status"')
+    } finally {
+      useAuthStore.setState(previousAuth, true)
+    }
+  })
+})
+
+describe('Staff List row control targets', () => {
+  it('uses the rep display name as the accessible target', () => {
+    expect(staffTargetName(entry({ repId: 'rep-1', displayName: 'Taylor Reed' }))).toBe('Taylor Reed')
+  })
+
+  it('names each status action for its rep while preserving visible labels and no-op titles', () => {
+    const markup = renderToStaticMarkup(
+      createElement(StaffStatusActions, {
+        entry: entry({ repId: 'rep-1', displayName: 'Taylor Reed' }),
+        canOverride: true,
+        onChoose: () => {},
+      }),
+    )
+
+    expect(markup).toContain('aria-label="Reactivate Taylor Reed"')
+    expect(markup).toContain('aria-label="Deactivate Taylor Reed"')
+    expect(markup).toContain('title="Already active"')
+    expect(markup).toContain('>Activate</button>')
+    expect(markup).toContain('>Deactivate</button>')
+  })
+})
 
 describe('currentStatusOf', () => {
   it('maps a roster entry onto the shared no-op input', () => {

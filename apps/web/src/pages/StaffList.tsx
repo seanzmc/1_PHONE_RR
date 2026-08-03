@@ -8,7 +8,7 @@ import {
 import { mutate, query } from '../lib/api'
 import { useBoardRealtime } from '../lib/useBoardRealtime'
 import { canMutateInCurrentView, useAuthStore } from '../state/authStore'
-import { Badge, Button, Field, Select, Table, Textarea } from '../ui'
+import { Badge, Button, Field, Select, Table, Textarea, type TableHeader } from '../ui'
 import { Modal } from '../ui/Modal'
 import { useSubmitOnEnter } from '../ui/useSubmitOnEnter'
 
@@ -48,6 +48,11 @@ const STATUS_OPTIONS: OverrideTarget[] = ['FORCE_ACTIVE', 'FORCE_INACTIVE']
 
 const STATUS_LABEL: Record<OverrideTarget, string> = {
   FORCE_ACTIVE: 'Activate',
+  FORCE_INACTIVE: 'Deactivate',
+}
+
+const STATUS_TARGET_LABEL: Record<OverrideTarget, string> = {
+  FORCE_ACTIVE: 'Reactivate',
   FORCE_INACTIVE: 'Deactivate',
 }
 
@@ -227,6 +232,44 @@ export function RecurringDayOffEditor({
 /** Roster entry to the shape the shared no-op rule expects. */
 export function currentStatusOf(entry: RosterEntry): CurrentRepStatus {
   return { isEligible: entry.isEligible, decidedBy: entry.decidedBy }
+}
+
+export function staffTargetName(entry: Pick<RosterEntry, 'displayName' | 'repId'>): string {
+  return entry.displayName
+}
+
+export function StaffStatusActions({
+  entry,
+  canOverride,
+  onChoose,
+}: {
+  entry: RosterEntry
+  canOverride: boolean
+  onChoose: (status: OverrideTarget) => void
+}) {
+  const targetName = staffTargetName(entry)
+  return (
+    <div className="ui-row">
+      {canOverride &&
+        STATUS_OPTIONS.map((status) => {
+          const noOp = isOverrideNoOp(status, currentStatusOf(entry))
+          return (
+            <Button
+              key={status}
+              size="sm"
+              variant={status === 'FORCE_INACTIVE' ? 'danger' : 'default'}
+              disabled={noOp}
+              aria-label={`${STATUS_TARGET_LABEL[status]} ${targetName}`}
+              // A dead button should say why rather than just not responding.
+              title={noOp ? noOpReason(status) : undefined}
+              onClick={() => onChoose(status)}
+            >
+              {STATUS_LABEL[status]}
+            </Button>
+          )
+        })}
+    </div>
+  )
 }
 
 /**
@@ -487,11 +530,19 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
 
   function sortHeader(label: string, key: RosterSortKey) {
     const active = key === sortKey
-    return (
-      <button type="button" className="ui-sortbtn" onClick={() => changeSort(key)}>
-        {label} {active ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
-      </button>
-    )
+    return {
+      content: (
+        <button
+          type="button"
+          className="ui-sortbtn"
+          aria-label={`Sort by ${label}`}
+          onClick={() => changeSort(key)}
+        >
+          {label} {active ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+        </button>
+      ),
+      ariaSort: active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined,
+    } satisfies TableHeader
   }
 
   const displayedRoster = sortRoster(roster, sortKey, sortDirection)
@@ -588,6 +639,18 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         )}
       </div>
 
+      <p className="ui-muted">
+        Manage rotation status, availability overrides, and one recurring day off for each rep.
+      </p>
+      {canOverride && selected.length === 0 && (
+        <p className="ui-hint">Select reps with the checkboxes to reactivate or deactivate several at once.</p>
+      )}
+      {canManageSchedule && (
+        <p className="ui-hint">
+          Choose None or one recurring day off, Monday through Saturday. Changes are saved together.
+        </p>
+      )}
+
       {loadError && (
         <p className="ui-error" role="alert">
           Couldn't load the staff list — check your connection.{' '}
@@ -652,30 +715,16 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
               </td>
             )}
             <td>
-              <div className="ui-row">
-                {canOverride &&
-                  STATUS_OPTIONS.map((status) => {
-                    const noOp = isOverrideNoOp(status, currentStatusOf(r))
-                    return (
-                      <Button
-                        key={status}
-                        size="sm"
-                        variant={status === 'FORCE_INACTIVE' ? 'danger' : 'default'}
-                        disabled={noOp}
-                        // A dead button should say why rather than just not responding.
-                        title={noOp ? noOpReason(status) : undefined}
-                        onClick={() => {
-                          setPendingRepId(r.repId)
-                          setPendingStatus(status)
-                          setReasonCode('')
-                          setOtherNote('')
-                        }}
-                      >
-                        {STATUS_LABEL[status]}
-                      </Button>
-                    )
-                  })}
-              </div>
+              <StaffStatusActions
+                entry={r}
+                canOverride={canOverride}
+                onChoose={(status) => {
+                  setPendingRepId(r.repId)
+                  setPendingStatus(status)
+                  setReasonCode('')
+                  setOtherNote('')
+                }}
+              />
             </td>
           </tr>
         ))}
