@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { query } from '../lib/api'
 import { useBoardRealtime } from '../lib/useBoardRealtime'
 import { Card, MetricCard } from '../ui'
@@ -17,19 +17,52 @@ type Summary = {
   overrideCount: number
 }
 
+export async function loadLatestDashboard<T>({
+  generation,
+  request,
+  onSuccess,
+  onFailure,
+}: {
+  generation: { current: number }
+  request: () => Promise<T>
+  onSuccess: (value: T) => void
+  onFailure: () => void
+}): Promise<void> {
+  const requestGeneration = ++generation.current
+  try {
+    const value = await request()
+    if (requestGeneration === generation.current) onSuccess(value)
+  } catch {
+    if (requestGeneration === generation.current) onFailure()
+  }
+}
+
+export function DashboardLoadAlert({ onRetry }: { onRetry: () => void }) {
+  return (
+    <p className="ui-error" role="alert">
+      Couldn't refresh the dashboard. Showing the last dashboard update.{' '}
+      <button type="button" className="ui-linkbtn" onClick={onRetry}>
+        Retry
+      </button>
+    </p>
+  )
+}
+
 export function Dashboard({ onOpenRep }: { onOpenRep?: (repId: string) => void }) {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loadError, setLoadError] = useState(false)
+  const loadGeneration = useRef(0)
 
   const load = useCallback(() => {
-    query<Summary>('board.dashboardSummary')
-      .then((s) => {
+    void loadLatestDashboard({
+      generation: loadGeneration,
+      request: () => query<Summary>('board.dashboardSummary'),
+      onSuccess: (s) => {
         setSummary(s)
         setLoadError(false)
-      })
-      // A silent catch leaves the screen on "Loading…" forever — indistinguishable
-      // from a slow connection and with no way out.
-      .catch(() => setLoadError(true))
+      },
+      onFailure: () => setLoadError(true),
+    })
   }, [])
 
   useBoardRealtime(load)
@@ -56,6 +89,7 @@ export function Dashboard({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   return (
     <div className="ui-page">
       <h2>Team Dashboard</h2>
+      {loadError && <DashboardLoadAlert onRetry={load} />}
 
       <h3>Team totals — {summary.periodKey}</h3>
       <div className="ui-card-grid ui-section-gap-sm">
