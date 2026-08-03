@@ -33,21 +33,17 @@ Completed locally on August 2, 2026. Affected assignment API tests passed 14/14;
 
 Completed locally on August 2, 2026. App navigation tests passed 10/10, contract tests passed 9/9, a freshly migrated and seeded CI-style database passed all 197 API tests, all 134 web tests passed, and workspace type checking, web lint, the production web build, and `git diff --check` exited successfully. Local Playwright proof with non-persistent fixture responses covered Admin, Manager, and Rep role navigation at 1024×768 and 390×844, both Management and profile-menu containment—including Admin with View as visible—current-page styling, and the Rep Team Dashboard landing. Measured contrast was 5.782:1 for primary/accent text on the page background, 5.332:1 on the surface background, and 5.866:1 for muted text. Validation ran under Node 26.5.0 while the repository declares Node 22.x. This work has not been deployed or production-verified.
 
-## Priority 4 — Staff and user management
+## Priority 4 — Staff and user management — Complete
 
-Add a dedicated “Edit Days Off” mode:Normal view shows only the selected day.
-Edit mode reveals all radio controls.
-Save applies the complete set together.
+- [x] Add a dedicated Edit days off mode: compact view shows saved values, edit mode exposes targeted radio groups, and one Save applies the changed set together.
+- [x] Keep edits local until Save, block duplicate submission while saving, retain drafts after failures, and surface legacy multi-day values truthfully for correction.
+- [x] Make Staff List bulk actions discoverable before selection and clarify the page purpose and recurring-day-off rules.
+- [x] Clarify User Management's purpose, separate enabled and inactive accounts, and make its tables responsive and sortable.
+- [x] Rename password actions, explain temporary-password behavior in both manual and generated flows, and provide accessible Show/Hide controls.
+- [x] Replace the Set name action with non-clickable missing-name copy and give repeated row actions, status actions, day-off groups, and sort controls specific accessible names.
+- [x] Refresh Staff List, Team Dashboard, and the open Assignment Drawer/Next Up roster from the existing authenticated board realtime channel after eligibility and day-off changes.
 
-Make Staff List bulk actions discoverable before a checkbox is selected.
-Add clearer recurring-day-off guidance.
-Clarify page purposes:Staff List: rotation status, availability, overrides, and days off.
-User Management: accounts, roles, passwords, and access.
-
-Improve User Management labels:Rename “Reset password” and “Set manually.”
-Clarify temporary-password behavior.
-Replace “Set name” with non-clickable missing-name copy.
-Give repeated row actions and sort controls specific accessible names.
+Completed locally on August 3, 2026. Under the repository's required Node 22 runtime, the focused contract, API, web, and Dashboard suites passed 11, 217, 158, and 1 tests respectively; the full workspace suite passed 57 files and 402 tests; and workspace type checking, web lint, the production web build, and `git diff --check` exited successfully. Fresh guarded Playwright verification covered Admin and Manager sessions at the missing 1024×768 and 390×844 combinations, both User Management account sections and sort/target semantics, manual and generated temporary-password modals, truthful legacy multi-day correction, delayed and failed Save behavior with successful retry, and a reviewed failing activity import. Two connected clients then proved, without reload, that the import replaced a manager-active rep with the weekly call-rule deactivation while Team Dashboard and the open Assignment Drawer refreshed through realtime. The disposable database and local server were removed afterward; artifacts were retained locally for review. Node 26 exhibited an unsupported-runtime full-suite interaction that was not conclusively attributed and is not the required completion runtime. This work has not been deployed or production-verified.
 
 ## Priority 5 — Audit completeness
 
@@ -80,4 +76,4 @@ These require operational verification or a product decision:
 Confirm the display-name backfill actually ran in production.
 Verify whether the CRM Sold column is daily or cumulative using a real import.
 Keep “Mark a lead sold” deferred until CRM-total versus lead-attribution semantics are decided.
-Priorities 1–3 are implemented. Priority 1 is deployed and production-verified; Priorities 2 and 3 are locally verified but not deployed. Priorities 4–6 were not re-audited as part of the Priority 3 update. Validation ran under Node 26.5.0 while the repository declares Node 22.x.
+Priorities 1–4 are implemented. Priority 1 is deployed and production-verified; Priorities 2–4 are locally verified but not deployed. Priorities 5–6 remain open. Priority 4 validation ran under the repository's required Node 22.x runtime.
