@@ -87,6 +87,8 @@ a { color: var(--color-accent-strong); text-underline-offset: 3px; }
   align-items: center;
   gap: var(--space-3);
 }
+.ui-staff-toolbar,
+.ui-staff-toolbar > .ui-bulkbar { flex-wrap: wrap; }
 .ui-login {
   max-width: 360px;
   margin: 12vh auto 0;

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import {
+  RecurringDayOffEditor,
   reconcileSelection,
   splitByNoOp,
   currentStatusOf,
@@ -159,6 +162,53 @@ describe('days-off draft helpers', () => {
       a: [3],
       added: [],
     })
+  })
+})
+
+describe('RecurringDayOffEditor', () => {
+  it('renders a compact saved value without edit controls in view mode', () => {
+    const markup = renderToStaticMarkup(
+      createElement(RecurringDayOffEditor, {
+        repId: 'rep-1',
+        displayName: 'Taylor Reed',
+        days: [3],
+        editing: false,
+        onChange: () => {},
+      }),
+    )
+
+    expect(markup).toContain('Wed')
+    expect(markup).not.toContain('type="radio"')
+  })
+
+  it('renders one accessible seven-choice radio group in edit mode', () => {
+    const markup = renderToStaticMarkup(
+      createElement(RecurringDayOffEditor, {
+        repId: 'rep-1',
+        displayName: 'Taylor Reed',
+        days: [3],
+        editing: true,
+        onChange: () => {},
+      }),
+    )
+
+    expect(markup.match(/type="radio"/g)).toHaveLength(7)
+    expect(markup).toContain('role="radiogroup"')
+    expect(markup).toContain('aria-label="Recurring day off for Taylor Reed"')
+  })
+
+  it('surfaces ambiguous saved values truthfully in view mode', () => {
+    const markup = renderToStaticMarkup(
+      createElement(RecurringDayOffEditor, {
+        repId: 'rep-1',
+        displayName: 'Taylor Reed',
+        days: [4, 5],
+        editing: false,
+        onChange: () => {},
+      }),
+    )
+
+    expect(markup).toContain('Thu, Fri — needs correction')
   })
 })
 

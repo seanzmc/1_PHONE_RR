@@ -142,6 +142,56 @@ export function dayOffPayload(dow: number | null): number[] {
   return dow === null ? [] : [dow]
 }
 
+export function RecurringDayOffEditor({
+  repId,
+  displayName,
+  days,
+  editing,
+  disabled = false,
+  onChange,
+}: {
+  repId: string
+  displayName: string
+  days: number[]
+  editing: boolean
+  disabled?: boolean
+  onChange: (dow: number | null) => void
+}) {
+  if (!editing) return <span>{dayOffDisplay(days)}</span>
+
+  const selected = selectedDayOff(days)
+  const ambiguous = selected === 'AMBIGUOUS'
+  return (
+    <div role="radiogroup" aria-label={`Recurring day off for ${displayName}`}>
+      <div className="ui-row">
+        <label className="ui-radio">
+          <input
+            type="radio"
+            name={`day-off-${repId}`}
+            checked={selected === null}
+            disabled={disabled}
+            onChange={() => onChange(null)}
+          />
+          None
+        </label>
+        {WEEKDAYS.map(({ dow, label }) => (
+          <label key={dow} className="ui-radio">
+            <input
+              type="radio"
+              name={`day-off-${repId}`}
+              checked={selected === dow}
+              disabled={disabled}
+              onChange={() => onChange(dow)}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+      {ambiguous && <span className="ui-hint">{dayOffDisplay(days)} — pick one</span>}
+    </div>
+  )
+}
+
 /** Roster entry to the shape the shared no-op rule expects. */
 export function currentStatusOf(entry: RosterEntry): CurrentRepStatus {
   return { isEligible: entry.isEligible, decidedBy: entry.decidedBy }
@@ -177,7 +227,7 @@ export function splitByNoOp(
 export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }) {
   const { hasPermission, viewAsUserId } = useAuthStore()
   const [roster, setRoster] = useState<RosterEntry[]>([])
-  const [daysOffByRep, setDaysOffByRep] = useState<Record<string, number[]>>({})
+  const [daysOffByRep, setDaysOffByRep] = useState<DayOffMap>({})
   // `{}` is indistinguishable from "every rep has no day off" — this flag is what lets the
   // days-off cell tell "not loaded yet" apart from that, so it never renders None-checked
   // before the real values are known.
@@ -197,6 +247,10 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   const [notice, setNotice] = useState<string | null>(null)
   const [bulkStatus, setBulkStatus] = useState<OverrideTarget | null>(null)
 
+  const [editingDaysOff, setEditingDaysOff] = useState(false)
+  const [dayOffDraft, setDayOffDraft] = useState<DayOffMap>({})
+  const [savingDaysOff, setSavingDaysOff] = useState(false)
+
   const canViewSchedule = hasPermission('schedule.manage')
   const canManageSchedule = canMutateInCurrentView(canViewSchedule, viewAsUserId)
   const canOverride = canMutateInCurrentView(hasPermission('rep.override'), viewAsUserId)
@@ -207,6 +261,16 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         setRoster(rows)
         setLoadError(false)
         setSelected((prev) => reconcileSelection(prev, rows))
+        const activeIds = rows.map((r) => r.repId)
+        // Drop departed reps as soon as the live roster arrives. New reps are initialized
+        // below from the days-off response, never from status fields on the roster row.
+        setDayOffDraft((current) =>
+          Object.fromEntries(
+            activeIds.flatMap((repId) =>
+              current[repId] === undefined ? [] : [[repId, current[repId]]],
+            ),
+          ),
+        )
         if (!canViewSchedule) return
         // One query for the whole column. This runs on every board realtime event, so the
         // per-rep loop it replaces was ~30 requests per assign, void and status change.
@@ -214,7 +278,9 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         // must flip daysOffLoaded back to false rather than leaving stale/empty data marked
         // as loaded.
         try {
-          setDaysOffByRep(await query<Record<string, number[]>>('rep.allDaysOff'))
+          const saved = await query<DayOffMap>('rep.allDaysOff')
+          setDaysOffByRep(saved)
+          setDayOffDraft((current) => reconcileDayOffDraft(current, saved, activeIds))
           setDaysOffLoaded(true)
         } catch (err) {
           setDaysOffLoaded(false)
@@ -229,6 +295,12 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
     refresh()
   }, [refresh])
   useBoardRealtime(refresh)
+
+  useEffect(() => {
+    if (canManageSchedule) return
+    setEditingDaysOff(false)
+    setDayOffDraft({})
+  }, [canManageSchedule])
 
   // OTHER is the only preset that requires typing; every other one submits with no input.
   const isOther = reasonCode === 'OTHER'
@@ -313,19 +385,40 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
     setError(null)
   }
 
-  /** One mutation per selection, audit-logged as rep.days_off.set with before/after. */
-  async function setDayOff(repId: string, dow: number | null) {
-    if (!canManageSchedule) return
-    const current = daysOffByRep[repId] ?? []
-    const next = dayOffPayload(dow)
-    setDaysOffByRep((prev) => ({ ...prev, [repId]: next })) // optimistic
+  function editDaysOff() {
+    if (!canManageSchedule || !daysOffLoaded || savingDaysOff) return
+    setDayOffDraft(reconcileDayOffDraft({}, daysOffByRep, roster.map((r) => r.repId)))
+    setEditingDaysOff(true)
+    setError(null)
+    setNotice(null)
+  }
+
+  function cancelDaysOff() {
+    if (savingDaysOff) return
+    setEditingDaysOff(false)
+    setDayOffDraft({})
+    setError(null)
+  }
+
+  async function saveDaysOff() {
+    const changes = changedDayOffRows(daysOffByRep, dayOffDraft, roster.map((r) => r.repId))
+    if (!canManageSchedule || changes.length === 0 || savingDaysOff) return
+    setSavingDaysOff(true)
     setError(null)
     setNotice(null)
     try {
-      await mutate('rep.setDaysOff', { repId, daysOfWeek: next })
+      const result = await mutate<{ changedRepIds: string[]; daysOffByRep: DayOffMap }>(
+        'rep.bulkSetDaysOff',
+        { changes },
+      )
+      setDaysOffByRep((current) => ({ ...current, ...result.daysOffByRep }))
+      setEditingDaysOff(false)
+      setDayOffDraft({})
+      setNotice(`Recurring days off saved for ${result.changedRepIds.length} reps.`)
     } catch (err) {
-      setDaysOffByRep((prev) => ({ ...prev, [repId]: current })) // roll back
-      setError(err instanceof Error ? err.message : 'saving the day off failed')
+      setError(err instanceof Error ? err.message : 'saving recurring days off failed')
+    } finally {
+      setSavingDaysOff(false)
     }
   }
 
@@ -355,6 +448,8 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   }
 
   const displayedRoster = sortRoster(roster, sortKey, sortDirection)
+  const dayOffChanges = changedDayOffRows(daysOffByRep, dayOffDraft, roster.map((r) => r.repId))
+  const daysOffEditActive = editingDaysOff && canManageSchedule
 
   const headers = [
     // Spread, not a ternary yielding '': the row below omits the cell entirely when
@@ -383,37 +478,66 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
 
   return (
     <div className="ui-page">
-      <div className="ui-toolbar">
+      <div className="ui-toolbar ui-staff-toolbar">
         <h2>Staff List</h2>
+        <span className="ui-toolbar-spacer" />
         {canOverride && selected.length > 0 && (
-          <>
-            <span className="ui-toolbar-spacer" />
-            <div className="ui-bulkbar">
-              <span className="ui-muted">{selected.length} selected</span>
-              {STATUS_OPTIONS.map((status) => {
-                const { applied } = splitByNoOp(status, selectedEntries)
-                return (
-                  <Button
-                    key={status}
-                    size="sm"
-                    variant={status === 'FORCE_INACTIVE' ? 'danger' : 'default'}
-                    disabled={applied.length === 0}
-                    title={applied.length === 0 ? `No selected rep would change` : undefined}
-                    onClick={() => {
-                      setBulkStatus(status)
-                      setReasonCode('')
-                      setOtherNote('')
-                    }}
-                  >
-                    {STATUS_LABEL[status]}
-                  </Button>
-                )
-              })}
-              <Button size="sm" onClick={() => setSelected([])}>
-                Clear
+          <div className="ui-bulkbar">
+            <span className="ui-muted">{selected.length} selected</span>
+            {STATUS_OPTIONS.map((status) => {
+              const { applied } = splitByNoOp(status, selectedEntries)
+              return (
+                <Button
+                  key={status}
+                  size="sm"
+                  variant={status === 'FORCE_INACTIVE' ? 'danger' : 'default'}
+                  disabled={applied.length === 0}
+                  title={applied.length === 0 ? `No selected rep would change` : undefined}
+                  onClick={() => {
+                    setBulkStatus(status)
+                    setReasonCode('')
+                    setOtherNote('')
+                  }}
+                >
+                  {STATUS_LABEL[status]}
+                </Button>
+              )
+            })}
+            <Button size="sm" onClick={() => setSelected([])}>
+              Clear
+            </Button>
+          </div>
+        )}
+        {canManageSchedule && (
+          <div className="ui-bulkbar">
+            {daysOffEditActive ? (
+              <>
+                <span className="ui-muted">
+                  {dayOffChanges.length} unsaved {dayOffChanges.length === 1 ? 'change' : 'changes'}
+                </span>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  disabled={dayOffChanges.length === 0 || savingDaysOff}
+                  onClick={saveDaysOff}
+                >
+                  {savingDaysOff ? 'Saving…' : 'Save days off'}
+                </Button>
+                <Button size="sm" disabled={savingDaysOff} onClick={cancelDaysOff}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                disabled={!daysOffLoaded}
+                title={!daysOffLoaded ? 'Recurring days off are still loading' : undefined}
+                onClick={editDaysOff}
+              >
+                Edit days off
               </Button>
-            </div>
-          </>
+            )}
+          </div>
         )}
       </div>
 
@@ -466,47 +590,17 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
                   // until the real values are in.
                   <span className="ui-muted">—</span>
                 ) : (
-                  (() => {
-                    const stored = daysOffByRep[r.repId] ?? []
-                    const current = selectedDayOff(stored)
-                    const ambiguous = current === 'AMBIGUOUS'
-                    return (
-                      <>
-                        <div className="ui-row">
-                          <label className="ui-radio">
-                            <input
-                              type="radio"
-                              name={`day-off-${r.repId}`}
-                              checked={current === null}
-                              disabled={!canManageSchedule}
-                              onChange={() => setDayOff(r.repId, null)}
-                            />
-                            None
-                          </label>
-                          {WEEKDAYS.map(({ dow, label }) => (
-                            <label key={dow} className="ui-radio">
-                              <input
-                                type="radio"
-                                name={`day-off-${r.repId}`}
-                                checked={current === dow}
-                                disabled={!canManageSchedule}
-                                onChange={() => setDayOff(r.repId, dow)}
-                              />
-                              {label}
-                            </label>
-                          ))}
-                        </div>
-                        {ambiguous && (
-                          <p className="ui-hint">
-                            {stored
-                              .map((d) => WEEKDAYS.find((w) => w.dow === d)?.label ?? String(d))
-                              .join(', ')}{' '}
-                            stored — pick one
-                          </p>
-                        )}
-                      </>
-                    )
-                  })()
+                  <RecurringDayOffEditor
+                    repId={r.repId}
+                    displayName={r.displayName}
+                    days={daysOffEditActive ? dayOffDraft[r.repId] ?? [] : daysOffByRep[r.repId] ?? []}
+                    editing={daysOffEditActive}
+                    disabled={savingDaysOff}
+                    onChange={(dow) => setDayOffDraft((current) => ({
+                      ...current,
+                      [r.repId]: dayOffPayload(dow),
+                    }))}
+                  />
                 )}
               </td>
             )}
