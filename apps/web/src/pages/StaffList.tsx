@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   isOverrideNoOp,
   noOpReason,
@@ -123,6 +123,19 @@ export function changedDayOffRows(baseline: DayOffMap, draft: DayOffMap, activeI
 /** Retain edits for active reps and initialize newcomers from the latest saved values. */
 export function reconcileDayOffDraft(draft: DayOffMap, saved: DayOffMap, activeIds: string[]): DayOffMap {
   return Object.fromEntries(activeIds.map((repId) => [repId, draft[repId] ?? saved[repId] ?? []]))
+}
+
+export type ResponseGeneration = { current: number }
+
+/** Start a response generation and return whether it is still the newest invocation. */
+export function beginLatestResponse(generation: ResponseGeneration): () => boolean {
+  const requestGeneration = ++generation.current
+  return () => requestGeneration === generation.current
+}
+
+/** Retire every response that began before an authoritative local result was applied. */
+export function invalidatePendingResponses(generation: ResponseGeneration): void {
+  generation.current += 1
 }
 
 /**
@@ -250,14 +263,17 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
   const [editingDaysOff, setEditingDaysOff] = useState(false)
   const [dayOffDraft, setDayOffDraft] = useState<DayOffMap>({})
   const [savingDaysOff, setSavingDaysOff] = useState(false)
+  const refreshGeneration = useRef(0)
 
   const canViewSchedule = hasPermission('schedule.manage')
   const canManageSchedule = canMutateInCurrentView(canViewSchedule, viewAsUserId)
   const canOverride = canMutateInCurrentView(hasPermission('rep.override'), viewAsUserId)
 
   const refresh = useCallback(() => {
+    const isLatest = beginLatestResponse(refreshGeneration)
     query<RosterEntry[]>('board.roster')
       .then(async (rows) => {
+        if (!isLatest()) return
         setRoster(rows)
         setLoadError(false)
         setSelected((prev) => reconcileSelection(prev, rows))
@@ -279,16 +295,20 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         // as loaded.
         try {
           const saved = await query<DayOffMap>('rep.allDaysOff')
+          if (!isLatest()) return
           setDaysOffByRep(saved)
           setDayOffDraft((current) => reconcileDayOffDraft(current, saved, activeIds))
           setDaysOffLoaded(true)
         } catch (err) {
+          if (!isLatest()) return
           setDaysOffLoaded(false)
           setError(err instanceof Error ? err.message : 'loading days off failed')
         }
       })
       // A silent failure leaves a stale (or empty) list looking authoritative.
-      .catch(() => setLoadError(true))
+      .catch(() => {
+        if (isLatest()) setLoadError(true)
+      })
   }, [canViewSchedule])
 
   useEffect(() => {
@@ -411,10 +431,12 @@ export function StaffList({ onOpenRep }: { onOpenRep?: (repId: string) => void }
         'rep.bulkSetDaysOff',
         { changes },
       )
+      invalidatePendingResponses(refreshGeneration)
       setDaysOffByRep((current) => ({ ...current, ...result.daysOffByRep }))
       setEditingDaysOff(false)
       setDayOffDraft({})
       setNotice(`Recurring days off saved for ${result.changedRepIds.length} reps.`)
+      refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'saving recurring days off failed')
     } finally {

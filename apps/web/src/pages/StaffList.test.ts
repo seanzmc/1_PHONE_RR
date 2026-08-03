@@ -3,6 +3,8 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
   RecurringDayOffEditor,
+  beginLatestResponse,
+  invalidatePendingResponses,
   reconcileSelection,
   splitByNoOp,
   currentStatusOf,
@@ -14,6 +16,14 @@ import {
   reconcileDayOffDraft,
   sortRoster,
 } from './StaffList'
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
 
 type Entry = Parameters<typeof splitByNoOp>[1][number]
 
@@ -209,6 +219,48 @@ describe('RecurringDayOffEditor', () => {
     )
 
     expect(markup).toContain('Thu, Fri — needs correction')
+  })
+})
+
+describe('latest Staff List response guard', () => {
+  async function applyRefresh(
+    generation: { current: number },
+    response: Promise<string>,
+    apply: (value: string) => void,
+  ) {
+    const isLatest = beginLatestResponse(generation)
+    const value = await response
+    if (isLatest()) apply(value)
+  }
+
+  it('does not let an older deferred refresh overwrite a newer refresh', async () => {
+    const generation = { current: 0 }
+    const older = deferred<string>()
+    const newer = deferred<string>()
+    let visible = 'initial'
+
+    const olderWork = applyRefresh(generation, older.promise, (value) => { visible = value })
+    const newerWork = applyRefresh(generation, newer.promise, (value) => { visible = value })
+    newer.resolve('newer refresh')
+    await newerWork
+    older.resolve('older refresh')
+    await olderWork
+
+    expect(visible).toBe('newer refresh')
+  })
+
+  it('does not let a deferred pre-save refresh overwrite a successful save', async () => {
+    const generation = { current: 0 }
+    const pending = deferred<string>()
+    let visible = 'initial'
+
+    const pendingWork = applyRefresh(generation, pending.promise, (value) => { visible = value })
+    invalidatePendingResponses(generation)
+    visible = 'successful save'
+    pending.resolve('pre-save refresh')
+    await pendingWork
+
+    expect(visible).toBe('successful save')
   })
 })
 
