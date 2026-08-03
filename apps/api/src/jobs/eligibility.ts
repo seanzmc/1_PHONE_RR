@@ -177,6 +177,16 @@ async function upsertStatus(
     where: and(eq(schema.repDailyStatus.repId, repId), eq(schema.repDailyStatus.businessDate, businessDateStr)),
   })
   if (existing) {
+    // A reviewed activity failure writes the whole remaining weekly tail up front. Later
+    // background passes may collect fresher evidence, but none of their automatic ELIGIBLE
+    // branches may shorten that suspension. Explicit manager reactivation uses the override
+    // path instead and remains the sole authority that clears it.
+    if (
+      status === 'ELIGIBLE' &&
+      existing.status === 'INELIGIBLE' &&
+      existing.decidedBy === 'SYSTEM' &&
+      existing.reason?.includes('WEEK_DQ')
+    ) return
     if (managerStatusBlocksSystemWrite(existing, status, source)) return
     await tx
       .update(schema.repDailyStatus)

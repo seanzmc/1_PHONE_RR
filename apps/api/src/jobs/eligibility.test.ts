@@ -83,6 +83,16 @@ async function setManagerStatus(id: string, date: string, status: 'ELIGIBLE' | '
   })
 }
 
+async function setSystemWeeklyDq(id: string, date: string) {
+  await db.insert(schema.repDailyStatus).values({
+    repId: id,
+    businessDate: date,
+    status: 'INELIGIBLE',
+    reason: `WEEK_DQ: 3 calls on ${MONDAY}, 10 required`,
+    decidedBy: 'SYSTEM',
+  })
+}
+
 beforeAll(async () => {
   const manager = await db.query.appUser.findFirst({ where: eq(schema.appUser.role, 'ADMIN') })
   managerUserId = manager!.id
@@ -318,6 +328,73 @@ describe('manager/system status authority', () => {
       decidedBy: 'MANAGER_OVERRIDE',
       reason: 'manager reactivated',
     })
+  })
+})
+
+describe('existing weekly-DQ tail authority', () => {
+  it('survives a later passing automatic evaluation while still writing evidence', async () => {
+    await setSystemWeeklyDq(repId, TUESDAY)
+    await setCalls(repId, MONDAY, 12)
+
+    await evaluateRepEligibility(db, { repId, businessDate: TUESDAY, policyId: enforcePolicyId })
+
+    expect(await statusOn(repId, TUESDAY)).toMatchObject({
+      status: 'INELIGIBLE',
+      decidedBy: 'SYSTEM',
+      reason: `WEEK_DQ: 3 calls on ${MONDAY}, 10 required`,
+    })
+    expect(await db.query.eligibilitySnapshot.findFirst({
+      where: and(
+        eq(schema.eligibilitySnapshot.repId, repId),
+        eq(schema.eligibilitySnapshot.businessDate, TUESDAY),
+      ),
+    })).toMatchObject({ wouldBeStatus: 'ELIGIBLE', callsFound: 12 })
+  })
+
+  it('survives an import-late automatic exemption', async () => {
+    await setSystemWeeklyDq(repId, TUESDAY)
+
+    await evaluateRepEligibility(db, { repId, businessDate: TUESDAY, policyId: enforcePolicyId })
+
+    expect(await statusOn(repId, TUESDAY)).toMatchObject({
+      status: 'INELIGIBLE',
+      decidedBy: 'SYSTEM',
+      reason: `WEEK_DQ: 3 calls on ${MONDAY}, 10 required`,
+    })
+  })
+
+  it('survives a no-prior-workday automatic exemption', async () => {
+    await setSystemWeeklyDq(repId, TUESDAY)
+    await db
+      .delete(schema.repShift)
+      .where(and(eq(schema.repShift.repId, repId), eq(schema.repShift.businessDate, MONDAY)))
+
+    await evaluateRepEligibility(db, { repId, businessDate: TUESDAY, policyId: enforcePolicyId })
+
+    expect(await statusOn(repId, TUESDAY)).toMatchObject({
+      status: 'INELIGIBLE',
+      decidedBy: 'SYSTEM',
+      reason: `WEEK_DQ: 3 calls on ${MONDAY}, 10 required`,
+    })
+  })
+
+  it('survives a SHADOW automatic activation while still writing evidence', async () => {
+    await setSystemWeeklyDq(repId, TUESDAY)
+    await setCalls(repId, MONDAY, 2)
+
+    await evaluateRepEligibility(db, { repId, businessDate: TUESDAY, policyId: shadowPolicyId })
+
+    expect(await statusOn(repId, TUESDAY)).toMatchObject({
+      status: 'INELIGIBLE',
+      decidedBy: 'SYSTEM',
+      reason: `WEEK_DQ: 3 calls on ${MONDAY}, 10 required`,
+    })
+    expect(await db.query.eligibilitySnapshot.findFirst({
+      where: and(
+        eq(schema.eligibilitySnapshot.repId, repId),
+        eq(schema.eligibilitySnapshot.businessDate, TUESDAY),
+      ),
+    })).toMatchObject({ wouldBeStatus: 'INELIGIBLE', callsFound: 2 })
   })
 })
 
