@@ -1,3 +1,4 @@
+import { isValidElement } from 'react'
 import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
@@ -129,15 +130,27 @@ export function Badge({ tone = 'neutral', children }: { tone?: BadgeTone; childr
 
 /* ── Table ──────────────────────────────────────────────────────────────── */
 
-export function Table({ headers, children }: { headers: ReactNode[]; children: ReactNode }) {
+export type TableHeader = {
+  content: ReactNode
+  ariaSort?: 'ascending' | 'descending'
+}
+
+function isTableHeader(header: ReactNode | TableHeader): header is TableHeader {
+  return !!header && typeof header === 'object' && !Array.isArray(header) && !isValidElement(header) && 'content' in header
+}
+
+export function Table({ headers, children }: { headers: Array<ReactNode | TableHeader>; children: ReactNode }) {
   return (
     <div className="ui-table-scroll">
       <table className="ui-table">
         <thead>
           <tr>
-            {headers.map((h, i) => (
-              <th key={i}>{h}</th>
-            ))}
+            {headers.map((header, i) => {
+              if (isTableHeader(header)) {
+                return <th key={i} aria-sort={header.ariaSort}>{header.content}</th>
+              }
+              return <th key={i}>{header}</th>
+            })}
           </tr>
         </thead>
         <tbody>{children}</tbody>
