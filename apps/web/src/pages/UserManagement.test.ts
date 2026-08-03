@@ -67,6 +67,12 @@ describe('User Management row control targets', () => {
     expect(accountTargetName(account({ id: 'x', displayName: null, email: 'x@example.test' }))).toBe(
       'x@example.test',
     )
+    expect(accountTargetName(account({ id: 'empty', displayName: '', email: 'empty@example.test' }))).toBe(
+      'empty@example.test',
+    )
+    expect(accountTargetName(account({ id: 'space', displayName: '   ', email: 'space@example.test' }))).toBe(
+      'space@example.test',
+    )
   })
 
   it('names enabled-account controls for their target and preserves approved visible copy', () => {
@@ -114,6 +120,28 @@ describe('User Management row control targets', () => {
     expect(markup).toContain('aria-label="Enable x@example.test"')
     expect(markup).toContain('aria-label="Generate temporary password for x@example.test"')
     expect(markup).toContain('aria-label="Set temporary password for x@example.test"')
+  })
+
+  it('treats a whitespace-only display name as missing for copy and control targets', () => {
+    const markup = renderToStaticMarkup(
+      createElement(UserAccountRow, {
+        account: account({
+          id: 'space',
+          displayName: '   ',
+          email: 'space@example.test',
+        }),
+        sessionUserId: 'someone-else',
+        canManageUsers: true,
+        onRole: () => {},
+        onToggleActive: () => {},
+        onGenerateTemporary: () => {},
+        onSetTemporary: () => {},
+      }),
+    )
+
+    expect(markup).toContain('<span class="ui-muted">(no display name)</span>')
+    expect(markup).toContain('aria-label="Role for space@example.test"')
+    expect(markup).toContain('aria-label="Disable space@example.test"')
   })
 
   it('keeps self-role changes disabled with the existing explanation', () => {
@@ -255,17 +283,27 @@ describe('sortAccounts', () => {
     account({ id: 'z', displayName: 'Zed', email: 'a@example.test', role: 'REP' }),
     account({ id: 'a', displayName: 'Amy', email: 'z@example.test', role: 'ADMIN' }),
     account({ id: 'blank', displayName: null, email: 'm@example.test', role: 'MANAGER' }),
+    account({ id: 'empty', displayName: '', email: 'b@example.test', role: 'BDC' }),
+    account({ id: 'space', displayName: '   ', email: 'y@example.test', role: 'BDC' }),
   ]
 
   it('sorts names ascending and descending without mutating the source', () => {
-    expect(sortAccounts(rows, 'name', 'asc').map((row) => row.id)).toEqual(['a', 'z', 'blank'])
-    expect(sortAccounts(rows, 'name', 'desc').map((row) => row.id)).toEqual(['z', 'a', 'blank'])
-    expect(rows.map((row) => row.id)).toEqual(['z', 'a', 'blank'])
+    expect(sortAccounts(rows, 'name', 'asc').map((row) => row.id)).toEqual([
+      'a', 'empty', 'blank', 'space', 'z',
+    ])
+    expect(sortAccounts(rows, 'name', 'desc').map((row) => row.id)).toEqual([
+      'z', 'space', 'blank', 'empty', 'a',
+    ])
+    expect(rows.map((row) => row.id)).toEqual(['z', 'a', 'blank', 'empty', 'space'])
   })
 
   it('sorts email and role deterministically', () => {
-    expect(sortAccounts(rows, 'email', 'asc').map((row) => row.id)).toEqual(['z', 'blank', 'a'])
-    expect(sortAccounts(rows, 'role', 'asc').map((row) => row.id)).toEqual(['a', 'blank', 'z'])
+    expect(sortAccounts(rows, 'email', 'asc').map((row) => row.id)).toEqual([
+      'z', 'empty', 'blank', 'space', 'a',
+    ])
+    expect(sortAccounts(rows, 'role', 'asc').map((row) => row.id)).toEqual([
+      'a', 'empty', 'space', 'blank', 'z',
+    ])
   })
 })
 

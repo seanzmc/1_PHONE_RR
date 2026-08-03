@@ -35,9 +35,7 @@ export function sortAccounts(
   const multiplier = direction === 'asc' ? 1 : -1
   return [...accounts].sort((a, b) => {
     if (key === 'name') {
-      if (!a.displayName) return b.displayName ? 1 : compareText(a.email, b.email)
-      if (!b.displayName) return -1
-      return multiplier * compareText(a.displayName, b.displayName) || compareText(a.email, b.email)
+      return multiplier * compareText(accountTargetName(a), accountTargetName(b)) || compareText(a.email, b.email)
     }
     if (key === 'status') {
       return multiplier * compareText(a.isActive ? 'enabled' : 'disabled', b.isActive ? 'enabled' : 'disabled')
@@ -63,7 +61,7 @@ const ADMINISTRATOR_ISSUED_PASSWORD_HINT =
   'Minimum 8 characters. This password is temporary; the user must replace it at next sign-in.'
 
 export function accountTargetName(account: Account): string {
-  return account.displayName ?? account.email
+  return account.displayName?.trim() || account.email
 }
 
 export function buildAccountSortHeader(
@@ -140,7 +138,7 @@ export function SetTemporaryPasswordModal({
   onSubmit,
 }: SetTemporaryPasswordModalProps) {
   const targetName = target ? accountTargetName(target) : ''
-  const inputTargetName = target?.displayName ?? target?.email ?? 'user'
+  const inputTargetName = target ? accountTargetName(target) : 'user'
   return (
     <Modal
       open={open}
@@ -221,11 +219,12 @@ export function UserAccountRow({
 }: UserAccountRowProps) {
   const isSelf = account.id === sessionUserId
   const targetName = accountTargetName(account)
+  const displayName = account.displayName?.trim()
 
   return (
     <tr>
       <td>
-        {account.displayName ? account.displayName : <span className="ui-muted">(no display name)</span>}
+        {displayName || <span className="ui-muted">(no display name)</span>}
       </td>
       <td>{account.email}</td>
       <td>
