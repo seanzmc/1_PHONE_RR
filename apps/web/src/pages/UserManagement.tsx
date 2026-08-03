@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { mutate, query } from '../lib/api'
 import { canMutateInCurrentView, useAuthStore } from '../state/authStore'
-import { Badge, Button, Field, Input, Select, Table } from '../ui'
+import { Badge, Button, Field, Input, Select, Table, type TableHeader } from '../ui'
 import { PasswordInput } from '../ui/PasswordInput'
 import { authErrorCopy } from '../lib/authErrors'
 import { managerPasswordLabels } from '../lib/passwordLabels'
@@ -58,6 +58,94 @@ const ROLES: Role[] = ['ADMIN', 'MANAGER', 'BDC', 'REP']
 export const adminPasswordInputProps = {
   autoComplete: 'new-password',
 } as const
+
+export function accountTargetName(account: Account): string {
+  return account.displayName ?? account.email
+}
+
+export type UserAccountRowProps = {
+  account: Account
+  sessionUserId: string | undefined
+  canManageUsers: boolean
+  onRole: (userId: string, role: Role) => void
+  onToggleActive: (userId: string, isActive: boolean) => void
+  onGenerateTemporary: (account: Account) => void
+  onSetTemporary: (userId: string) => void
+}
+
+export function UserAccountRow({
+  account,
+  sessionUserId,
+  canManageUsers,
+  onRole,
+  onToggleActive,
+  onGenerateTemporary,
+  onSetTemporary,
+}: UserAccountRowProps) {
+  const isSelf = account.id === sessionUserId
+  const targetName = accountTargetName(account)
+
+  return (
+    <tr>
+      <td>
+        {account.displayName ? account.displayName : <span className="ui-muted">(no display name)</span>}
+      </td>
+      <td>{account.email}</td>
+      <td>
+        <Select
+          value={account.role}
+          aria-label={`Role for ${targetName}`}
+          disabled={isSelf || !canManageUsers}
+          title={isSelf ? 'You cannot change your own role' : undefined}
+          onChange={(event) => onRole(account.id, event.target.value as Role)}
+        >
+          {ROLES.map((role) => (
+            <option key={role} value={role}>
+              {role}
+            </option>
+          ))}
+        </Select>
+      </td>
+      <td>
+        <div className="ui-row">
+          <Badge tone={account.isActive ? 'ok' : 'danger'}>
+            {account.isActive ? 'ENABLED' : 'DISABLED'}
+          </Badge>
+          {account.mustChangePassword && <Badge tone="warn">PASSWORD CHANGE REQUIRED</Badge>}
+        </div>
+      </td>
+      <td>
+        <div className="ui-row">
+          <Button
+            size="sm"
+            aria-label={`${account.isActive ? 'Disable' : 'Enable'} ${targetName}`}
+            disabled={!canManageUsers}
+            onClick={() => onToggleActive(account.id, !account.isActive)}
+          >
+            {account.isActive ? 'Disable' : 'Enable'}
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            aria-label={`Generate temporary password for ${targetName}`}
+            disabled={!canManageUsers}
+            onClick={() => onGenerateTemporary(account)}
+          >
+            Generate temporary password
+          </Button>
+          <Button
+            size="sm"
+            aria-label={`Set temporary password for ${targetName}`}
+            disabled={!canManageUsers}
+            onClick={() => onSetTemporary(account.id)}
+          >
+            Set temporary password…
+          </Button>
+        </div>
+      </td>
+    </tr>
+  )
+}
 
 export function UserManagement() {
   const { session, viewAsUserId } = useAuthStore()
@@ -199,56 +287,34 @@ export function UserManagement() {
 
   function sortHeader(label: string, key: AccountSortKey) {
     const active = key === sortKey
-    return (
-      <button type="button" className="ui-sortbtn" onClick={() => changeSort(key)}>
-        {label} {active ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
-      </button>
-    )
+    return {
+      content: (
+        <button
+          type="button"
+          className="ui-sortbtn"
+          aria-label={`Sort by ${label}`}
+          onClick={() => changeSort(key)}
+        >
+          {label} {active ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+        </button>
+      ),
+      ariaSort: active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined,
+    } satisfies TableHeader
   }
 
   function accountRows(rows: Account[]) {
-    return rows.map((a) => {
-      const isSelf = a.id === session?.userId
-      return (
-        <tr key={a.id}>
-          <td>{a.displayName ? a.displayName : <span className="ui-muted">Set name</span>}</td>
-          <td>{a.email}</td>
-          <td>
-            <Select
-              value={a.role}
-              disabled={isSelf || !canManageUsers}
-              title={isSelf ? 'You cannot change your own role' : undefined}
-              onChange={(e) => changeRole(a.id, e.target.value as Role)}
-            >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </Select>
-          </td>
-          <td>
-            <div className="ui-row">
-              <Badge tone={a.isActive ? 'ok' : 'danger'}>{a.isActive ? 'ENABLED' : 'DISABLED'}</Badge>
-              {a.mustChangePassword && <Badge tone="warn">TEMP PASSWORD</Badge>}
-            </div>
-          </td>
-          <td>
-            <div className="ui-row">
-              <Button size="sm" disabled={!canManageUsers} onClick={() => toggleActive(a.id, !a.isActive)}>
-                {a.isActive ? 'Disable' : 'Enable'}
-              </Button>
-              <Button size="sm" variant="primary" disabled={!canManageUsers} onClick={() => issueTempPassword(a)}>
-                Reset password
-              </Button>
-              <Button size="sm" disabled={!canManageUsers} onClick={() => setResetTargetId(a.id)}>
-                Set manually
-              </Button>
-            </div>
-          </td>
-        </tr>
-      )
-    })
+    return rows.map((account) => (
+      <UserAccountRow
+        key={account.id}
+        account={account}
+        sessionUserId={session?.userId}
+        canManageUsers={canManageUsers}
+        onRole={changeRole}
+        onToggleActive={toggleActive}
+        onGenerateTemporary={issueTempPassword}
+        onSetTemporary={setResetTargetId}
+      />
+    ))
   }
 
   const accountHeaders = [
@@ -262,12 +328,13 @@ export function UserManagement() {
   return (
     <div className="ui-page">
       <div className="ui-toolbar">
-        <h2>Users</h2>
+        <h2>User Management</h2>
         <span className="ui-toolbar-spacer" />
         <Button variant="primary" disabled={!canManageUsers} onClick={() => setAddOpen(true)}>
           Add account
         </Button>
       </div>
+      <p className="ui-muted">Manage accounts, roles, temporary passwords, and sign-in access.</p>
 
       {error && <p className="ui-error" role="alert">{error}</p>}
       {loadError && (
@@ -333,7 +400,10 @@ export function UserManagement() {
             ))}
           </Select>
         </Field>
-        <Field label="Initial password" hint="Minimum 8 characters.">
+        <Field
+          label="Initial password"
+          hint="Minimum 8 characters. This password is temporary; the user must replace it at next sign-in."
+        >
           <PasswordInput
             label={managerPasswordLabels(newName.trim() || 'new account').initial}
             {...adminPasswordInputProps}
@@ -346,12 +416,15 @@ export function UserManagement() {
 
       <Modal
         open={!!resetTargetId}
-        title={`Reset password — ${resetTarget?.displayName ?? resetTarget?.email ?? ''}`}
+        title={`Set temporary password — ${resetTarget ? accountTargetName(resetTarget) : ''}`}
         onClose={closeReset}
         onSubmit={submitReset}
         submitDisabled={resetValue.length < 8}
       >
-        <Field label="New password" hint="Minimum 8 characters.">
+        <Field
+          label="New password"
+          hint="Minimum 8 characters. This password is temporary; the user must replace it at next sign-in."
+        >
           <PasswordInput
             label={managerPasswordLabels(resetTarget?.displayName ?? resetTarget?.email ?? 'user').manualReset}
             {...adminPasswordInputProps}
