@@ -3,6 +3,7 @@ import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
 import { businessDatesThroughSaturday } from '../jobs/eligibility'
+import { publishAssignment } from '../realtime/bus'
 
 export const ADVISORY_LOCK_KEY = 42_100_1 // same key as assignLead — overrides change ordering too, spec §0.1
 
@@ -24,6 +25,7 @@ export async function overrideStatus(db: DB, input: OverrideStatusInput): Promis
     await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
     await applyOverrideStatus(tx, input)
   })
+  publishAssignment({ type: 'ELIGIBILITY_UPDATED', statusDate: businessDate(new Date()) })
 }
 
 /**

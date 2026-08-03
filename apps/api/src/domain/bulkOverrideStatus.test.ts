@@ -5,6 +5,9 @@ import { businessDate } from '@phoneup/core'
 import { bulkOverrideStatus } from './bulkOverrideStatus'
 import { applyOverrideStatus } from './overrideStatus'
 import { businessDatesThroughSaturday } from '../jobs/eligibility'
+import { publishAssignment } from '../realtime/bus'
+
+vi.mock('../realtime/bus', () => ({ publishAssignment: vi.fn() }))
 
 // Wraps the real `applyOverrideStatus` so a test can make it fail on a specific call —
 // e.g. the second rep in a batch — while every earlier/other call still does the real
@@ -61,6 +64,7 @@ async function setStatus(
 }
 
 beforeEach(async () => {
+  vi.mocked(publishAssignment).mockClear()
   await db.delete(schema.statusOverride).where(inArray(schema.statusOverride.repId, repIds))
   await db
     .delete(schema.repDailyStatus)
@@ -156,6 +160,28 @@ describe('bulkOverrideStatus', () => {
       where: eq(schema.statusOverride.repId, alreadyOut),
     })
     expect(skippedOverrides.length).toBe(0)
+
+    expect(publishAssignment).toHaveBeenCalledTimes(1)
+    expect(publishAssignment).toHaveBeenCalledWith({
+      type: 'ELIGIBILITY_UPDATED',
+      statusDate: today,
+    })
+  })
+
+  it('publishes nothing when every rep is already at the requested status', async () => {
+    await setStatus(repIds, 'INELIGIBLE', 'MANAGER_OVERRIDE')
+
+    const result = await bulkOverrideStatus(db, {
+      repIds,
+      status: 'FORCE_INACTIVE',
+      reasonCode: 'DISCIPLINARY',
+      reasonNote: 'Disciplinary',
+      actorUserId: managerUserId,
+    })
+
+    expect(result.applied).toEqual([])
+    expect(result.skipped.sort()).toEqual([...repIds].sort())
+    expect(publishAssignment).not.toHaveBeenCalled()
   })
 
   it('reactivating a batch clears each rep SYSTEM ineligible tail', async () => {
@@ -321,5 +347,7 @@ describe('bulkOverrideStatus', () => {
       })
       expect(row?.status).toBe('ELIGIBLE')
     }
+
+    expect(publishAssignment).not.toHaveBeenCalled()
   })
 })

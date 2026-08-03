@@ -3,6 +3,7 @@ import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
 import { businessDate, isOverrideNoOp, type CurrentRepStatus, type OverrideTarget } from '@phoneup/core'
 import { ADVISORY_LOCK_KEY, applyOverrideStatus } from './overrideStatus'
+import { publishAssignment } from '../realtime/bus'
 
 export type BulkOverrideStatusInput = {
   repIds: string[]
@@ -33,7 +34,7 @@ export async function bulkOverrideStatus(
   db: DB,
   input: BulkOverrideStatusInput,
 ): Promise<BulkOverrideStatusResult> {
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
 
     // A rep with no `rep_daily_status` row is, by the shared no-op rule, treated as already
@@ -87,4 +88,9 @@ export async function bulkOverrideStatus(
 
     return { applied, skipped }
   })
+
+  if (result.applied.length > 0) {
+    publishAssignment({ type: 'ELIGIBILITY_UPDATED', statusDate: businessDate(new Date()) })
+  }
+  return result
 }
