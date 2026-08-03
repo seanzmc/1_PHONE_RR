@@ -19,8 +19,13 @@ export type SetDaysOffInput = {
 export type BulkSetDaysOffDomainInput = BulkSetDaysOffInput & { actorUserId: string }
 
 function normalizeRecurringDaysOff(daysOfWeek: number[]): number[] {
+  const invalidDays = daysOfWeek.filter((day) => !Number.isInteger(day) || day < 0 || day > 6)
+  if (invalidDays.length > 0) {
+    throw new Error(`a weekday must be an integer from 0 to 6, got: ${invalidDays.join(', ')}`)
+  }
+
   // Sunday needs no rep-level entry (the store is closed) and shouldn't consume one.
-  const requested = Array.from(new Set(daysOfWeek.filter((day) => day >= 1 && day <= 6))).sort()
+  const requested = Array.from(new Set(daysOfWeek.filter((day) => day !== 0))).sort()
 
   if (requested.length > 1) {
     throw new Error(

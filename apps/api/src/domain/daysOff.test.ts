@@ -161,6 +161,27 @@ describe('bulkSetRecurringDaysOff', () => {
     expect(realtimeEvents).toHaveLength(0)
   })
 
+  it('rejects out-of-range or non-integer weekdays before any side effect', async () => {
+    await db.insert(schema.repRecurringDayOff).values({ repId: repIds[0], dayOfWeek: 2 })
+
+    for (const daysOfWeek of [[-1], [7], [3, 7], [3.5]]) {
+      await expect(bulkSetRecurringDaysOff(db, {
+        actorUserId: managerUserId,
+        changes: [{ repId: repIds[0], daysOfWeek }],
+      })).rejects.toThrow(/integer from 0 to 6/)
+    }
+
+    expect(await getRecurringDaysOff(db, repIds[0])).toEqual([2])
+    expect(await db.query.auditEvents.findMany({
+      where: and(
+        eq(schema.auditEvents.action, 'rep.days_off.set'),
+        eq(schema.auditEvents.actorUserId, managerUserId),
+      ),
+    })).toHaveLength(0)
+    expect(materializeShiftsLocked).not.toHaveBeenCalled()
+    expect(realtimeEvents).toHaveLength(0)
+  })
+
   it.each([
     ['unknown', '00000000-0000-0000-0000-000000000000'],
     ['inactive', () => inactiveRepId],
