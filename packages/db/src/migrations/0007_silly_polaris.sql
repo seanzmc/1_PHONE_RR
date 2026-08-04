@@ -11,7 +11,17 @@ BEGIN
   END IF;
 
   -- Turning protection ON is restricted too: otherwise an ADMIN session could protect a
-  -- colleague's account and lock them out of their own role.
+  -- colleague's account and lock them out of their own role. This also covers INSERT --
+  -- a row born with is_protected = true and no GUC would be permanently undeletable and
+  -- un-demotable, since every later UPDATE/DELETE branch below treats it as protected.
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.is_protected THEN
+      RAISE EXCEPTION 'app_user row %: is_protected can only be set by the protect-account script', NEW.id
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+  END IF;
+
   IF TG_OP = 'UPDATE' AND NOT OLD.is_protected AND NEW.is_protected THEN
     RAISE EXCEPTION 'app_user row %: is_protected can only be set by the protect-account script', OLD.id
       USING ERRCODE = 'insufficient_privilege';
@@ -43,5 +53,5 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS protect_app_user ON "app_user";
 --> statement-breakpoint
 CREATE TRIGGER protect_app_user
-BEFORE UPDATE OR DELETE ON "app_user"
+BEFORE INSERT OR UPDATE OR DELETE ON "app_user"
 FOR EACH ROW EXECUTE FUNCTION protect_app_user_row();
