@@ -9,7 +9,10 @@ Trimmed from `fusion-plan.md` to single-team, single-store scope. See `CLAUDE.md
 1. **One `pg_advisory_xact_lock` per assignment transaction**, keyed on the store (single store, so effectively a single global lock for this app). Every ordering-changing action takes it: assign, void, reassign, status override, reactivation approval.
 2. **Append-only `assignment_events` ledger** + `rep_month_counters` projection written in the same transaction + nightly reconciliation job that rebuilds counters from the ledger and alerts on mismatch.
 3. **`rep_daily_status` is the only table the ranking algorithm reads.** Schedule import, disqualification job, manager override, reactivation — all write to it, never branch the algorithm.
-4. **Ranking function lives in a pure module** (`packages/core`, zero I/O imports) so it's unit/property-testable in isolation: eligibility filter → sort by (served-this-cycle, monthly load, last-assigned-at, stable rotation seed, rep id).
+4. **Ranking function lives in a pure module** (`packages/core`, zero I/O imports) so it's unit/property-testable in isolation: eligibility filter → sort by (served-this-cycle, prior-cycle order, monthly load, last-assigned-at, stable rotation seed, rep id).
+   - **Prior-cycle order** was added after the rotation was seen restarting in the wrong place: when a cycle closes, unequal monthly totals — from voids, forced assigns, or a mid-month hire — re-sorted the next cycle instead of continuing the rotation. It is the position each rep held in the last completed cycle, and a rep who held none (out sick, reactivated, newly hired, voided) sorts *ahead* of everyone who did, because they never took a turn.
+   - Consequence, and it is intended: once every rep has run a full cycle, monthly load no longer decides anything — it only breaks ties among reps who share a prior-cycle position, which is nobody. Round-robin equalises load by construction, so load is a deep tiebreaker now, not the fairness mechanism. Fairness drift is caught by reconciliation and the board, not by re-sorting the queue mid-rotation.
+   - Every surface that ranks reps must feed it the same prior-cycle order (`apps/api/src/domain/priorCycleOrder.ts`): assign, skip, and the board. A surface that omits it will name a rep the next lead does not go to.
 
 Everything below builds around this core.
 

@@ -13,6 +13,32 @@ function phone(): string {
   return `+1${randomUUID().replace(/\D/g, '').padEnd(10, '7').slice(0, 10)}`
 }
 
+/** Own account + rep row + today's status, so a test never has to borrow a shared rep. */
+async function makeRep(label: string, isActive = true): Promise<string> {
+  const stamp = `${Date.now()}-${randomUUID()}`
+  const [user] = await db
+    .insert(schema.appUser)
+    .values({
+      email: `reassign-${label}-${stamp}@dealership.test`,
+      displayName: `Reassign ${label}`,
+      passwordHash: 'x:y',
+      role: 'REP',
+      isActive,
+    })
+    .returning()
+  const [rep] = await db
+    .insert(schema.salesRep)
+    .values({ userId: user.id, displayName: `Reassign ${label}`, hireDate: '2020-01-01' })
+    .returning()
+  await db.insert(schema.repDailyStatus).values({
+    repId: rep.id,
+    businessDate: businessDate(new Date()),
+    status: 'ELIGIBLE',
+    decidedBy: 'SYSTEM',
+  })
+  return rep.id
+}
+
 describe('reassignLead', () => {
   let actorUserId: string
   let sourceRepId: string
@@ -33,33 +59,9 @@ describe('reassignLead', () => {
       .returning()
     actorUserId = actor.id
 
-    async function makeRep(label: string, isActive = true) {
-      const [user] = await db
-        .insert(schema.appUser)
-        .values({
-          email: `reassign-${label}-${stamp}@dealership.test`,
-          displayName: `Reassign ${label}`,
-          passwordHash: 'x:y',
-          role: 'REP',
-          isActive,
-        })
-        .returning()
-      const [rep] = await db
-        .insert(schema.salesRep)
-        .values({ userId: user.id, displayName: `Reassign ${label}`, hireDate: '2020-01-01' })
-        .returning()
-      return rep.id
-    }
-
     sourceRepId = await makeRep('Source')
     targetRepId = await makeRep('Target')
     disabledRepId = await makeRep('Disabled', false)
-    const today = businessDate(new Date())
-    await db.insert(schema.repDailyStatus).values([
-      { repId: sourceRepId, businessDate: today, status: 'ELIGIBLE', decidedBy: 'SYSTEM' },
-      { repId: targetRepId, businessDate: today, status: 'ELIGIBLE', decidedBy: 'SYSTEM' },
-      { repId: disabledRepId, businessDate: today, status: 'ELIGIBLE', decidedBy: 'SYSTEM' },
-    ])
 
     const assigned = await assignLead(db, {
       idempotencyKey: randomUUID(),
@@ -146,6 +148,46 @@ describe('reassignLead', () => {
       }),
     ).rejects.toThrow(/disabled or missing/)
     expect((await db.query.lead.findFirst({ where: eq(schema.lead.id, leadId) }))?.assignedRepId).toBe(targetRepId)
+  })
+  // assigned_at is the cycle's running order and the next cycle restarts from it, so a
+  // reassign has to hand the slot over in place. Delete-and-append re-stamps it with the
+  // reassign time, which drops the target to the back of the next rotation for taking
+  // over someone else's lead — and drops the source, who no longer holds a slot at all.
+  it('hands the cycle slot to the target in place, keeping its position in the order', async () => {
+    const handoverSource = await makeRep('SlotSource')
+    const handoverTarget = await makeRep('SlotTarget')
+
+    const assigned = await assignLead(db, {
+      idempotencyKey: randomUUID(),
+      customerName: 'Slot Handover',
+      customerPhoneE164: phone(),
+      actorUserId,
+      forcedRepId: handoverSource,
+    })
+
+    const slotBefore = await db.query.rrCycleAssignments.findFirst({
+      where: eq(schema.rrCycleAssignments.repId, handoverSource),
+    })
+    expect(slotBefore).toBeTruthy()
+
+    await reassignLead(db, {
+      leadId: assigned.leadId,
+      targetRepId: handoverTarget,
+      reasonNote: 'covering the floor',
+      idempotencyKey: randomUUID(),
+      actorUserId,
+    })
+
+    const slotAfter = await db.query.rrCycleAssignments.findFirst({
+      where: eq(schema.rrCycleAssignments.id, slotBefore!.id),
+    })
+    expect(slotAfter?.repId).toBe(handoverTarget)
+    expect(slotAfter?.assignedAt.toISOString()).toBe(slotBefore!.assignedAt.toISOString())
+
+    const sourceSlots = await db.query.rrCycleAssignments.findMany({
+      where: eq(schema.rrCycleAssignments.repId, handoverSource),
+    })
+    expect(sourceSlots).toHaveLength(0)
   })
 })
 

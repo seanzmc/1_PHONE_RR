@@ -110,25 +110,36 @@ export async function reassignLead(db: DB, input: ReassignLeadInput): Promise<Re
     // An old reassignment transfers credit but must not reopen or rewrite a completed cycle.
     // For the currently-open cycle, transfer the consumed slot with the lead.
     if (cycle && !cycle.closedAt) {
-      await tx
-        .delete(schema.rrCycleAssignments)
-        .where(
-          and(
-            eq(schema.rrCycleAssignments.cycleId, cycle.id),
-            eq(schema.rrCycleAssignments.repId, sourceRepId),
-          ),
-        )
+      const sourceSlot = and(
+        eq(schema.rrCycleAssignments.cycleId, cycle.id),
+        eq(schema.rrCycleAssignments.repId, sourceRepId),
+      )
       const targetSlot = await tx.query.rrCycleAssignments.findFirst({
         where: and(
           eq(schema.rrCycleAssignments.cycleId, cycle.id),
           eq(schema.rrCycleAssignments.repId, input.targetRepId),
         ),
       })
-      if (!targetSlot) {
-        await tx.insert(schema.rrCycleAssignments).values({
-          cycleId: cycle.id,
-          repId: input.targetRepId,
-        })
+      if (targetSlot) {
+        // The target already took a turn this cycle, so the source just gives theirs up.
+        await tx.delete(schema.rrCycleAssignments).where(sourceSlot)
+      } else {
+        // Move the slot rather than delete-and-append: assigned_at is the cycle's running
+        // order, and the next cycle restarts from it. Re-stamping it with `now` would drop
+        // the target to the back of the next rotation for taking over someone's lead.
+        const moved = await tx
+          .update(schema.rrCycleAssignments)
+          .set({ repId: input.targetRepId })
+          .where(sourceSlot)
+          .returning({ id: schema.rrCycleAssignments.id })
+        if (moved.length === 0) {
+          // Source held no slot (an earlier void or skip already freed it), so the target
+          // consumes a fresh one.
+          await tx.insert(schema.rrCycleAssignments).values({
+            cycleId: cycle.id,
+            repId: input.targetRepId,
+          })
+        }
       }
     }
 
