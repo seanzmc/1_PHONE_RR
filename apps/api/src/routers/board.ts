@@ -4,6 +4,7 @@ import { rankReps, businessDate, periodKey, type RepRankInput } from '@phoneup/c
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
 import { selectActiveReps } from '../domain/activeReps'
+import { loadPriorCycleOrder } from '../domain/priorCycleOrder'
 
 function hashRepIdToSeed(repId: string): number {
   let h = 0
@@ -63,6 +64,8 @@ async function computeRoster(): Promise<{
   const statusByRep = new Map(statuses.map((s: any) => [s.repId, s]))
   const counterByRep = new Map(counters.map((c: any) => [c.repId, c]))
   const servedSet = new Set(servedThisCycle.map((s: any) => s.repId))
+  // Same input assignLead ranks on, or the board names a rep the next lead will not go to.
+  const priorCycleOrderByRep = await loadPriorCycleOrder(db)
 
   const rankInputs: RepRankInput[] = reps.map((rep: any) => {
     const status = statusByRep.get(rep.id)
@@ -72,6 +75,7 @@ async function computeRoster(): Promise<{
       isEligible: status?.status === 'ELIGIBLE',
       ineligibleReason: status?.reason ?? undefined,
       servedThisCycle: servedSet.has(rep.id),
+      priorCycleOrder: priorCycleOrderByRep.get(rep.id),
       monthlyLoad: counter?.upsMtd ?? 0,
       lastAssignedAt: counter?.lastAssignedAt ? counter.lastAssignedAt.toISOString() : null,
       rotationSeed: hashRepIdToSeed(rep.id),

@@ -6,6 +6,7 @@ import { rankReps, businessDate, periodKey, type RepRankInput } from '@phoneup/c
 import { assignLead } from './assignLead'
 import { voidLead } from './voidLead'
 import { selectActiveReps } from './activeReps'
+import { loadPriorCycleOrder } from './priorCycleOrder'
 
 let repIds: string[] = []
 let bdcUserId: string
@@ -35,11 +36,13 @@ async function nextUpRepId(): Promise<string | null> {
   const statusByRep = new Map(statuses.map((s: any) => [s.repId, s]))
   const counterByRep = new Map(counters.map((c: any) => [c.repId, c]))
   const servedSet = new Set(served.map((s: any) => s.repId))
+  const priorCycleOrderByRep = await loadPriorCycleOrder(db)
 
   const inputs: RepRankInput[] = reps.map((rep: any) => ({
     repId: rep.id,
     isEligible: statusByRep.get(rep.id)?.status === 'ELIGIBLE',
     servedThisCycle: servedSet.has(rep.id),
+    priorCycleOrder: priorCycleOrderByRep.get(rep.id),
     monthlyLoad: counterByRep.get(rep.id)?.upsMtd ?? 0,
     lastAssignedAt: counterByRep.get(rep.id)?.lastAssignedAt?.toISOString() ?? null,
     rotationSeed: hashRepIdToSeed(rep.id),

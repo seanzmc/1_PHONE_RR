@@ -2,9 +2,10 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
-import { businessDate } from '@phoneup/core'
+import { businessDate, periodKey } from '@phoneup/core'
 import { assignLead } from './assignLead'
 import { skipLead } from './skipLead'
+import { selectActiveReps } from './activeReps'
 import { reconcile } from '../jobs/reconciliation'
 import { t } from '../trpc/router'
 import { assignmentRouter } from '../routers/assignment'
@@ -197,4 +198,44 @@ describe('assignment.skip permission', () => {
       idempotencyKey: randomUUID(),
     })).rejects.toMatchObject({ code: 'FORBIDDEN' })
   })
+
+  // A skip hands the up to "the next rep", which has to mean the same thing it means in
+  // assignLead — otherwise the rotation order depends on whether the first rep happened
+  // to pass, and the board is wrong either way.
+  it('passes the up down the preceding cycle order, not down monthly load', async () => {
+    const pKey = periodKey(businessDate(new Date()))
+    // Exactly the set assignLead ranks: other suites leave reps whose account is disabled
+    // but whose status row for today is still ELIGIBLE, and those never enter a cycle.
+    const activeRepIds = new Set((await selectActiveReps(db)).map((rep: any) => rep.id))
+    const rotationRepIds = eligibleRepIds.filter((repId) => activeRepIds.has(repId))
+    expect(rotationRepIds.length).toBeGreaterThanOrEqual(3)
+
+    // Ascending load follows rotationRepIds, so a fallback to monthly load would pick
+    // rotationRepIds[0] — the opposite end of the order this cycle actually ran in.
+    for (const [index, repId] of rotationRepIds.entries()) {
+      await db.insert(schema.repMonthCounters).values({ repId, periodKey: pKey, upsMtd: index * 50 })
+    }
+
+    const servedOrder = [...rotationRepIds].reverse()
+    for (const repId of servedOrder) await assignTo(repId)
+
+    // Cycle one is full, so this opens cycle two and must start it at servedOrder[0].
+    const firstOfNextCycle = await assignLead(db, {
+      idempotencyKey: randomUUID(),
+      customerName: 'Skip Cycle Two',
+      customerPhoneE164: '+15554440001',
+      actorUserId: bdcUserId,
+    })
+    expect(firstOfNextCycle.assignedRepId).toBe(servedOrder[0])
+
+    const skipped = await skipLead(db, {
+      leadId: firstOfNextCycle.leadId,
+      expectedRepId: firstOfNextCycle.assignedRepId!,
+      reasonNote: 'Rep stepped away from the floor',
+      idempotencyKey: randomUUID(),
+      actorUserId: bdcUserId,
+    })
+
+    expect(skipped.assignedRepId).toBe(servedOrder[1])
+  }, 20_000)
 })

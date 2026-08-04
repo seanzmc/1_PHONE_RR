@@ -1,9 +1,10 @@
-import { sql, eq, and, isNull, isNotNull, desc, asc } from 'drizzle-orm'
+import { sql, eq, and, isNull } from 'drizzle-orm'
 import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
 import { rankReps, businessDate, periodKey, type RepRankInput } from '@phoneup/core'
 import { ensureEligibilitySnapshots } from './ensureEligibilitySnapshots'
 import { selectActiveReps } from './activeReps'
+import { loadPriorCycleOrder } from './priorCycleOrder'
 import { publishAssignment } from '../realtime/bus'
 
 const ADVISORY_LOCK_KEY = 42_100_1 // single store => single fixed key
@@ -87,20 +88,7 @@ export async function assignLead(db: DB, input: AssignLeadInput): Promise<Assign
       where: eq(schema.rrCycleAssignments.cycleId, cycle.id),
     })
     const servedSet = new Set(servedThisCycle.map((s: any) => s.repId))
-    const priorCycle = await tx.query.rotationCycle.findFirst({
-      where: isNotNull(schema.rotationCycle.closedAt),
-      orderBy: [desc(schema.rotationCycle.closedAt)],
-    })
-    const priorCycleServed = priorCycle
-      ? await tx.query.rrCycleAssignments.findMany({
-        where: eq(schema.rrCycleAssignments.cycleId, priorCycle.id),
-        // Match the Served This Round display order, including a deterministic tie-break.
-        orderBy: [asc(schema.rrCycleAssignments.assignedAt), asc(schema.rrCycleAssignments.repId)],
-      })
-      : []
-    const priorCycleOrderByRep = new Map(
-      priorCycleServed.map((served: any, index: number) => [served.repId, index]),
-    )
+    const priorCycleOrderByRep = await loadPriorCycleOrder(tx)
     const counterByRep = new Map(counters.map((c: any) => [c.repId, c]))
 
     const rankInputs: RepRankInput[] = statuses.map((s: any) => ({

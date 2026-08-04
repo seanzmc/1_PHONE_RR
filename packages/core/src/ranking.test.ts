@@ -39,6 +39,16 @@ describe('rankReps', () => {
     expect(out.map((r) => r.repId)).toEqual(['first-served', 'second-served'])
   })
 
+  it('ranks a rep with no preceding position ahead of one that has one', () => {
+    // Out sick / reactivated / newly hired / voided: they never took a turn last cycle,
+    // so they take the next one. Ranking them last would be permanent.
+    const out = rankReps([
+      rep({ repId: 'served-first-last-cycle', priorCycleOrder: 0, monthlyLoad: 0 }),
+      rep({ repId: 'missed-last-cycle', monthlyLoad: 99 }),
+    ])
+    expect(out.map((r) => r.repId)).toEqual(['missed-last-cycle', 'served-first-last-cycle'])
+  })
+
   it('then by lower monthly load when there is no preceding served order', () => {
     const out = rankReps([
       rep({ repId: 'a', monthlyLoad: 5 }),

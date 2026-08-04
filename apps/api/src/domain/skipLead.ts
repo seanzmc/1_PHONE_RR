@@ -4,6 +4,7 @@ import { schema } from '@phoneup/db'
 import { businessDate, periodKey, rankReps, type RepRankInput } from '@phoneup/core'
 import { ensureEligibilitySnapshots } from './ensureEligibilitySnapshots'
 import { selectActiveReps } from './activeReps'
+import { loadPriorCycleOrder } from './priorCycleOrder'
 import { publishAssignment } from '../realtime/bus'
 
 const ADVISORY_LOCK_KEY = 42_100_1
@@ -140,11 +141,13 @@ export async function skipLead(db: DB, input: SkipLeadInput): Promise<SkipLeadRe
     })
     const servedSet = new Set(cycleSlots.map((slot: any) => slot.repId))
     const counterByRep = new Map(counters.map((counter: any) => [counter.repId, counter]))
+    const priorCycleOrderByRep = await loadPriorCycleOrder(tx)
     const ranked = rankReps(statuses.map((status: any) => ({
       repId: status.repId,
       isEligible: status.status === 'ELIGIBLE',
       ineligibleReason: status.reason ?? undefined,
       servedThisCycle: servedSet.has(status.repId),
+      priorCycleOrder: priorCycleOrderByRep.get(status.repId),
       monthlyLoad: counterByRep.get(status.repId)?.upsMtd ?? 0,
       lastAssignedAt: counterByRep.get(status.repId)?.lastAssignedAt?.toISOString() ?? null,
       rotationSeed: hashRepIdToSeed(status.repId),
