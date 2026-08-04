@@ -35,6 +35,12 @@ export const appUser = pgTable('app_user', {
   // admin-issued temporary password and cleared only by the user choosing their own.
   // Enforced server-side in requirePerm, not just in the UI.
   mustChangePassword: boolean('must_change_password').notNull().default(false),
+  // The owner/break-glass account. A protected row cannot be modified or deleted by any
+  // other user through the app, and is filtered out of the Users list. Enforced in three
+  // places: the domain functions in apps/api/src/domain/userManagement.ts, the
+  // protect_app_user Postgres trigger, and userManagement.list. Settable ONLY by the
+  // protect-account script — a flag the app can set is a flag an ADMIN session can clear.
+  isProtected: boolean('is_protected').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

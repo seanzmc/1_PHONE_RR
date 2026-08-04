@@ -50,6 +50,13 @@
       "when": 1785591290647,
       "tag": "0006_mature_whistler",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785871938685,
+      "tag": "0007_silly_polaris",
+      "breakpoints": true
     }
   ]
 }
