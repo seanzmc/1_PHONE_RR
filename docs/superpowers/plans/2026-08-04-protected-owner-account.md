@@ -515,15 +515,36 @@ describe('protected account — domain guards', () => {
       actorUserId: protectedUserId,
       allowProtected: true,
     })
-    await expect(
-      setActive(db, { userId: sacrificialAdminId, isActive: false, actorUserId: protectedUserId }),
-    ).resolves.toBeUndefined()
 
-    await setActive(db, {
-      userId: sacrificialAdminId,
-      isActive: true,
-      actorUserId: protectedUserId,
-    })
+    // The seeded ADMIN is active too, so without this the guard would pass whether or not it
+    // counted the protected admin — the assertion would prove nothing. Park every other
+    // active ADMIN so the protected one is the only thing standing between the sacrificial
+    // admin and a zero-admin state.
+    const activeAdmins = await db
+      .select()
+      .from(schema.appUser)
+      .where(and(eq(schema.appUser.role, 'ADMIN'), eq(schema.appUser.isActive, true)))
+    const parked = activeAdmins.filter(
+      (u: any) => u.id !== protectedUserId && u.id !== sacrificialAdminId,
+    )
+
+    for (const u of parked) {
+      await db.update(schema.appUser).set({ isActive: false }).where(eq(schema.appUser.id, u.id))
+    }
+    try {
+      await expect(
+        setActive(db, { userId: sacrificialAdminId, isActive: false, actorUserId: protectedUserId }),
+      ).resolves.toBeUndefined()
+    } finally {
+      for (const u of parked) {
+        await db.update(schema.appUser).set({ isActive: true }).where(eq(schema.appUser.id, u.id))
+      }
+      await setActive(db, {
+        userId: sacrificialAdminId,
+        isActive: true,
+        actorUserId: protectedUserId,
+      })
+    }
   })
 })
 ```
@@ -808,12 +829,13 @@ Replace the `list` procedure in `apps/api/src/routers/userManagement.ts`:
    * and so a second protected account would not be invisible to the first.
    */
   list: publicProcedure.use(requirePerm('user.manage')).query(async ({ ctx }) => {
-    const caller = await db.query.appUser.findFirst({
-      where: eq(schema.appUser.id, ctx.session.userId),
-    })
-    const rows = caller?.isProtected
-      ? await db.select().from(schema.appUser)
-      : await db.select().from(schema.appUser).where(eq(schema.appUser.isProtected, false))
+    // One query, filtered in memory. Do NOT look the caller up with
+    // `eq(schema.appUser.id, ctx.session.userId)` — existing tests in this file build
+    // sessions with non-UUID ids like 'u1', and Postgres rejects those with
+    // "invalid input syntax for type uuid" before any filtering happens.
+    const all = await db.select().from(schema.appUser)
+    const caller = all.find((u: any) => u.id === ctx.session.userId)
+    const rows = caller?.isProtected ? all : all.filter((u: any) => !u.isProtected)
 
     return rows.map((u: any) => ({
       id: u.id,
