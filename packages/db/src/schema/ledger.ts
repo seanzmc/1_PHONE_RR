@@ -27,7 +27,7 @@ export const assignmentEvents = pgTable('assignment_events', {
   leadId: uuid('lead_id').references(() => lead.id),
   repId: uuid('rep_id').references(() => salesRep.id),
   eventType: text('event_type', {
-    enum: ['ASSIGN', 'SKIP', 'VOID', 'REASSIGN_OUT', 'REASSIGN_IN', 'BALANCE_CREDIT'],
+    enum: ['ASSIGN', 'QUEUE', 'SKIP', 'VOID', 'REASSIGN_OUT', 'REASSIGN_IN', 'BALANCE_CREDIT'],
   }).notNull(),
   cycleNo: uuid('cycle_no').notNull().references(() => rotationCycle.id),
   creditDelta: integer('credit_delta').notNull().default(0),

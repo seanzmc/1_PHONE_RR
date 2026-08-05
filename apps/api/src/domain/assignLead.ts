@@ -152,6 +152,27 @@ export async function assignLead(db: DB, input: AssignLeadInput): Promise<Assign
         })
         .returning()
       await tx.insert(schema.unassignedQueue).values({ leadId: lead.id, reason: 'NO_ELIGIBLE_REP' })
+      await tx.insert(schema.assignmentEvents).values({
+        leadId: lead.id,
+        repId: null,
+        eventType: 'QUEUE',
+        cycleNo: cycle.id,
+        creditDelta: 0,
+        queueSnapshot: ranked,
+        idempotencyKey: input.idempotencyKey,
+      })
+      await tx.insert(schema.auditEvents).values({
+        actorUserId: input.actorUserId,
+        action: 'lead.queue',
+        entityType: 'lead',
+        entityId: lead.id,
+        before: null,
+        after: {
+          status: 'UNASSIGNED',
+          assignedRepId: null,
+          assignmentMode: 'NO_ELIGIBLE_REP',
+        },
+      })
       return {
         leadId: lead.id,
         assignedRepId: null,
@@ -196,6 +217,19 @@ export async function assignLead(db: DB, input: AssignLeadInput): Promise<Assign
           lastAssignedAt: now,
         },
       })
+
+    await tx.insert(schema.auditEvents).values({
+      actorUserId: input.actorUserId,
+      action: 'lead.assign',
+      entityType: 'lead',
+      entityId: lead.id,
+      before: null,
+      after: {
+        status: 'ASSIGNED',
+        assignedRepId: chosen.repId,
+        assignmentMode: input.forcedRepId ? 'MANAGER_OVERRIDE' : 'ROTATION',
+      },
+    })
 
     // 12. cycle-completion check — close and reopen if every eligible rep has now been served
     const allEligible = ranked.filter((r) => r.isEligible)

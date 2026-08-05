@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { and, eq, isNull } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import { db, schema } from '@phoneup/db'
@@ -8,6 +8,9 @@ import { selectActiveReps } from './activeReps'
 import { t } from '../trpc/router'
 import { boardRouter } from '../routers/board'
 import type { Context } from '../trpc/context'
+import { publishAssignment } from '../realtime/bus'
+
+vi.mock('../realtime/bus', () => ({ publishAssignment: vi.fn() }))
 
 let repIds: string[] = []
 let bdcUserId: string
@@ -77,6 +80,7 @@ beforeAll(async () => {
 })
 
 beforeEach(async () => {
+  vi.mocked(publishAssignment).mockClear()
   // reset ledger/counters/leads for a clean slate each test, keep reps/status/cycle rows
   await db.delete(schema.assignmentEvents)
   await db.delete(schema.rrCycleAssignments)
@@ -105,6 +109,23 @@ describe('assignLead', () => {
       .where(eq(schema.assignmentEvents.leadId, result.leadId))
     expect(events.some((e: any) => e.eventType === 'ASSIGN')).toBe(true)
 
+    const audit = await db.query.auditEvents.findFirst({
+      where: and(
+        eq(schema.auditEvents.action, 'lead.assign'),
+        eq(schema.auditEvents.entityId, result.leadId),
+      ),
+    })
+    expect(audit).toMatchObject({
+      actorUserId: bdcUserId,
+      entityType: 'lead',
+      before: null,
+      after: {
+        status: 'ASSIGNED',
+        assignedRepId: result.assignedRepId,
+        assignmentMode: 'ROTATION',
+      },
+    })
+
     const counter = await db.query.repMonthCounters.findFirst({
       where: eq(schema.repMonthCounters.repId, result.assignedRepId!),
     })
@@ -127,6 +148,145 @@ describe('assignLead', () => {
     })
     expect(second.leadId).toBe(first.leadId)
     expect(second.assignedRepId).toBe(first.assignedRepId)
+
+    const ledger = await db.query.assignmentEvents.findMany({
+      where: eq(schema.assignmentEvents.leadId, first.leadId),
+    })
+    const audit = await db.query.auditEvents.findMany({
+      where: and(
+        eq(schema.auditEvents.action, 'lead.assign'),
+        eq(schema.auditEvents.entityId, first.leadId),
+      ),
+    })
+    expect(ledger.filter((event: any) => event.eventType === 'ASSIGN')).toHaveLength(1)
+    expect(audit).toHaveLength(1)
+  })
+
+  it('records a forced assignment as a manager override', async () => {
+    const forcedRepId = repIds[0]
+    const result = await assignLead(db, {
+      idempotencyKey: randomUUID(),
+      customerName: 'Forced Customer',
+      customerPhoneE164: '+155****0010',
+      forcedRepId,
+      actorUserId: bdcUserId,
+    })
+
+    const audit = await db.query.auditEvents.findFirst({
+      where: and(
+        eq(schema.auditEvents.action, 'lead.assign'),
+        eq(schema.auditEvents.entityId, result.leadId),
+      ),
+    })
+    expect(result.assignedRepId).toBe(forcedRepId)
+    expect(audit?.after).toEqual({
+      status: 'ASSIGNED',
+      assignedRepId: forcedRepId,
+      assignmentMode: 'MANAGER_OVERRIDE',
+    })
+  })
+
+  it('queues exactly once with a zero-credit idempotency ledger event when nobody is eligible', async () => {
+    await withOnlyRepsEligible([], async () => {
+      const key = randomUUID()
+      const input = {
+        idempotencyKey: key,
+        customerName: 'Queued Customer',
+        customerPhoneE164: '+155****0011',
+        actorUserId: bdcUserId,
+      }
+
+      const first = await assignLead(db, input)
+      const second = await assignLead(db, input)
+
+      expect(first.assignedRepId).toBeNull()
+      expect(second.leadId).toBe(first.leadId)
+
+      const leads = await db.query.lead.findMany({ where: eq(schema.lead.id, first.leadId) })
+      const queueRows = await db.query.unassignedQueue.findMany({
+        where: eq(schema.unassignedQueue.leadId, first.leadId),
+      })
+      const ledger = await db.query.assignmentEvents.findMany({
+        where: eq(schema.assignmentEvents.idempotencyKey, key),
+      })
+      const audit = await db.query.auditEvents.findMany({
+        where: and(
+          eq(schema.auditEvents.action, 'lead.queue'),
+          eq(schema.auditEvents.entityId, first.leadId),
+        ),
+      })
+
+      expect(leads).toHaveLength(1)
+      expect(queueRows).toHaveLength(1)
+      expect(ledger).toHaveLength(1)
+      expect(ledger[0]).toMatchObject({
+        leadId: first.leadId,
+        repId: null,
+        eventType: 'QUEUE',
+        creditDelta: 0,
+      })
+      expect(audit).toHaveLength(1)
+      expect(audit[0]).toMatchObject({
+        actorUserId: bdcUserId,
+        entityType: 'lead',
+        before: null,
+        after: {
+          status: 'UNASSIGNED',
+          assignedRepId: null,
+          assignmentMode: 'NO_ELIGIBLE_REP',
+        },
+      })
+    })
+  })
+
+  it('rolls back all assignment writes and does not publish when the audit insert fails', async () => {
+    const rowCounts = async () => ({
+      customers: (await db.query.customer.findMany()).length,
+      leads: (await db.query.lead.findMany()).length,
+      queue: (await db.query.unassignedQueue.findMany()).length,
+      ledger: (await db.query.assignmentEvents.findMany()).length,
+      cycleAssignments: (await db.query.rrCycleAssignments.findMany()).length,
+      cycles: (await db.query.rotationCycle.findMany()).length,
+      counters: (await db.query.repMonthCounters.findMany()).length,
+      audit: (await db.query.auditEvents.findMany()).length,
+    })
+    const before = await rowCounts()
+    const rollbackDb = {
+      transaction: (callback: (tx: any) => Promise<unknown>) =>
+        db.transaction(async (tx) => {
+          const failingTx = new Proxy(tx, {
+            get(target, property, receiver) {
+              if (property === 'insert') {
+                return (table: unknown) => {
+                  if (table === schema.auditEvents) {
+                    return {
+                      values: async () => {
+                        throw new Error('simulated audit failure')
+                      },
+                    }
+                  }
+                  return target.insert(table as any)
+                }
+              }
+
+              const value = Reflect.get(target, property, receiver)
+              return typeof value === 'function' ? value.bind(target) : value
+            },
+          })
+          return callback(failingTx)
+        }),
+    } as unknown as typeof db
+
+    await expect(assignLead(rollbackDb, {
+      idempotencyKey: randomUUID(),
+      customerName: 'Rollback Customer',
+      customerPhoneE164: '+155****0012',
+      forcedRepId: repIds[0],
+      actorUserId: bdcUserId,
+    })).rejects.toThrow('simulated audit failure')
+
+    expect(await rowCounts()).toEqual(before)
+    expect(publishAssignment).not.toHaveBeenCalled()
   })
 
   it('warns but does not block on a duplicate phone number', async () => {
