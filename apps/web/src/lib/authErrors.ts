@@ -48,6 +48,9 @@ export function authErrorCopy(error: unknown, context: AuthErrorContext): string
   if (/RESET_LINK_INVALID_OR_EXPIRED/.test(message)) {
     return 'This reset link is invalid, expired, or already used. Request a new link.'
   }
+  if (/PROTECTED_ACCOUNT/.test(message)) {
+    return 'This account is protected and cannot be modified from the app. Retrying will not change that.'
+  }
 
   return FALLBACK_COPY[context]
 }

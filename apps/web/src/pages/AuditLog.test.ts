@@ -23,6 +23,11 @@ describe('audit event presentation', () => {
     expect(formatAuditAction('lead.skip')).toBe('Skipped rep and passed lead')
   })
 
+  it('labels a denied protected-account write instead of falling back to the raw action name', () => {
+    const formatAuditAction = (AuditLogModule as any).formatAuditAction
+    expect(formatAuditAction('user.protectedWriteDenied')).toBe('Denied change to protected account')
+  })
+
   it('summarizes changed fields without making raw JSON the primary view', () => {
     const summarizeAuditChanges = (AuditLogModule as any).summarizeAuditChanges
     expect(summarizeAuditChanges).toBeTypeOf('function')

@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { inArray } from 'drizzle-orm'
+import { inArray, sql } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { createSession } from '../auth/session'
 import { createContext } from './context'
+import { createAccount } from '../domain/userManagement'
+import { setProtected, deleteUserForce } from '../domain/protectedAccount.testutil'
 
 function request(sessionId: string, targetUserId: string, method = 'GET') {
   return {
@@ -92,5 +94,64 @@ describe('view-as context', () => {
 
   it('rejects an inactive target profile', async () => {
     await expect(createContext(request(adminSessionId, inactiveTargetId))).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+})
+
+describe('view-as context — protected account', () => {
+  let protectedUserId: string
+  let plainAdminId: string
+  let plainAdminSessionId: string
+  const sessionIds: string[] = []
+
+  beforeAll(async () => {
+    // Self-healing: clear any leftover protected fixture from a killed prior run before
+    // creating fresh ones — an ordinary DELETE cannot touch a protected row, so a stale one
+    // would otherwise poison every later run of this suite.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`set local app.protected_write = 'on'`)
+      await tx.execute(sql`delete from app_user where email like 'view-as-ctx-protected-%@test.local'`)
+    })
+
+    const stamp = Date.now()
+    const plain = await createAccount(db, {
+      email: `view-as-ctx-protected-admin-${stamp}@test.local`,
+      displayName: 'View As Ctx Plain Admin',
+      role: 'ADMIN',
+      password: 'temp-password-534',
+      actorUserId: '00000000-0000-0000-0000-000000000000',
+    })
+    plainAdminId = plain.userId
+
+    const owner = await createAccount(db, {
+      email: `view-as-ctx-protected-owner-${stamp}@test.local`,
+      displayName: 'View As Ctx Owner',
+      role: 'ADMIN',
+      password: 'temp-password-535',
+      actorUserId: plain.userId,
+    })
+    protectedUserId = owner.userId
+    await setProtected(protectedUserId, true)
+
+    const plainAdminSession = await createSession(plainAdminId)
+    plainAdminSessionId = plainAdminSession.id
+    sessionIds.push(plainAdminSession.id)
+  })
+
+  afterAll(async () => {
+    await db.delete(schema.session).where(inArray(schema.session.id, sessionIds))
+    // Wrapped so a failure in one delete does not skip the other — the trigger blocks
+    // DELETE on a protected row outright, so a partially-run cleanup here is exactly how a
+    // protected fixture poisons every later run against this database.
+    try {
+      await deleteUserForce(protectedUserId)
+    } finally {
+      await deleteUserForce(plainAdminId)
+    }
+  })
+
+  it('rejects an ADMIN attempting to view-as the protected account via the header', async () => {
+    await expect(createContext(request(plainAdminSessionId, protectedUserId))).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    })
   })
 })

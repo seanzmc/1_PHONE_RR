@@ -18,6 +18,7 @@ const ACTION_LABELS: Record<string, string> = {
   'rep.override': 'Changed rep status',
   'user.changeOwnPassword': 'Changed own password',
   'user.create': 'Created account',
+  'user.protectedWriteDenied': 'Denied change to protected account',
   'user.resetPassword': 'Reset account password',
   'user.setActive': 'Changed account access',
   'user.setRole': 'Changed account role',

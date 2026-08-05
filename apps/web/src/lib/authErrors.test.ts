@@ -38,6 +38,15 @@ describe('authErrorCopy', () => {
     )
   })
 
+  it('gives a final answer for a protected-account rejection, not a retry invitation', () => {
+    expect(
+      authErrorCopy(
+        new Error('PROTECTED_ACCOUNT: this account cannot be modified from the application'),
+        'manager_reset',
+      ),
+    ).toBe('This account is protected and cannot be modified from the app. Retrying will not change that.')
+  })
+
   it('never exposes unknown server details', () => {
     expect(
       authErrorCopy(new Error('database host secret.internal refused'), 'complete_reset'),

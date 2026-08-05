@@ -32,6 +32,13 @@ export async function createContext({ req, res }: CreateFastifyContextOptions): 
   if (!target?.isActive) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'view-as profile is not available' })
   }
+  // Same rule as userManagement.list and viewAsProfiles: the protected owner account is
+  // invisible to everyone but itself. The picker already filters it out, but the header is a
+  // separate server-side entry point and must enforce this independently — a UI-only filter
+  // is exactly the shape CLAUDE.md forbids for the password gate.
+  if (target.isProtected && target.id !== realSession.userId) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'view-as profile is not available' })
+  }
   const session: SessionContext = {
     userId: target.id,
     role: target.role as Role,

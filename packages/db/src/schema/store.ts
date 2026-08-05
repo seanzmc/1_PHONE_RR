@@ -40,6 +40,12 @@ export const appUser = pgTable('app_user', {
   // places: the domain functions in apps/api/src/domain/userManagement.ts, the
   // protect_app_user Postgres trigger, and userManagement.list. Settable ONLY by the
   // protect-account script — a flag the app can set is a flag an ADMIN session can clear.
+  //
+  // The protect_app_user trigger (packages/db/src/migrations/0007_silly_polaris.sql) names
+  // email, role, is_active and is_protected as the columns it blocks on a protected row —
+  // every other app_user column is writable by default. Any new privilege-bearing column
+  // added to this table (another credential, another authority flag) must be added to that
+  // trigger's column list, or a protected row silently stops protecting it.
   isProtected: boolean('is_protected').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })

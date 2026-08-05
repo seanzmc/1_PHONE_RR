@@ -50,6 +50,10 @@ describe('auth.viewAsProfiles', () => {
 
     const profiles = await caller.viewAsProfiles()
     expect(profiles.some((profile) => profile.userId === targetUserId)).toBe(true)
+    // The router selects isProtected only to filter on it, then strips it before returning —
+    // nothing else verifies the strip, since the web client declares its own ViewAsProfile
+    // type rather than inferring from the router.
+    expect(profiles.every((profile) => !('isProtected' in profile))).toBe(true)
   })
 })
 
