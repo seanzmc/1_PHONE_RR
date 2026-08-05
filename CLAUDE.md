@@ -69,6 +69,16 @@ Re-read `plans/v1-plan.md`. If a request would expand scope beyond it, flag that
 - **The one exception is a locked-out ADMIN**, which the Users page cannot fix because reaching it requires being signed in. `recover-admin` (see Operational scripts) is the break-glass path. Its security boundary is `DATABASE_URL` — whoever holds that can already rewrite every row, so the script grants no new authority. Do not "harden" it by requiring a login; that reintroduces the lockout it exists to solve. Do not widen it to non-ADMIN accounts either — those are reachable from the Users page.
 - **One generator: `generateTempPassword` in `packages/core`.** The roster importer, the dev seed and `issueTempPassword` all call it. Do not add a second copy — a local copy is how a shared default sneaks back in.
 - `seed.ts` is a dev fixture and enforces that: it refuses to run against a non-local `DATABASE_URL` or with `NODE_ENV=production`, refuses an already-initialised database, and issues a unique temp password per account. Real deployments use `import-roster`.
+- **The owner account is protected, not privileged.** `app_user.is_protected` marks one ADMIN
+  account that no user — including itself — can modify through the app: `setRole`, `setActive`
+  and `resetPassword` all reject a protected target in `apps/api/src/domain/userManagement.ts`,
+  a `protect_app_user` Postgres trigger rejects the same writes at the database, and
+  `userManagement.list` filters it out for every other caller. It is still an ordinary ADMIN:
+  same login page, same password rules, same login throttle, every action in `audit_events`.
+  Rejected attempts against it are logged too, as `user.protectedWriteDenied`. The flag is set
+  only by `pnpm --filter @phoneup/db protect-account`; do not add a UI or a tRPC route for it,
+  and do not add a fifth role — the protection is a flag on ADMIN, not a tier above it.
+  The escape hatch for both scripts is the `app.protected_write = 'on'` session GUC.
 
 ## Auth surfaces
 

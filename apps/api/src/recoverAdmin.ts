@@ -20,7 +20,7 @@
  */
 import { asc, eq } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
-import { resetPassword } from './domain/userManagement'
+import { resetPassword, setActive } from './domain/userManagement'
 import { generateTempPassword } from '@phoneup/core'
 
 const args = process.argv.slice(2)
@@ -62,7 +62,7 @@ if (targetEmail) {
 }
 
 const describe = (admin: any) =>
-  `${admin.email}${admin.isActive ? '' : ' (INACTIVE)'}${admin.mustChangePassword ? ' (holds a temporary password)' : ''}`
+  `${admin.email}${admin.isProtected ? ' (PROTECTED)' : ''}${admin.isActive ? '' : ' (INACTIVE)'}${admin.mustChangePassword ? ' (holds a temporary password)' : ''}`
 
 if (!commit) {
   console.log(`DRY RUN — would issue a new temporary password for:\n  ${describe(target)}\n`)
@@ -79,16 +79,26 @@ const password = generateTempPassword()
 
 // Attributed to the account itself: a human with database access ordered this, and there is
 // no signed-in actor to name. The audit event is what makes the reset visible after the fact.
+// This script's boundary is DATABASE_URL, not a login — it is the documented recovery path
+// for a protected account, so it opts past the in-app protection deliberately.
 await resetPassword(db, {
   userId: target.id,
   newPassword: password,
   actorUserId: target.id,
   mustChangePassword: true,
+  allowProtected: true,
 })
 
-// A deactivated admin would still be unable to sign in after the reset.
+// A deactivated admin would still be unable to sign in after the reset. setActive owns the
+// GUC escape hatch, so this one call covers both a protected and an unprotected target and
+// gets the reactivation audit-logged for free.
 if (!target.isActive) {
-  await db.update(schema.appUser).set({ isActive: true }).where(eq(schema.appUser.id, target.id))
+  await setActive(db, {
+    userId: target.id,
+    isActive: true,
+    actorUserId: target.id,
+    allowProtected: true,
+  })
 }
 
 console.log('\nTemporary password issued — shown once, stored only as a hash.\n')

@@ -355,6 +355,11 @@ directly. Do not add a login requirement — that recreates the lockout.
 If the database has no accounts at all, the script says so and points at §3.2. That means
 the roster import was never run, not that the password was lost.
 
+It is also the recovery path for a protected account (see `protect-account`): it opts past
+the in-app protection deliberately, because its boundary is `DATABASE_URL` rather than a
+login. It never hides protected admins from its listing — doing so would make the one
+account that has no other recovery path unrecoverable.
+
 ### 4.7 Fixing display names
 
 ```
