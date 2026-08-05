@@ -1,4 +1,5 @@
 import { sql, eq, and, ne } from 'drizzle-orm'
+import { TRPCError } from '@trpc/server'
 import type { DB } from '@phoneup/db'
 import { schema } from '@phoneup/db'
 import { businessDate } from '@phoneup/core'
@@ -7,6 +8,50 @@ import { hashPassword, verifyPassword } from '../auth/password'
 import { materializeShifts } from '../jobs/eligibility'
 
 const ADVISORY_LOCK_KEY = 42_100_1 // same key as assignLead/overrideStatus — this touches rotation ordering too
+
+export const PROTECTED_ACCOUNT_ERROR =
+  'PROTECTED_ACCOUNT: this account cannot be modified from the application'
+
+/**
+ * The one gate for the owner/break-glass account. Rejects regardless of actor — including
+ * the protected user acting on itself, so a mis-click cannot brick the account. Recovery is
+ * the recover-admin script, which passes allowProtected.
+ *
+ * Deliberately runs OUTSIDE the caller's transaction. The three callers load their target
+ * inside db.transaction, and throwing there rolls the transaction back — an audit insert
+ * made inside it would vanish along with the rejection it exists to record. The window
+ * between this read and the caller's transaction is backstopped by the protect_app_user
+ * trigger, which rejects the same writes at the database.
+ *
+ * It throws a TRPCError rather than a plain Error so a manager who clicks the wrong row
+ * gets a FORBIDDEN, not a 500. The domain layer already lives inside apps/api, which
+ * depends on @trpc/server directly.
+ */
+async function rejectIfProtected(
+  db: DB,
+  input: {
+    userId: string
+    actorUserId: string
+    attempted: 'setRole' | 'setActive' | 'resetPassword'
+    allowProtected?: boolean
+  },
+): Promise<void> {
+  if (input.allowProtected) return
+
+  const target = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
+  if (!target?.isProtected) return
+
+  await db.insert(schema.auditEvents).values({
+    actorUserId: input.actorUserId,
+    action: 'user.protectedWriteDenied',
+    entityType: 'app_user',
+    entityId: input.userId,
+    before: null,
+    after: { attempted: input.attempted },
+  })
+
+  throw new TRPCError({ code: 'FORBIDDEN', message: PROTECTED_ACCOUNT_ERROR })
+}
 
 /**
  * A rep with no rep_shift row for a date gets CONFIGURATION_ERROR from the eligibility job
@@ -118,6 +163,12 @@ export async function setRole(
   db: DB,
   input: { userId: string; newRole: Role; actorUserId: string },
 ): Promise<void> {
+  await rejectIfProtected(db, {
+    userId: input.userId,
+    actorUserId: input.actorUserId,
+    attempted: 'setRole',
+  })
+
   const promotedRepId = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
 
@@ -190,11 +241,18 @@ export async function setRole(
 
 export async function setActive(
   db: DB,
-  input: { userId: string; isActive: boolean; actorUserId: string },
+  input: { userId: string; isActive: boolean; actorUserId: string; allowProtected?: boolean },
 ): Promise<void> {
   if (input.userId === input.actorUserId && !input.isActive) {
     throw new Error('cannot deactivate your own account')
   }
+
+  await rejectIfProtected(db, {
+    userId: input.userId,
+    actorUserId: input.actorUserId,
+    attempted: 'setActive',
+    allowProtected: input.allowProtected,
+  })
 
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
@@ -243,8 +301,21 @@ export async function setActive(
 
 export async function resetPassword(
   db: DB,
-  input: { userId: string; newPassword: string; actorUserId: string; mustChangePassword?: boolean },
+  input: {
+    userId: string
+    newPassword: string
+    actorUserId: string
+    mustChangePassword?: boolean
+    allowProtected?: boolean
+  },
 ): Promise<void> {
+  await rejectIfProtected(db, {
+    userId: input.userId,
+    actorUserId: input.actorUserId,
+    attempted: 'resetPassword',
+    allowProtected: input.allowProtected,
+  })
+
   const passwordHash = hashPassword(input.newPassword)
   // An admin-issued password is temporary by default: the user must replace it on next
   // login before they can use anything else.
