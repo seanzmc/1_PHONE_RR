@@ -1,11 +1,12 @@
-import { describe, it, expect, beforeAll } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { eq, sql } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { t } from '../trpc/router'
 import { userManagementRouter } from './userManagement'
 import type { Context } from '../trpc/context'
 import type { Role } from '@phoneup/contracts'
 import { createAccount } from '../domain/userManagement'
+import { setProtected, deleteUserForce } from '../domain/protectedAccount.testutil'
 
 const fakeReqRes = { req: {} as Context['req'], res: {} as Context['res'] }
 
@@ -149,5 +150,115 @@ describe('userManagementRouter — ADMIN-gating on setRole/resetPassword', () =>
     await expect(
       adminCaller().resetPassword({ userId: adminTargetForAdminResetPw, newPassword: 'newpass456' }),
     ).resolves.toEqual({ ok: true })
+  })
+})
+
+describe('userManagementRouter — protected account', () => {
+  let protectedUserId: string
+  let plainAdminId: string
+
+  beforeAll(async () => {
+    // Self-healing: if a previous run was killed between setProtected and afterAll's
+    // cleanup, a protected leftover fixture would otherwise need manual GUC SQL to remove,
+    // and would poison every later run of this suite. Clear any stale router-test rows
+    // first, through the same GUC escape hatch, so this file can never wedge itself.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`set local app.protected_write = 'on'`)
+      await tx.execute(sql`delete from app_user where email like 'router-%@test.local'`)
+    })
+
+    const stamp = Date.now()
+    const plain = await createAccount(db, {
+      email: `router-admin-${stamp}@test.local`,
+      displayName: 'Router Admin',
+      role: 'ADMIN',
+      password: 'temp-password-334',
+      actorUserId: '00000000-0000-0000-0000-000000000000',
+    })
+    plainAdminId = plain.userId
+
+    const owner = await createAccount(db, {
+      email: `router-owner-${stamp}@test.local`,
+      displayName: 'Router Owner',
+      role: 'ADMIN',
+      password: 'temp-password-335',
+      actorUserId: plain.userId,
+    })
+    protectedUserId = owner.userId
+    await setProtected(protectedUserId, true)
+  })
+
+  afterAll(async () => {
+    // Wrapped so a failure in one delete does not skip the other — the trigger blocks
+    // DELETE on a protected row outright, so a partially-run cleanup here is exactly how a
+    // protected fixture poisons every later run against this database.
+    try {
+      await deleteUserForce(protectedUserId)
+    } finally {
+      await deleteUserForce(plainAdminId)
+    }
+  })
+
+  it('omits the protected account from list for an ADMIN caller', async () => {
+    const caller = t.createCallerFactory(userManagementRouter)({
+      session: fakeSession(plainAdminId, 'ADMIN'),
+      ...fakeReqRes,
+    })
+    const rows = await caller.list()
+    expect(rows.some((u) => u.id === protectedUserId)).toBe(false)
+    expect(rows.some((u) => u.id === plainAdminId)).toBe(true)
+  })
+
+  it('omits the protected account from list for a MANAGER caller', async () => {
+    const caller = t.createCallerFactory(userManagementRouter)({
+      session: fakeSession(plainAdminId, 'MANAGER'),
+      ...fakeReqRes,
+    })
+    const rows = await caller.list()
+    expect(rows.some((u) => u.id === protectedUserId)).toBe(false)
+  })
+
+  it('returns the full list, protected rows included, to a protected caller', async () => {
+    const caller = t.createCallerFactory(userManagementRouter)({
+      session: fakeSession(protectedUserId, 'ADMIN'),
+      ...fakeReqRes,
+    })
+    const rows = await caller.list()
+    expect(rows.some((u) => u.id === protectedUserId)).toBe(true)
+    expect(rows.some((u) => u.id === plainAdminId)).toBe(true)
+  })
+
+  it('rejects an ADMIN issuing a temp password for the protected account', async () => {
+    const caller = t.createCallerFactory(userManagementRouter)({
+      session: fakeSession(plainAdminId, 'ADMIN'),
+      ...fakeReqRes,
+    })
+    await expect(caller.issueTempPassword({ userId: protectedUserId })).rejects.toThrow(
+      /PROTECTED_ACCOUNT/,
+    )
+  })
+
+  it('rejects an ADMIN deactivating the protected account', async () => {
+    const caller = t.createCallerFactory(userManagementRouter)({
+      session: fakeSession(plainAdminId, 'ADMIN'),
+      ...fakeReqRes,
+    })
+    await expect(
+      caller.setActive({ userId: protectedUserId, isActive: false }),
+    ).rejects.toThrow(/PROTECTED_ACCOUNT/)
+  })
+
+  it('rejects a MANAGER deactivating any ADMIN', async () => {
+    const caller = t.createCallerFactory(userManagementRouter)({
+      session: fakeSession('manager-session-user', 'MANAGER'),
+      ...fakeReqRes,
+    })
+    // Asserted on `code`, not `toThrow(/FORBIDDEN/)`: the guard (mirroring resetPassword's)
+    // throws a TRPCError with a descriptive message, not the bare code, so a message-regex
+    // match would never pass. Same assertion style already used above for the identical
+    // setRole/resetPassword ADMIN-gating checks.
+    await expect(
+      caller.setActive({ userId: plainAdminId, isActive: false }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' })
   })
 })

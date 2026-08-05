@@ -15,8 +15,20 @@ import { createAccount, setRole, setActive, resetPassword } from '../domain/user
 import { generateTempPassword } from '@phoneup/core'
 
 export const userManagementRouter = router({
-  list: publicProcedure.use(requirePerm('user.manage')).query(async () => {
-    const rows = await db.select().from(schema.appUser)
+  /**
+   * The protected owner account is filtered out for everyone else — it is invisible in the
+   * Users page by design. A protected caller gets the unfiltered list so it can see itself,
+   * and so a second protected account would not be invisible to the first.
+   */
+  list: publicProcedure.use(requirePerm('user.manage')).query(async ({ ctx }) => {
+    // One query, filtered in memory. Do NOT look the caller up with
+    // `eq(schema.appUser.id, ctx.session.userId)` — existing tests in this file build
+    // sessions with non-UUID ids like 'u1', and Postgres rejects those with
+    // "invalid input syntax for type uuid" before any filtering happens.
+    const all = await db.select().from(schema.appUser)
+    const caller = all.find((u: any) => u.id === ctx.session.userId)
+    const rows = caller?.isProtected ? all : all.filter((u: any) => !u.isProtected)
+
     return rows.map((u: any) => ({
       id: u.id,
       email: u.email,
@@ -60,6 +72,16 @@ export const userManagementRouter = router({
     .use(requirePerm('user.manage'))
     .input(setActiveInputSchema)
     .mutation(async ({ ctx, input }) => {
+      if (!hasPermission(ctx.session.role, 'admin.*')) {
+        const target = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
+        if (target?.role === 'ADMIN') {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'only an ADMIN can activate or deactivate an ADMIN account',
+          })
+        }
+      }
+
       await setActive(db, { ...input, actorUserId: ctx.session.userId })
       return { ok: true }
     }),

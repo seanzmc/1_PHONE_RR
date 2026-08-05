@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { t } from '../trpc/router'
 import { authRouter } from './auth'
 import { hashPassword, verifyPassword } from '../auth/password'
+import { createAccount } from '../domain/userManagement'
+import { setProtected, deleteUserForce } from '../domain/protectedAccount.testutil'
 import {
   checkRecoveryThrottle,
   recordRecoveryRequest,
@@ -48,6 +50,80 @@ describe('auth.viewAsProfiles', () => {
 
     const profiles = await caller.viewAsProfiles()
     expect(profiles.some((profile) => profile.userId === targetUserId)).toBe(true)
+  })
+})
+
+describe('auth.viewAsProfiles — protected account', () => {
+  let protectedUserId: string
+  let plainAdminId: string
+
+  beforeAll(async () => {
+    // Self-healing: clear any leftover protected fixture from a killed prior run before
+    // creating fresh ones — an ordinary DELETE cannot touch a protected row, so a stale one
+    // would otherwise poison every later run of this suite.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`set local app.protected_write = 'on'`)
+      await tx.execute(sql`delete from app_user where email like 'view-as-protected-%@test.local'`)
+    })
+
+    const stamp = Date.now()
+    const plain = await createAccount(db, {
+      email: `view-as-protected-admin-${stamp}@test.local`,
+      displayName: 'View As Plain Admin',
+      role: 'ADMIN',
+      password: 'temp-password-434',
+      actorUserId: '00000000-0000-0000-0000-000000000000',
+    })
+    plainAdminId = plain.userId
+
+    const owner = await createAccount(db, {
+      email: `view-as-protected-owner-${stamp}@test.local`,
+      displayName: 'View As Owner',
+      role: 'ADMIN',
+      password: 'temp-password-435',
+      actorUserId: plain.userId,
+    })
+    protectedUserId = owner.userId
+    await setProtected(protectedUserId, true)
+  })
+
+  afterAll(async () => {
+    // Wrapped so a failure in one delete does not skip the other — the trigger blocks
+    // DELETE on a protected row outright, so a partially-run cleanup here is exactly how a
+    // protected fixture poisons every later run against this database.
+    try {
+      await deleteUserForce(protectedUserId)
+    } finally {
+      await deleteUserForce(plainAdminId)
+    }
+  })
+
+  it("omits the protected account from an ordinary ADMIN caller's viewAsProfiles result", async () => {
+    const caller = t.createCallerFactory(authRouter)({
+      session: {
+        userId: plainAdminId,
+        role: 'ADMIN',
+        mustChangePassword: false,
+        sessionId: `view-as-protected-session-${plainAdminId}`,
+      },
+      ...fakeReqRes,
+    })
+    const profiles = await caller.viewAsProfiles()
+    expect(profiles.some((p) => p.userId === protectedUserId)).toBe(false)
+  })
+
+  it("includes the protected account in its own viewAsProfiles result", async () => {
+    const caller = t.createCallerFactory(authRouter)({
+      session: {
+        userId: protectedUserId,
+        role: 'ADMIN',
+        mustChangePassword: false,
+        sessionId: `view-as-protected-session-${protectedUserId}`,
+      },
+      ...fakeReqRes,
+    })
+    const profiles = await caller.viewAsProfiles()
+    expect(profiles.some((p) => p.userId === protectedUserId)).toBe(true)
   })
 })
 

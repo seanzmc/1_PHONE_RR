@@ -160,22 +160,32 @@ export const authRouter = router({
       return { ok: true }
     }),
 
-  viewAsProfiles: publicProcedure.use(requirePerm('admin.*')).query(async () => {
+  viewAsProfiles: publicProcedure.use(requirePerm('admin.*')).query(async ({ ctx }) => {
     const users = await db
       .select({
         userId: schema.appUser.id,
         role: schema.appUser.role,
         email: schema.appUser.email,
         displayName: schema.appUser.displayName,
+        isProtected: schema.appUser.isProtected,
       })
       .from(schema.appUser)
       // View-as is an ADMIN inspection tool, not authentication as the target. New-hire
       // accounts commonly still hold a temporary password; excluding them made the list
       // collapse to the ADMIN's own profile before onboarding was complete.
       .where(eq(schema.appUser.isActive, true))
-    return users.sort((a, b) =>
-      (a.displayName ?? a.email).localeCompare(b.displayName ?? b.email, undefined, { sensitivity: 'base' }),
-    )
+
+    // Same rule as userManagement.list: the protected owner account is invisible to
+    // everyone but itself. Filtered in memory because session ids are not guaranteed to
+    // parse as UUIDs in tests.
+    const caller = users.find((u) => u.userId === ctx.session.userId)
+    const visible = caller?.isProtected ? users : users.filter((u) => !u.isProtected)
+
+    return visible
+      .map(({ isProtected: _isProtected, ...u }) => u)
+      .sort((a, b) =>
+        (a.displayName ?? a.email).localeCompare(b.displayName ?? b.email, undefined, { sensitivity: 'base' }),
+      )
   }),
 
   me: publicProcedure.query(async ({ ctx }) => {
