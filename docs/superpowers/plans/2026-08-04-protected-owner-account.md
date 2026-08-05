@@ -698,11 +698,15 @@ git commit -m "feat(api): reject writes to protected accounts and log denied att
 
 **Files:**
 - Modify: `apps/api/src/routers/userManagement.ts:18-29` and `:59-65`
+- Modify: `apps/api/src/routers/auth.ts:163-179` (`viewAsProfiles`)
 - Test: `apps/api/src/routers/userManagement.test.ts`
+- Test: `apps/api/src/routers/auth.test.ts`
 
 **Interfaces:**
 - Consumes: `schema.appUser.isProtected` (Task 1); `PROTECTED_ACCOUNT_ERROR` (Task 2); `setProtected`, `deleteUserForce` (Task 1).
-- Produces: `userManagement.list` output shape is unchanged — no `isProtected` field is exposed. The web client needs no change.
+- Produces: `userManagement.list` and `auth.viewAsProfiles` output shapes are unchanged — no `isProtected` field is exposed. The web client needs no change.
+
+**Correction to the design's Layer C:** the spec claimed "No other query lists users." That is wrong. `auth.viewAsProfiles` (`apps/api/src/routers/auth.ts:163`) selects every active user, gated on `admin.*`. Left unfiltered, the owner account still appears in the View-as picker to any other ADMIN — which defeats the hiding for exactly the audience it matters most for. Step 4a below closes it.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -876,6 +880,51 @@ Replace the `setActive` procedure in the same file. This is the pre-existing hol
 ```
 
 `TRPCError` and `hasPermission` are already imported in this file.
+
+- [ ] **Step 4a: Filter the View-as picker**
+
+`auth.viewAsProfiles` (`apps/api/src/routers/auth.ts:163`) selects every active user and is gated on `admin.*`. Unfiltered, the owner account stays visible in the View-as picker to every other ADMIN — the audience the hiding exists for. Apply the same rule as `list`: a protected caller sees everything, everyone else sees no protected rows.
+
+Replace its query and return:
+
+```ts
+  viewAsProfiles: publicProcedure.use(requirePerm('admin.*')).query(async ({ ctx }) => {
+    const users = await db
+      .select({
+        userId: schema.appUser.id,
+        role: schema.appUser.role,
+        email: schema.appUser.email,
+        displayName: schema.appUser.displayName,
+        isProtected: schema.appUser.isProtected,
+      })
+      .from(schema.appUser)
+      // View-as is an ADMIN inspection tool, not authentication as the target. New-hire
+      // accounts commonly still hold a temporary password; excluding them made the list
+      // collapse to the ADMIN's own profile before onboarding was complete.
+      .where(eq(schema.appUser.isActive, true))
+
+    // Same rule as userManagement.list: the protected owner account is invisible to
+    // everyone but itself. Filtered in memory because session ids are not guaranteed to
+    // parse as UUIDs in tests.
+    const caller = users.find((u) => u.userId === ctx.session.userId)
+    const visible = caller?.isProtected ? users : users.filter((u) => !u.isProtected)
+
+    return visible
+      .map(({ isProtected: _isProtected, ...u }) => u)
+      .sort((a, b) =>
+        (a.displayName ?? a.email).localeCompare(b.displayName ?? b.email, undefined, { sensitivity: 'base' }),
+      )
+  }),
+```
+
+The `isProtected` field is selected only to filter on and is stripped before returning, so the wire shape is unchanged and the web client needs no edit.
+
+- [ ] **Step 4b: Test the View-as filter**
+
+Add to `apps/api/src/routers/auth.test.ts`, following that file's existing caller-construction pattern (read it first — do not assume it matches `userManagement.test.ts`). Two cases, using the same protected fixture approach as Step 1:
+
+- an ADMIN caller's `viewAsProfiles` result contains no protected account
+- a protected caller's `viewAsProfiles` result contains itself
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -1122,25 +1171,26 @@ await resetPassword(db, {
 The bare `db.update(...).set({ isActive: true })` at the end of the script writes `is_active`, which the `protect_app_user` trigger rejects on a protected row. Replace it:
 
 ```ts
-// A deactivated admin would still be unable to sign in after the reset. The GUC is what
-// gets this past the protect_app_user trigger for a protected account; on an unprotected
-// row it is a no-op.
+// A deactivated admin would still be unable to sign in after the reset. setActive owns the
+// GUC escape hatch, so this one call covers both a protected and an unprotected target and
+// gets the reactivation audit-logged for free.
 if (!target.isActive) {
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`set local app.protected_write = 'on'`)
-    await tx
-      .update(schema.appUser)
-      .set({ isActive: true })
-      .where(eq(schema.appUser.id, target.id))
+  await setActive(db, {
+    userId: target.id,
+    isActive: true,
+    actorUserId: target.id,
+    allowProtected: true,
   })
 }
 ```
 
-Add `sql` to the existing `drizzle-orm` import at the top of the file:
+Import `setActive` alongside the existing `resetPassword` import:
 
 ```ts
-import { asc, eq, sql } from 'drizzle-orm'
+import { resetPassword, setActive } from './domain/userManagement'
 ```
+
+**Amended during Task 2.** The original plan wrapped a raw `db.update` in its own `SET LOCAL app.protected_write = 'on'` transaction here. The Task 2 review found that `setActive`'s `allowProtected` flag was dead as specified — clearing the app-layer guard only moved the failure down to the trigger, because the domain layer never set the GUC. `setActive` now sets it itself when `allowProtected` is true, which puts the escape hatch in exactly one place and lets this script drop its raw SQL entirely. Do not reintroduce a second GUC site here.
 
 - [ ] **Step 4: Verify recover-admin still works, dry run first**
 
