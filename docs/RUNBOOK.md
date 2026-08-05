@@ -364,6 +364,22 @@ DATABASE_URL=<prod> pnpm --filter @phoneup/db backfill-display-names ./Name\ Ema
 Fills `app_user.display_name` from the roster file. Activity import matches on display name,
 so a null or wrong name shows up as an unmatched import row.
 
+### 4.8 Protecting the owner account
+
+```
+DATABASE_URL=<prod> pnpm --filter @phoneup/db protect-account <email>                     # dry run
+DATABASE_URL=<prod> pnpm --filter @phoneup/db protect-account <email> --commit             # protect
+DATABASE_URL=<prod> pnpm --filter @phoneup/db protect-account <email> --off --commit       # unprotect
+```
+
+`pnpm --filter @phoneup/db protect-account <email> [--off] [--commit]` — set or clear the
+owner/break-glass flag on an account. Dry-run by default. A protected account cannot be
+modified or deleted by anyone in-app (including itself), and is hidden from the Users page
+for every other user. It still signs in normally and is still fully audit-logged. This
+script is the only writer of the flag — there is deliberately no UI, because a flag the app
+can set is a flag a compromised ADMIN session can clear. Recovery for a protected account is
+`recover-admin`, or this script with `--off`.
+
 ---
 
 ## 5. Troubleshooting

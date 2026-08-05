@@ -14,6 +14,7 @@
     "seed": "tsx src/seed.ts",
     "import-roster": "tsx src/importRoster.ts",
     "backfill-display-names": "tsx src/backfillDisplayNames.ts",
+    "protect-account": "tsx src/protectAccount.ts",
     "backup": "tsx src/backup.ts",
     "restore-drill": "tsx src/restoreDrill.ts"
   },
