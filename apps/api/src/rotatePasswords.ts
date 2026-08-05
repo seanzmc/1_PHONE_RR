@@ -10,6 +10,15 @@
  * Skips accounts already flagged mustChangePassword (already holding a temp password),
  * so it is safe to re-run without invalidating passwords people are mid-way through using.
  *
+ * Also skips the protected owner/break-glass account. resetPassword rejects it outright
+ * (no allowProtected here — rotating that account's password out from under it is exactly
+ * what protection exists to prevent), so it must be filtered out of the target set up
+ * front rather than left to throw mid-loop: this script has no try/catch around the loop,
+ * runs as a top-level-await ESM module, and prints its distribution list only after every
+ * account has been rotated — an uncaught rejection here would crash the process with
+ * accounts already rotated whose new passwords were never printed. Use recover-admin for
+ * the protected account instead.
+ *
  * Usage:
  *   DATABASE_URL=... pnpm --filter @phoneup/api rotate-passwords            # dry run
  *   DATABASE_URL=... pnpm --filter @phoneup/api rotate-passwords --commit   # apply
@@ -30,13 +39,19 @@ if (!admin) {
   process.exit(1)
 }
 
-const targets = users.filter((u: any) => !u.mustChangePassword)
-const skipped = users.filter((u: any) => u.mustChangePassword)
+const alreadyTemp = users.filter((u: any) => u.mustChangePassword)
+const protectedAccounts = users.filter((u: any) => !u.mustChangePassword && u.isProtected)
+const targets = users.filter((u: any) => !u.mustChangePassword && !u.isProtected)
 
 if (!commit) {
   console.log(`DRY RUN — would rotate ${targets.length} of ${users.length} account(s).`)
-  if (skipped.length > 0) {
-    console.log(`Skipping ${skipped.length} already holding a temporary password.`)
+  if (alreadyTemp.length > 0) {
+    console.log(`Skipping ${alreadyTemp.length} already holding a temporary password.`)
+  }
+  if (protectedAccounts.length > 0) {
+    console.log(
+      `Skipping ${protectedAccounts.length} protected account(s) — use recover-admin to rotate those instead.`,
+    )
   }
   console.log('\nRe-run with --commit to apply.')
   process.exit(0)
@@ -70,8 +85,13 @@ for (const i of issued) {
 console.log(
   '\nEvery account must choose its own password at first sign-in; until then the API refuses all other routes.',
 )
-if (skipped.length > 0) {
-  console.log(`\nSkipped ${skipped.length} account(s) already holding a temporary password.`)
+if (alreadyTemp.length > 0) {
+  console.log(`\nSkipped ${alreadyTemp.length} account(s) already holding a temporary password.`)
+}
+if (protectedAccounts.length > 0) {
+  console.log(
+    `Skipped ${protectedAccounts.length} protected account(s) — use recover-admin to rotate those instead.`,
+  )
 }
 
 process.exit(0)

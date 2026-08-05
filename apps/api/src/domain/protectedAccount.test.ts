@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { and, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { setProtected, deleteUserForce } from './protectedAccount.testutil'
 import {
@@ -50,9 +50,19 @@ describe('protected account — domain guards', () => {
     // The forgot-password test below inserts a passwordResetToken row for protectedUserId.
     // That row has a plain FK to app_user (no cascade), so deleteUserForce's DELETE FROM
     // app_user would violate it unless the token row is cleared first.
-    await db.delete(schema.passwordResetToken).where(eq(schema.passwordResetToken.userId, protectedUserId))
-    await deleteUserForce(protectedUserId)
-    await deleteUserForce(sacrificialAdminId)
+    //
+    // Each step is wrapped so a failure in one still lets the later ones run — the trigger
+    // blocks DELETE on a protected row outright, so a partially-run cleanup here is exactly
+    // how a protected fixture poisons every later run against this database.
+    try {
+      await db.delete(schema.passwordResetToken).where(eq(schema.passwordResetToken.userId, protectedUserId))
+    } finally {
+      try {
+        await deleteUserForce(protectedUserId)
+      } finally {
+        await deleteUserForce(sacrificialAdminId)
+      }
+    }
   })
 
   async function deniedRowCount(): Promise<number> {
@@ -108,6 +118,8 @@ describe('protected account — domain guards', () => {
           eq(schema.auditEvents.action, 'user.protectedWriteDenied'),
         ),
       )
+      .orderBy(desc(schema.auditEvents.createdAt))
+      .limit(1)
     expect(latest.actorUserId).toBe(actorUserId)
   })
 
@@ -139,14 +151,27 @@ describe('protected account — domain guards', () => {
   })
 
   it('allows setActive with allowProtected, for recover-admin', async () => {
+    // Flip in both directions and assert the state actually changed each time. The
+    // protected row starts active, so an allowProtected call that only re-asserts "true"
+    // is a no-op the trigger would happily permit even without the GUC escape hatch wired
+    // up correctly — it would prove nothing about the real flip.
+    await setActive(db, {
+      userId: protectedUserId,
+      isActive: false,
+      actorUserId,
+      allowProtected: true,
+    })
+    const deactivated = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, protectedUserId) })
+    expect(deactivated?.isActive).toBe(false)
+
     await setActive(db, {
       userId: protectedUserId,
       isActive: true,
-      actorUserId: protectedUserId,
+      actorUserId,
       allowProtected: true,
     })
-    const row = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, protectedUserId) })
-    expect(row?.isActive).toBe(true)
+    const reactivated = await db.query.appUser.findFirst({ where: eq(schema.appUser.id, protectedUserId) })
+    expect(reactivated?.isActive).toBe(true)
   })
 
   it('leaves unprotected accounts writable', async () => {

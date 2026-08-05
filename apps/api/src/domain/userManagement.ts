@@ -21,7 +21,11 @@ export const PROTECTED_ACCOUNT_ERROR =
  * inside db.transaction, and throwing there rolls the transaction back — an audit insert
  * made inside it would vanish along with the rejection it exists to record. The window
  * between this read and the caller's transaction is backstopped by the protect_app_user
- * trigger, which rejects the same writes at the database.
+ * trigger for setRole and setActive, which rejects the same writes at the database.
+ * resetPassword is the exception: the trigger deliberately whitelists password_hash and
+ * must_change_password so forgot-password keeps working, so a row that becomes protected
+ * in that window would sail through at the database layer too. resetPassword carries its
+ * own in-transaction re-check for that reason — see there.
  *
  * It throws a TRPCError rather than a plain Error so a manager who clicks the wrong row
  * gets a FORBIDDEN, not a 500. The domain layer already lives inside apps/api, which
@@ -257,6 +261,14 @@ export async function setActive(
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`)
 
+    // The protect_app_user trigger blocks is_active writes on a protected row regardless of
+    // the app-layer guard above. allowProtected is only ever true from the recover-admin
+    // script, so this is the one place the escape hatch is opened — SET LOCAL so it never
+    // outlives this transaction on a pooled connection.
+    if (input.allowProtected) {
+      await tx.execute(sql`set local app.protected_write = 'on'`)
+    }
+
     const user = await tx.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
     if (!user) throw new Error('user not found')
 
@@ -324,6 +336,18 @@ export async function resetPassword(
   await db.transaction(async (tx) => {
     const user = await tx.query.appUser.findFirst({ where: eq(schema.appUser.id, input.userId) })
     if (!user) throw new Error('user not found')
+
+    // Re-check inside the transaction. The protect_app_user trigger whitelists exactly the
+    // two columns this write touches (password_hash, must_change_password) so forgot-password
+    // keeps working — which means it does NOT backstop this write the way it backstops
+    // setRole/setActive. If the row became protected between the outer rejectIfProtected read
+    // and here, this is the only thing standing between an admin and seizing the account by
+    // issuing it a temp password. No audit row here: the outer guard already logs the denied
+    // attempt on the common path, and this window is narrow enough that a second unaudited
+    // rejection is an acceptable gap rather than a silent bypass.
+    if (user.isProtected && !input.allowProtected) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: PROTECTED_ACCOUNT_ERROR })
+    }
 
     await tx
       .update(schema.appUser)
