@@ -1,0 +1,347 @@
+# Priority 5 audit completeness
+
+**Date:** 2026-08-04
+**Status:** Proposed design, pending approval
+
+## Decision
+
+Priority 5 completes the existing Manager/Admin Audit Log without changing its authority or
+turning it into a second operational ledger.
+
+This pass makes queued submissions idempotent, adds an audit event to each newly created lead in
+the assignment transaction, makes the existing event stream filterable by action, actor, affected
+record, and date, and replaces the creation-event dash with natural missing-state copy. It
+preserves the append-only `audit_events` table, the assignment ledger as the source of truth for
+rotation accounting, and the existing Manager/Admin-only `audit.view` permission.
+
+Lead-level sold status remains deferred. This spec defines the audit requirement that a future
+sold-status design must satisfy, but it does not add a Sold control, route, permission, lead
+column, metric, or reconciliation rule.
+
+## Current state
+
+### Already complete and retained
+
+- `audit_events` is append-only and stores actor, action, entity type/id, before/after JSON,
+  and timestamp.
+- `audit.list` requires `audit.view`, returns newest-first rows, retains inactive historical
+  actors through a left join, and paginates 50 rows at a time.
+- Audit Log presents readable action labels and short field-level summaries while retaining
+  raw JSON under **Technical details**.
+- Reassign, explicit Skip, Void, account access and role changes, password events, rep status,
+  recurring days off, lead notes, activity imports and corrections, and policy changes already
+  append audit rows.
+- Priority 2's explicit operator Skip is recorded as `lead.skip`. Automatic eligibility skips
+  in the assignment ledger are rotation mechanics, not separate manager actions, and remain
+  outside `audit_events`.
+- Reassign, Skip, and Void events use the lead as their primary affected entity.
+
+### Genuinely open
+
+- `assignLead` creates either an assigned or queued lead, but it does not append an audit row for
+  the operator action.
+- Assigned outcomes store the original idempotency key in `assignment_events`, but queued outcomes
+  do not write a ledger row carrying that key. Retrying a queued submission can therefore create
+  another lead.
+- `audit.list` accepts only `limit` and `offset`; the page has no filters.
+- A creation event has `before = null`. Its summary is readable, but Technical details renders
+  the missing Before value as `—`.
+- No lead-level sold-status action exists. CRM-imported `rep_daily_activity.sold` is an aggregate
+  and cannot yet be reconciled to individual leads.
+
+## Goals
+
+1. Make queued submissions idempotent and record each newly created lead exactly once in the same
+   transaction that creates it.
+2. Let a Manager or Admin narrow the Audit Log by exact action, exact actor, one affected rep,
+   user, or lead, and an inclusive New York calendar-date range.
+3. Keep filter results deterministic and offset pagination correct for a stable result set.
+4. Make creation and removal states read naturally in both the summary and Technical details
+   while preserving the current responsive diff layout.
+5. Establish a mandatory audit contract for any later lead sold-status feature without
+   implementing or pre-deciding that feature.
+
+## Non-goals
+
+- No Sold button, lead sold field, sale-attribution rule, CRM reconciliation, dashboard metric,
+  or new permission.
+- No changes to assignment ranking, cycle order, counters, or realtime publication. The only
+  assignment-ledger change is the zero-credit `QUEUE` event required to protect queued
+  idempotency; the ledger's accounting and reconciliation rules do not change.
+- No audit export, retention policy, bulk deletion, editing, or hash chain.
+- No BDC or Rep access to Audit Log.
+- No full-text search across raw JSON and no inference of affected records from arbitrary JSON
+  keys.
+- No actor-name or target-name snapshot migration. Historical labels continue to resolve from
+  current records, with an ID fallback when a record can no longer be resolved.
+- No database migration or dependency is expected. Add an index only if a measured query plan
+  shows the existing internal-store volume needs one.
+
+## Lead creation audit contract
+
+### Actions
+
+`assignLead` records one of two human actions for a newly created lead:
+
+| Result | Audit action | Readable label |
+|---|---|---|
+| Lead assigned to a rep | `lead.assign` | Assigned lead |
+| Lead retained because nobody is eligible | `lead.queue` | Queued unassigned lead |
+
+Both use:
+
+```ts
+{
+  actorUserId: input.actorUserId,
+  entityType: 'lead',
+  entityId: lead.id,
+  before: null,
+  after: {
+    status: 'ASSIGNED' | 'UNASSIGNED',
+    assignedRepId: string | null,
+    assignmentMode: 'ROTATION' | 'MANAGER_OVERRIDE' | 'NO_ELIGIBLE_REP'
+  }
+}
+```
+
+`assignmentMode` is `MANAGER_OVERRIDE` only when a supplied `forcedRepId` is accepted,
+`ROTATION` for the normal ranked selection, and `NO_ELIGIBLE_REP` for the unassigned queue.
+The payload does not duplicate customer name, phone, notes, the ranking snapshot, or the
+idempotency key. Those values either contain unnecessary customer data or belong to the
+operational lead/assignment records rather than the human-facing audit summary.
+
+### Atomicity and idempotency
+
+The audit insert occurs inside the existing advisory-locked `assignLead` transaction, after
+the lead has been created and before the transaction returns. A failed audit insert rolls back
+the customer/lead, queue or cycle rows, assignment ledger, and counters with the rest of the
+operation.
+
+The no-eligible path also appends an `assignment_events` row with `eventType = 'QUEUE'`, the queued
+lead ID, `repId = null`, the current cycle ID and queue snapshot, `creditDelta = 0`, and the
+submission's original idempotency key. `QUEUE` is added to the Drizzle text-enum typing; the
+database column is already text, so this requires no migration. It neither consumes a cycle slot
+nor changes a counter, and reconciliation continues to use the sum of `creditDelta`.
+
+The existing idempotency short-circuit remains first and now finds both assigned and queued
+outcomes. Reusing either completed outcome's idempotency key returns its prior lead without
+appending a ledger or audit row. Realtime publication remains after commit and is unchanged.
+
+This event complements rather than replaces `assignment_events`: the assignment ledger remains
+authoritative for credits, skips, cycle membership, and rotation reconstruction.
+
+## Filter contract
+
+### `audit.list` input
+
+Extend the current input backward-compatibly:
+
+```ts
+{
+  limit?: number                 // existing 1-100, default 50
+  offset?: number                // existing non-negative offset
+  action?: string                // exact audit action
+  actorUserId?: string           // exact app_user UUID
+  affected?: {
+    kind: 'USER' | 'REP' | 'LEAD'
+    id: string                   // exact UUID
+  }
+  fromDate?: string              // YYYY-MM-DD
+  toDate?: string                // YYYY-MM-DD
+}
+```
+
+Empty strings are omitted by the client, UUIDs and real calendar dates are validated, and a
+range with `fromDate > toDate` is rejected. Either date may be supplied alone.
+
+All predicates combine with AND. Ordering stays `created_at DESC, id DESC`, and `hasMore` is
+computed only after applying every predicate. `offset` therefore belongs to the committed
+filter set, not to the unfiltered stream. Pages have no duplicates or omissions while that result
+set remains stable. A newly appended event between page requests may shift offsets; live-stream
+snapshot pagination or cursor pagination is outside this internal-tool pass.
+
+The date controls are inclusive New York calendar dates. The API compares `created_at` against
+PostgreSQL-computed boundaries: `fromDate::date::timestamp AT TIME ZONE 'America/New_York'` as the
+inclusive lower bound, and `(toDate::date + 1)::timestamp AT TIME ZONE 'America/New_York'` as the
+exclusive upper bound. The strings are validated as real calendar dates before the query. This
+must not rely on JavaScript date conversion or the API host, browser, or database session
+timezone.
+
+### Affected-record meaning
+
+Affected-record filtering is based on the event's primary `entityType` and `entityId`, not on
+incidental IDs inside before/after JSON:
+
+| Filter kind | Matching audit entity types |
+|---|---|
+| `USER` | `app_user` |
+| `REP` | `sales_rep`, `rep_daily_status`, and `rep_daily_activity` for `activity.metric.edit` |
+| `LEAD` | `lead` |
+
+Bulk `activity.import` events are excluded from REP matching. Their current entity ID is a
+required storage anchor, not a truthful claim that the import affected only that rep. Policy
+events do not match an affected user/rep/lead filter.
+
+This definition means a lead assignment is found by selecting the lead, while the assigned rep
+remains visible in its change summary. Making one event belong to several filter targets would
+require a normalized audit-subject relation and is outside this pass.
+
+### Filter choices
+
+Add one Manager/Admin-only read procedure under the existing audit router:
+
+- `audit.filterOptions` returns distinct action values present in `audit_events`, distinct actors
+  who have events, and current users and reps for the affected-record selects. Actors include
+  inactive accounts and use display name with email fallback; an unresolved historic actor uses
+  its UUID. Current user/rep labels include a short ID suffix where needed to distinguish duplicate
+  visible labels. Actions are sorted by readable label and people by displayed identity.
+
+There is no asynchronous affected-record search or custom combobox in this pass. The client sends
+only the UUID selected from the current user/rep options or a validated exact lead UUID. Historical
+user/rep IDs that no longer resolve remain visible on events but are not added to the current-record
+selects. Customer-name lead search can be designed later if actual manager use demonstrates a need.
+
+Unknown future action strings automatically appear in `filterOptions` and retain the existing
+humanized-label fallback. Adding a new action must not require changing the filter contract.
+
+## Audit Log experience
+
+Place one responsive filter region between the page introduction and the event list. It contains:
+
+- **Action type** select, default **All action types**;
+- **Actor** select, default **All actors**;
+- **Affected kind** select, default **Any affected record**;
+- a native **Affected user** or **Affected rep** select for those kinds, or an exact **Lead ID**
+  UUID input for Lead;
+- **From date** and **To date** native date inputs;
+- primary **Apply filters** and secondary **Clear filters** actions.
+
+Controls are staged until Apply. Applying or clearing resets the offset to zero and issues one
+list request. Pagination retains the committed filters. While a request is pending, keep the
+last successful results visible, disable repeated Apply/pagination, and expose **Updating audit
+log…** through a polite status region. A failure keeps the committed controls and last successful
+results, shows the existing alert with Retry, and never relabels stale rows as current results.
+
+When no event matches, show **No audit events match these filters.** The existing unfiltered
+empty state remains **No audit events yet.** A compact result line states **Showing N events on
+this page** and, when any filter is active, exposes a **Clear filters** shortcut. It does not imply
+that `audit.list` computed a total matching count.
+
+Every control has an explicit accessible name. Changing affected kind clears any staged affected
+ID so a hidden value cannot be applied under a different kind. At 390 pixels the filter controls
+stack without horizontal page overflow; the event cards and existing pagination remain in their
+current order.
+
+## Creation and removal formatting
+
+Keep the short summary as the primary interface and raw JSON as secondary evidence.
+
+- `before = null`, record-shaped `after`: **Created with N recorded fields**.
+- record-shaped `before`, `after = null`: **Record removed**.
+- a missing field within two existing records: **Not set**, preserving current behavior.
+- Technical details for a creation: Before reads **Record did not exist**.
+- Technical details for a removal: After reads **Record no longer exists**.
+- An unexpected standalone null that is not classifiable from the opposite side reads
+  **No state recorded**.
+
+Preserve the current dedicated `ui-audit-diff` layout: its columns are already top-aligned,
+Before stacks above After below 640 pixels, and long JSON wraps or scrolls inside the card. Do
+not regress those behaviors and do not use `—` to represent record existence.
+
+Add readable action labels for `lead.assign` and `lead.queue`. Preserve every existing label,
+including `lead.skip` as **Skipped rep and passed lead**.
+
+## Future sold-status gate
+
+The current imported `sold` count remains a per-rep CRM metric. Priority 5 does not reinterpret
+it or add a lead-level status.
+
+One invariant applies to any future lead sold-state mutation: it must append a lead-primary audit
+event in the same transaction, with complete before and after sold state. The future feature's
+design must choose its action name, fields, correction model, permissions, reconciliation, and
+tests. Priority 5 does not pre-decide or document those choices in `CLAUDE.md`.
+
+## Expected implementation surface
+
+- `apps/api/src/domain/assignLead.ts`
+- assignment-domain tests covering assigned, forced, queued, idempotent, and rollback paths
+- `packages/db/src/schema/ledger.ts` for the `QUEUE` event type
+- `apps/api/src/routers/audit.ts`
+- `apps/api/src/routers/audit.test.ts`
+- `apps/web/src/pages/AuditLog.tsx`
+- `apps/web/src/pages/AuditLog.test.ts`
+- `apps/web/src/styles/ui.css`
+- `docs/Revised consolidated action list.md` only after implementation evidence exists
+
+No database migration, route rename, permission, navigation, realtime, or dependency change is
+expected. The bounded assignment-ledger change is the typed zero-credit `QUEUE` event above.
+
+## Validation
+
+### Assignment and audit API
+
+- Normal, forced, and no-eligible assignment outcomes append the specified action and payload in
+  the assignment transaction.
+- The no-eligible outcome appends one zero-credit `QUEUE` ledger row carrying the lead ID and
+  original idempotency key without consuming a cycle slot or changing counters.
+- Reusing an assigned or queued outcome's idempotency key returns the prior lead without duplicate
+  lead, queue, ledger, or audit rows.
+- An injected audit-insert failure rolls back every write made by the assignment transaction and
+  publishes no realtime event. Reuse the transaction-proxy pattern already present in
+  `overrideStatus.test.ts` rather than adding test infrastructure.
+- Existing audit tests remain passing as the broader suite gate; implementation proof stays
+  focused on assignment outcomes, list predicates, formatting, and permissions.
+- BDC and Rep callers remain forbidden from every audit read procedure.
+- Each filter works alone and all filters work together; pagination remains newest-first with the
+  ID tie-breaker and has no duplicates or omissions for a stable result set.
+- Actor choices retain inactive actors. Current user and rep choices resolve to exact IDs; lead
+  filtering accepts an exact UUID; activity-import storage anchors are never offered as targets.
+- From/to boundaries include the intended New York dates across ordinary and daylight-saving
+  transitions, regardless of process timezone.
+- Invalid UUIDs, invalid dates, reversed ranges, and incomplete affected-kind selections are
+  rejected or omitted as specified.
+
+### Web
+
+- Apply and Clear reset pagination and send exactly the committed filters; Previous/Next retain
+  them.
+- Pending and failed loads preserve the last successful results and accurately announce stale or
+  updating state.
+- Filtered and unfiltered empty states are distinct.
+- Action and actor options include current stored values, and unknown action names retain readable
+  fallback formatting.
+- Affected-kind changes clear stale IDs; native user/rep selects and the exact lead UUID input send
+  the intended canonical target and support clearing.
+- Creation, removal, missing-field, and unexpected-null states use the exact natural-language
+  copy above; raw JSON remains available.
+- Static markup and browser accessibility inspection verify filter labels, live status/error
+  regions, focus order, and pagination state.
+
+### Full and browser verification
+
+- Run focused assignment-domain, audit-router, and Audit Log tests, then the affected package
+  checks and one full serial workspace suite under the repository-declared Node 22.x runtime.
+- Run workspace type checking, web lint, the production web build, and `git diff --check`.
+- In an authenticated local browser, run one Manager functional pass at 1024x768 covering filters,
+  a combined no-results set, Clear, paging with filters retained, creation details, and load
+  failure/Retry.
+- Run one Admin permission smoke test, plus one 390x844 accessibility/layout pass covering labels,
+  keyboard reachability, status announcements, and narrow-layout containment.
+- API permission tests carry BDC and Rep denial coverage. Recheck only that read-only Admin View-as
+  does not gain mutation behavior.
+
+Deployment and production verification remain separate gates and must not be inferred from local
+tests or browser proof.
+
+## Success criteria
+
+Priority 5's implementable portion is complete when every newly created assigned or queued lead
+has exactly one transactionally consistent audit event; Manager/Admin can reliably filter the
+append-only stream by action, actor, one primary affected user/rep/lead, and inclusive New York
+date range; creation/removal details use natural language and a responsive top-aligned layout; and
+all existing audit coverage, permissions, assignment authority, and recent UI behavior remain
+unchanged.
+
+Lead-level sold status remains a separate product decision. If it is later built, Priority 5 is
+not fully satisfied unless that mutation appends a same-transaction lead audit event with complete
+before and after sold state.
