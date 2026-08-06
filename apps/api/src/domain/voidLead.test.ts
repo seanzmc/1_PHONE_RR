@@ -234,6 +234,55 @@ describe('voidLead', () => {
     })
   })
 
+  it('reopens a closed cycle when its otherwise-empty successor contains only a QUEUE event', async () => {
+    await withOnlyEligible([repIds[0], repIds[1]], async () => {
+      await assignOne('Queue Boundary Fill 1', '9220011')
+      const last = await assignOne('Queue Boundary Fill 2', '9220012')
+      const closedCycleId = (await lastAssignCycle(last.leadId))!
+      const successor = await db.query.rotationCycle.findFirst({
+        where: isNull(schema.rotationCycle.closedAt),
+      })
+      expect(successor?.id).not.toBe(closedCycleId)
+
+      const [customer] = await db
+        .insert(schema.customer)
+        .values({ fullName: 'Queued Successor Lead', phoneE164: '+15559220013' })
+        .returning()
+      const bDate = businessDate(new Date())
+      const [queuedLead] = await db
+        .insert(schema.lead)
+        .values({
+          customerId: customer.id,
+          status: 'UNASSIGNED',
+          businessDate: bDate,
+          periodKey: periodKey(bDate),
+          createdBy: bdcUserId,
+        })
+        .returning()
+      await db.insert(schema.assignmentEvents).values({
+        leadId: queuedLead.id,
+        repId: null,
+        eventType: 'QUEUE',
+        cycleNo: successor!.id,
+        creditDelta: 0,
+        queueSnapshot: [],
+        idempotencyKey: randomUUID(),
+      })
+
+      const result = await voidLead(db, {
+        leadId: last.leadId,
+        reasonNote: 'undo last of cycle after queue',
+        actorUserId: bdcUserId,
+      })
+
+      expect(result.cycleReopened).toBe(true)
+      const cyclesAfter = await db.select().from(schema.rotationCycle)
+      expect(cyclesAfter).toHaveLength(2)
+      expect(cyclesAfter.find((row) => row.id === closedCycleId)?.closedAt).toBeNull()
+      expect(cyclesAfter.find((row) => row.id === successor?.id)?.closedAt).toBeTruthy()
+    })
+  })
+
   it('is idempotent — a second void does not double-decrement', async () => {
     const assigned = await assignOne('Double Void', '9110005')
     const repId = assigned.assignedRepId!

@@ -1,7 +1,8 @@
 # Priority 5 audit completeness
 
 **Date:** 2026-08-04
-**Status:** Proposed design, pending approval
+**Status:** Revised design, pending approval. Assignment, cycle-reopening, and audit API portions
+are implemented; the web experience and final verification remain open.
 
 ## Decision
 
@@ -36,14 +37,18 @@ column, metric, or reconciliation rule.
   outside `audit_events`.
 - Reassign, Skip, and Void events use the lead as their primary affected entity.
 
+### Implemented on `main`, pending final verification
+
+- `assignLead` appends the assigned or queued lead audit row and writes a zero-credit `QUEUE`
+  ledger event carrying the original idempotency key for no-eligible outcomes.
+- `audit.list` accepts the specified action, actor, primary affected record, and New York date
+  filters; `audit.filterOptions` supplies the current native-select choices.
+- `voidLead` ignores zero-credit `QUEUE` events when deciding whether a successor cycle has been
+  consumed, while retaining queue-only cycles to preserve their append-only ledger references.
+
 ### Genuinely open
 
-- `assignLead` creates either an assigned or queued lead, but it does not append an audit row for
-  the operator action.
-- Assigned outcomes store the original idempotency key in `assignment_events`, but queued outcomes
-  do not write a ledger row carrying that key. Retrying a queued submission can therefore create
-  another lead.
-- `audit.list` accepts only `limit` and `offset`; the page has no filters.
+- The Audit Log page does not yet expose the filters or pending/stale-result behavior.
 - A creation event has `before = null`. Its summary is readable, but Technical details renders
   the missing Before value as `—`.
 - No lead-level sold-status action exists. CRM-imported `rep_daily_activity.sold` is an aggregate
@@ -122,6 +127,13 @@ lead ID, `repId = null`, the current cycle ID and queue snapshot, `creditDelta =
 submission's original idempotency key. `QUEUE` is added to the Drizzle text-enum typing; the
 database column is already text, so this requires no migration. It neither consumes a cycle slot
 nor changes a counter, and reconciliation continues to use the sum of `creditDelta`.
+
+Every cycle-state consumer must likewise treat `QUEUE` as non-consuming. In particular,
+`voidLead`'s check for activity in the open successor cycle must ignore `QUEUE` rows. When voiding
+the assignment that closed the prior cycle, a queue-only successor is closed rather than deleted
+because its append-only `QUEUE` row has a required cycle foreign key; a truly empty successor is
+still deleted. `ASSIGN`, automatic cycle `SKIP`, and other genuinely cycle-consuming events retain
+their existing behavior.
 
 The existing idempotency short-circuit remains first and now finds both assigned and queued
 outcomes. Reusing either completed outcome's idempotency key returns its prior lead without
@@ -261,13 +273,18 @@ event in the same transaction, with complete before and after sold state. The fu
 design must choose its action name, fields, correction model, permissions, reconciliation, and
 tests. Priority 5 does not pre-decide or document those choices in `CLAUDE.md`.
 
-## Expected implementation surface
+## Implementation surface and checkpoint
+
+Already implemented on `main`, subject to the validation below:
 
 - `apps/api/src/domain/assignLead.ts`
 - assignment-domain tests covering assigned, forced, queued, idempotent, and rollback paths
 - `packages/db/src/schema/ledger.ts` for the `QUEUE` event type
 - `apps/api/src/routers/audit.ts`
 - `apps/api/src/routers/audit.test.ts`
+
+Still requiring implementation:
+
 - `apps/web/src/pages/AuditLog.tsx`
 - `apps/web/src/pages/AuditLog.test.ts`
 - `apps/web/src/styles/ui.css`
@@ -284,6 +301,8 @@ expected. The bounded assignment-ledger change is the typed zero-credit `QUEUE` 
   the assignment transaction.
 - The no-eligible outcome appends one zero-credit `QUEUE` ledger row carrying the lead ID and
   original idempotency key without consuming a cycle slot or changing counters.
+- A queue-only open successor cycle does not prevent `voidLead` from reopening the prior cycle;
+  existing cycle-consuming events continue to prevent that reopen.
 - Reusing an assigned or queued outcome's idempotency key returns the prior lead without duplicate
   lead, queue, ledger, or audit rows.
 - An injected audit-insert failure rolls back every write made by the assignment transaction and

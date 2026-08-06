@@ -96,13 +96,31 @@ export async function voidLead(db: DB, input: VoidLeadInput): Promise<VoidLeadRe
         const openCycleUsed = await tx.query.rrCycleAssignments.findFirst({
           where: eq(schema.rrCycleAssignments.cycleId, openCycle.id),
         })
-        const openCycleEvents = await tx.query.assignmentEvents.findFirst({
-          where: eq(schema.assignmentEvents.cycleNo, openCycle.id),
+        const consumingOpenCycleEvent = await tx.query.assignmentEvents.findFirst({
+          where: and(
+            eq(schema.assignmentEvents.cycleNo, openCycle.id),
+            ne(schema.assignmentEvents.eventType, 'QUEUE'),
+          ),
         })
-        if (!openCycleUsed && !openCycleEvents) {
-          // delete the empty successor FIRST — the `one_open_cycle` unique index allows
-          // only a single closed_at IS NULL row at a time.
-          await tx.delete(schema.rotationCycle).where(eq(schema.rotationCycle.id, openCycle.id))
+        if (!openCycleUsed && !consumingOpenCycleEvent) {
+          const queueEvent = await tx.query.assignmentEvents.findFirst({
+            where: and(
+              eq(schema.assignmentEvents.cycleNo, openCycle.id),
+              eq(schema.assignmentEvents.eventType, 'QUEUE'),
+            ),
+          })
+
+          // Retire the successor FIRST — the `one_open_cycle` unique index allows only
+          // one closed_at IS NULL row. A truly empty cycle can be deleted. A queue-only
+          // cycle must be retained because its append-only QUEUE event has a required FK.
+          if (queueEvent) {
+            await tx
+              .update(schema.rotationCycle)
+              .set({ closedAt: new Date() })
+              .where(eq(schema.rotationCycle.id, openCycle.id))
+          } else {
+            await tx.delete(schema.rotationCycle).where(eq(schema.rotationCycle.id, openCycle.id))
+          }
           await tx
             .update(schema.rotationCycle)
             .set({ closedAt: null })
