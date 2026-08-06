@@ -1,8 +1,10 @@
 # Priority 5 audit completeness
 
 **Date:** 2026-08-04
-**Status:** Revised design, pending approval. Assignment, cycle-reopening, and audit API portions
-are implemented; the web experience and final verification remain open.
+**Status:** Revised design, pending approval for the remaining web slice. The assignment, audit
+API, and cycle-reopening backend checkpoint is implemented on `main` through `363af90` and was
+locally and CI verified on August 6, 2026; do not reimplement it. The web experience, browser
+proof, and final post-web integration verification remain open.
 
 ## Decision
 
@@ -37,14 +39,16 @@ column, metric, or reconciliation rule.
   outside `audit_events`.
 - Reassign, Skip, and Void events use the lead as their primary affected entity.
 
-### Implemented on `main`, pending final verification
+### Implemented and verified backend checkpoint — do not reimplement
 
-- `assignLead` appends the assigned or queued lead audit row and writes a zero-credit `QUEUE`
-  ledger event carrying the original idempotency key for no-eligible outcomes.
-- `audit.list` accepts the specified action, actor, primary affected record, and New York date
-  filters; `audit.filterOptions` supplies the current native-select choices.
-- `voidLead` ignores zero-credit `QUEUE` events when deciding whether a successor cycle has been
-  consumed, while retaining queue-only cycles to preserve their append-only ledger references.
+- `a6f5831`: `assignLead` appends the assigned or queued lead audit row and writes a zero-credit
+  `QUEUE` ledger event carrying the original idempotency key for no-eligible outcomes.
+- `bf9b8bd`: `audit.list` accepts the specified action, actor, primary affected record, and New
+  York date filters; `audit.filterOptions` supplies the current native-select choices.
+- `363af90`: `voidLead` ignores zero-credit `QUEUE` events when deciding whether a successor cycle
+  has been consumed. When that successor is queue-only, it closes rather than deletes the
+  successor to retain the append-only event's required cycle reference, then reopens the prior
+  cycle. A truly empty successor retains the existing delete-and-reopen behavior.
 
 ### Genuinely open
 
@@ -275,15 +279,17 @@ tests. Priority 5 does not pre-decide or document those choices in `CLAUDE.md`.
 
 ## Implementation surface and checkpoint
 
-Already implemented on `main`, subject to the validation below:
+Completed on `main`; preserve these files and contracts rather than scheduling them again:
 
-- `apps/api/src/domain/assignLead.ts`
+- `apps/api/src/domain/assignLead.ts` (`a6f5831`)
 - assignment-domain tests covering assigned, forced, queued, idempotent, and rollback paths
 - `packages/db/src/schema/ledger.ts` for the `QUEUE` event type
-- `apps/api/src/routers/audit.ts`
+- `apps/api/src/routers/audit.ts` (`bf9b8bd`)
 - `apps/api/src/routers/audit.test.ts`
+- `apps/api/src/domain/voidLead.ts` (`363af90`)
+- `apps/api/src/domain/voidLead.test.ts`, including the queue-only successor regression
 
-Still requiring implementation:
+Remaining implementation surface:
 
 - `apps/web/src/pages/AuditLog.tsx`
 - `apps/web/src/pages/AuditLog.test.ts`
@@ -295,7 +301,26 @@ expected. The bounded assignment-ledger change is the typed zero-credit `QUEUE` 
 
 ## Validation
 
-### Assignment and audit API
+### Recorded verification for the completed backend checkpoint
+
+Do not repeat this backend-only verification unless later work changes one of the completed
+backend paths above:
+
+- On August 6, 2026, `363af90` passed all 8 focused `voidLead` tests under Node 22.23.2 against a
+  freshly migrated and seeded guarded PostgreSQL test database. This includes the queue-only
+  successor regression, ordinary empty-successor reopening, idempotency, counter/slot rollback,
+  concurrent Void plus Assign, and queued-lead Void behavior.
+- A second fresh guarded database passed workspace type checking, all 59 test files and 470 tests
+  (contracts 11, core 18, API 275, web 166), and the production web build under Node 22.23.2.
+- `git diff --check` passed, `main` matched `origin/main` at `363af90`, and GitHub CI run
+  `31074689872` completed successfully.
+- No browser pass was needed for `363af90` because it changed backend cycle-state behavior and its
+  regression test only; this is not deployment or production verification.
+
+### Backend contract to preserve
+
+These are regression requirements for the completed backend checkpoint, not outstanding
+implementation tasks:
 
 - Normal, forced, and no-eligible assignment outcomes append the specified action and payload in
   the assignment transaction.
@@ -338,8 +363,10 @@ expected. The bounded assignment-ledger change is the typed zero-credit `QUEUE` 
 
 ### Full and browser verification
 
-- Run focused assignment-domain, audit-router, and Audit Log tests, then the affected package
-  checks and one full serial workspace suite under the repository-declared Node 22.x runtime.
+- Do not rerun the completed backend-only matrix before web implementation unless a backend path
+  changes. After the remaining web slice is complete, run focused Audit Log tests, the affected
+  package checks, and one final serial workspace suite under the repository-declared Node 22.x
+  runtime.
 - Run workspace type checking, web lint, the production web build, and `git diff --check`.
 - In an authenticated local browser, run one Manager functional pass at 1024x768 covering filters,
   a combined no-results set, Clear, paging with filters retained, creation details, and load
