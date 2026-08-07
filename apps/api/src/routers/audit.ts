@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, desc, eq, gte, lt, or, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, lt, or, sql, type SQL } from 'drizzle-orm'
 import { db, schema } from '@phoneup/db'
 import { publicProcedure, router } from '../trpc/router'
 import { requirePerm } from '../trpc/requirePerm'
@@ -82,6 +82,161 @@ function labelledPeople(rows: Array<{ id: string; visibleLabel: string }>): Arra
     .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }) || a.id.localeCompare(b.id))
 }
 
+type AuditListItem = {
+  id: string
+  createdAt: string
+  actor: { displayName: string | null; email: string } | null
+  action: string
+  entityType: string
+  entityId: string
+  before: unknown
+  after: unknown
+}
+
+type AccountDisplayRow = { id: string; displayName: string | null; email: string }
+type RepDisplayRow = { id: string; displayName: string; email: string }
+type LeadDisplayRow = { id: string; customerName: string; phoneE164: string }
+
+export type AuditDisplayLoaders = {
+  loadAccounts: (ids: string[]) => Promise<AccountDisplayRow[]>
+  loadReps: (ids: string[]) => Promise<RepDisplayRow[]>
+  loadLeads: (ids: string[]) => Promise<LeadDisplayRow[]>
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const REP_REFERENCE_FIELDS = ['assignedRepId', 'skippedRepId', 'repId'] as const
+
+function recordValue(value: unknown, field: string): unknown {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)[field]
+    : undefined
+}
+
+function formatPhone(phoneE164: string): string {
+  const digits = phoneE164.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '')
+  if (digits.length !== 10) return phoneE164
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+}
+
+function humanizeEntityType(entityType: string): string {
+  const words = entityType.replace(/[._]+/g, ' ')
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Record'
+}
+
+const databaseAuditDisplayLoaders: AuditDisplayLoaders = {
+  async loadAccounts(ids) {
+    if (ids.length === 0) return []
+    return db.select({
+      id: schema.appUser.id,
+      displayName: schema.appUser.displayName,
+      email: schema.appUser.email,
+    }).from(schema.appUser).where(inArray(schema.appUser.id, ids))
+  },
+  async loadReps(ids) {
+    if (ids.length === 0) return []
+    return db.select({
+      id: schema.salesRep.id,
+      displayName: schema.salesRep.displayName,
+      email: schema.appUser.email,
+    })
+      .from(schema.salesRep)
+      .innerJoin(schema.appUser, eq(schema.salesRep.userId, schema.appUser.id))
+      .where(inArray(schema.salesRep.id, ids))
+  },
+  async loadLeads(ids) {
+    if (ids.length === 0) return []
+    return db.select({
+      id: schema.lead.id,
+      customerName: schema.customer.fullName,
+      phoneE164: schema.customer.phoneE164,
+    })
+      .from(schema.lead)
+      .innerJoin(schema.customer, eq(schema.lead.customerId, schema.customer.id))
+      .where(inArray(schema.lead.id, ids))
+  },
+}
+
+/** Adds current-record presentation labels to an already filtered and paginated event page. */
+export async function addAuditDisplayFields(
+  items: AuditListItem[],
+  loaders: AuditDisplayLoaders = databaseAuditDisplayLoaders,
+) {
+  const accountIds = new Set<string>()
+  const repIds = new Set<string>()
+  const leadIds = new Set<string>()
+
+  for (const item of items) {
+    if (item.entityType === 'app_user') accountIds.add(item.entityId)
+    if (
+      item.entityType === 'sales_rep'
+      || item.entityType === 'rep_daily_status'
+      || (item.entityType === 'rep_daily_activity' && item.action === 'activity.metric.edit')
+    ) {
+      repIds.add(item.entityId)
+    }
+    if (item.entityType === 'lead') leadIds.add(item.entityId)
+
+    for (const payload of [item.before, item.after]) {
+      for (const field of REP_REFERENCE_FIELDS) {
+        const value = recordValue(payload, field)
+        if (typeof value === 'string' && UUID_PATTERN.test(value)) repIds.add(value)
+      }
+    }
+  }
+
+  const [accounts, reps, leads] = await Promise.all([
+    loaders.loadAccounts([...accountIds].sort()),
+    loaders.loadReps([...repIds].sort()),
+    loaders.loadLeads([...leadIds].sort()),
+  ])
+  const accountLabels = new Map(accounts.map((account) => [
+    account.id,
+    account.displayName ? `${account.displayName} · ${account.email}` : account.email,
+  ]))
+  const repLabels = new Map(reps.map((rep) => [rep.id, `${rep.displayName} · ${rep.email}`]))
+  const leadLabels = new Map(leads.map((lead) => [
+    lead.id,
+    `${lead.customerName} · ${formatPhone(lead.phoneE164)}`,
+  ]))
+
+  return items.map((item) => {
+    let kind = humanizeEntityType(item.entityType)
+    let label = 'Record unavailable'
+    if (item.entityType === 'app_user') {
+      kind = 'Account'
+      label = accountLabels.get(item.entityId) ?? label
+    } else if (item.entityType === 'lead') {
+      kind = 'Lead'
+      label = leadLabels.get(item.entityId) ?? label
+    } else if (item.entityType === 'sales_rep' || item.entityType === 'rep_daily_status') {
+      kind = 'Rep'
+      label = repLabels.get(item.entityId) ?? label
+    } else if (item.entityType === 'rep_daily_activity' && item.action === 'activity.metric.edit') {
+      kind = 'Rep activity'
+      label = repLabels.get(item.entityId) ?? label
+    } else if (item.entityType === 'rep_daily_activity' && item.action === 'activity.import') {
+      kind = 'Activity import'
+      const businessDate = recordValue(item.after, 'businessDate') ?? recordValue(item.before, 'businessDate')
+      label = typeof businessDate === 'string' && isCalendarDate(businessDate) ? businessDate : label
+    } else if (item.entityType === 'work_requirement_policy') {
+      kind = 'Activity policy'
+      label = 'Call requirement settings'
+    }
+
+    const referenceLabels: Record<string, string> = {}
+    for (const payload of [item.before, item.after]) {
+      for (const field of REP_REFERENCE_FIELDS) {
+        const value = recordValue(payload, field)
+        if (typeof value !== 'string') continue
+        const referenceLabel = repLabels.get(value)
+        if (referenceLabel) referenceLabels[value] = referenceLabel
+      }
+    }
+
+    return { ...item, entityDisplay: { kind, label }, referenceLabels }
+  })
+}
+
 export const auditRouter = router({
   list: publicProcedure.use(requirePerm('audit.view')).input(inputSchema).query(async ({ input }) => {
     const conditions: SQL[] = []
@@ -130,17 +285,18 @@ export const auditRouter = router({
       .offset(input.offset)
 
     const hasMore = rows.length > input.limit
+    const pageItems = rows.slice(0, input.limit).map(({ event, actor }) => ({
+      id: event.id,
+      createdAt: event.createdAt.toISOString(),
+      actor: actor ? { displayName: actor.displayName, email: actor.email } : null,
+      action: event.action,
+      entityType: event.entityType,
+      entityId: event.entityId,
+      before: event.before,
+      after: event.after,
+    }))
     return {
-      items: rows.slice(0, input.limit).map(({ event, actor }) => ({
-        id: event.id,
-        createdAt: event.createdAt.toISOString(),
-        actor: actor ? { displayName: actor.displayName, email: actor.email } : null,
-        action: event.action,
-        entityType: event.entityType,
-        entityId: event.entityId,
-        before: event.before,
-        after: event.after,
-      })),
+      items: await addAuditDisplayFields(pageItems),
       hasMore,
     }
   }),

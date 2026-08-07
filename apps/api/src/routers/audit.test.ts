@@ -1,9 +1,9 @@
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import { db, schema } from '@phoneup/db'
 import { t } from '../trpc/router'
-import { auditRouter } from './audit'
+import { addAuditDisplayFields, auditRouter } from './audit'
 
 const fakeReqRes = { req: {}, res: {} } as any
 const caller = (role: 'ADMIN' | 'MANAGER' | 'BDC' | 'REP') => t.createCallerFactory(auditRouter)({
@@ -30,6 +30,15 @@ describe('audit router', () => {
   let daylightDateAction: string
   let standardIncludedIds: string[]
   let daylightIncludedIds: string[]
+  let targetUserEmail: string
+  let targetRepEmail: string
+  let duplicateRepEmail: string
+  let policyId: string
+  let displayAction: string
+  let displayEventIds: Record<string, string>
+  let missingAccountId: string
+  let missingRepId: string
+  let missingLeadId: string
 
   beforeAll(async () => {
     const [actor] = await db
@@ -47,17 +56,23 @@ describe('audit router', () => {
     paginationAction = `audit.pagination.${stamp}`
     standardDateAction = `audit.standardDate.${stamp}`
     daylightDateAction = `audit.daylightDate.${stamp}`
-    targetLeadId = randomUUID()
+    displayAction = `audit.display.${stamp}`
+    targetUserEmail = `audit-target-${stamp}@dealership.test`
+    targetRepEmail = `audit-rep-${stamp}@dealership.test`
+    duplicateRepEmail = `audit-rep-duplicate-${stamp}@dealership.test`
     unresolvedActorId = randomUUID()
+    missingAccountId = randomUUID()
+    missingRepId = randomUUID()
+    missingLeadId = randomUUID()
 
     const [otherActor, targetUser, duplicateUser, repUser, duplicateRepUser] = await db
       .insert(schema.appUser)
       .values([
         { email: `audit-actor-${stamp}@dealership.test`, passwordHash: 'x:y', role: 'MANAGER' },
-        { email: `audit-target-${stamp}@dealership.test`, displayName: 'Duplicate Audit Person', passwordHash: 'x:y', role: 'BDC' },
+        { email: targetUserEmail, displayName: 'Duplicate Audit Person', passwordHash: 'x:y', role: 'BDC' },
         { email: `audit-target-duplicate-${stamp}@dealership.test`, displayName: 'Duplicate Audit Person', passwordHash: 'x:y', role: 'BDC' },
-        { email: `audit-rep-${stamp}@dealership.test`, displayName: 'Audit Rep User', passwordHash: 'x:y', role: 'REP' },
-        { email: `audit-rep-duplicate-${stamp}@dealership.test`, displayName: 'Audit Rep User Two', passwordHash: 'x:y', role: 'REP' },
+        { email: targetRepEmail, displayName: 'Audit Rep User', passwordHash: 'x:y', role: 'REP' },
+        { email: duplicateRepEmail, displayName: 'Audit Rep User Two', passwordHash: 'x:y', role: 'REP' },
       ])
       .returning()
     otherActorId = otherActor.id
@@ -70,6 +85,24 @@ describe('audit router', () => {
     ]).returning()
     targetRepId = targetRep.id
     duplicateRepId = duplicateRep.id
+
+    const phoneE164 = `+1555${String(stamp).slice(-7)}`
+    const [customer] = await db.insert(schema.customer).values({
+      fullName: 'Audit Lead Customer',
+      phoneE164,
+    }).returning()
+    const [lead] = await db.insert(schema.lead).values({
+      customerId: customer.id,
+      assignedRepId: targetRepId,
+      status: 'ASSIGNED',
+      businessDate: '2099-07-14',
+      periodKey: '2099-07',
+      createdBy: actor.id,
+    }).returning()
+    targetLeadId = lead.id
+
+    const [policy] = await db.insert(schema.workRequirementPolicy).values({ minCalls: 20 }).returning()
+    policyId = policy.id
 
     const events = await db
       .insert(schema.auditEvents)
@@ -160,6 +193,44 @@ describe('audit router', () => {
       { actorUserId: actor.id, action: daylightDateAction, entityType: 'lead', entityId: randomUUID(), createdAt: new Date('2099-07-16T04:00:00Z') },
     ]).returning()
     daylightIncludedIds = [daylightDateEvents[1].id, daylightDateEvents[2].id]
+
+    const displayEvents = await db.insert(schema.auditEvents).values([
+      { actorUserId: actor.id, action: displayAction, entityType: 'app_user', entityId: targetUserId },
+      { actorUserId: actor.id, action: displayAction, entityType: 'lead', entityId: targetLeadId },
+      { actorUserId: actor.id, action: displayAction, entityType: 'sales_rep', entityId: targetRepId },
+      { actorUserId: actor.id, action: displayAction, entityType: 'rep_daily_status', entityId: duplicateRepId },
+      {
+        actorUserId: actor.id,
+        action: 'activity.metric.edit',
+        entityType: 'rep_daily_activity',
+        entityId: targetRepId,
+        before: { calls: 10 },
+        after: { calls: 12 },
+      },
+      {
+        actorUserId: actor.id,
+        action: 'activity.import',
+        entityType: 'rep_daily_activity',
+        entityId: targetRepId,
+        before: null,
+        after: { businessDate: '2099-07-14', repsMatched: 2 },
+      },
+      { actorUserId: actor.id, action: displayAction, entityType: 'work_requirement_policy', entityId: policyId },
+      { actorUserId: actor.id, action: displayAction, entityType: 'app_user', entityId: missingAccountId },
+      { actorUserId: actor.id, action: displayAction, entityType: 'sales_rep', entityId: missingRepId },
+      { actorUserId: actor.id, action: displayAction, entityType: 'lead', entityId: missingLeadId },
+      { actorUserId: actor.id, action: displayAction, entityType: 'future_record', entityId: randomUUID() },
+      {
+        actorUserId: actor.id,
+        action: displayAction,
+        entityType: 'lead',
+        entityId: targetLeadId,
+        before: { assignedRepId: targetRepId, skippedRepId: duplicateRepId, repId: targetRepId, untouched: 'before' },
+        after: { assignedRepId: duplicateRepId, skippedRepId: targetRepId, repId: duplicateRepId, untouched: 'after' },
+      },
+    ]).returning()
+    const displayKeys = ['account', 'lead', 'rep', 'status', 'metric', 'import', 'policy', 'missingAccount', 'missingRep', 'missingLead', 'unknown', 'references']
+    displayEventIds = Object.fromEntries(displayKeys.map((key, index) => [key, displayEvents[index].id]))
   })
 
   it.each(['BDC', 'REP'] as const)('denies %s', async (role) => {
@@ -177,7 +248,11 @@ describe('audit router', () => {
   })
 
   it('returns newest first with actor identity and complete before/after state', async () => {
-    const result = await caller('ADMIN').list({ limit: 100 })
+    const result = await caller('ADMIN').list({
+      fromDate: '2098-12-31',
+      toDate: '2099-01-01',
+      limit: 100,
+    })
     const olderIndex = result.items.findIndex((item) => item.id === olderEventId)
     const newerIndex = result.items.findIndex((item) => item.id === newerEventId)
     expect(newerIndex).toBeGreaterThanOrEqual(0)
@@ -258,6 +333,88 @@ describe('audit router', () => {
     expect(second.hasMore).toBe(false)
     expect([...first.items, ...second.items].map((item) => item.id)).toEqual(all.items.map((item) => item.id))
     expect(new Set([...first.items, ...second.items].map((item) => item.id)).size).toBe(3)
+  })
+
+  it('adds truthful display identities while preserving canonical event data', async () => {
+    const [displayResult, metricResult, importResult] = await Promise.all([
+      caller('ADMIN').list({ action: displayAction, limit: 100 }),
+      caller('ADMIN').list({ action: 'activity.metric.edit', limit: 100 }),
+      caller('ADMIN').list({ action: 'activity.import', limit: 100 }),
+    ])
+    const byId = new Map(
+      [...displayResult.items, ...metricResult.items, ...importResult.items].map((item) => [item.id, item]),
+    )
+
+    expect(byId.get(displayEventIds.account)?.entityDisplay).toEqual({
+      kind: 'Account',
+      label: `Duplicate Audit Person · ${targetUserEmail}`,
+    })
+    expect(byId.get(displayEventIds.lead)?.entityDisplay).toEqual({
+      kind: 'Lead',
+      label: expect.stringMatching(/^Audit Lead Customer · \(555\) \d{3}-\d{4}$/),
+    })
+    expect(byId.get(displayEventIds.rep)?.entityDisplay).toEqual({
+      kind: 'Rep',
+      label: `Duplicate Audit Rep · ${targetRepEmail}`,
+    })
+    expect(byId.get(displayEventIds.status)?.entityDisplay).toEqual({
+      kind: 'Rep',
+      label: `Duplicate Audit Rep · ${duplicateRepEmail}`,
+    })
+    expect(byId.get(displayEventIds.metric)?.entityDisplay).toEqual({
+      kind: 'Rep activity',
+      label: `Duplicate Audit Rep · ${targetRepEmail}`,
+    })
+    expect(byId.get(displayEventIds.import)?.entityDisplay).toEqual({
+      kind: 'Activity import',
+      label: '2099-07-14',
+    })
+    expect(byId.get(displayEventIds.import)?.entityDisplay.label).not.toContain('Duplicate Audit Rep')
+    expect(byId.get(displayEventIds.policy)?.entityDisplay).toEqual({
+      kind: 'Activity policy',
+      label: 'Call requirement settings',
+    })
+
+    for (const key of ['missingAccount', 'missingRep', 'missingLead', 'unknown']) {
+      expect(byId.get(displayEventIds[key])?.entityDisplay.label).toBe('Record unavailable')
+    }
+
+    const references = byId.get(displayEventIds.references)!
+    expect(references.referenceLabels).toEqual({
+      [targetRepId]: `Duplicate Audit Rep · ${targetRepEmail}`,
+      [duplicateRepId]: `Duplicate Audit Rep · ${duplicateRepEmail}`,
+    })
+    expect(references).toMatchObject({
+      entityType: 'lead',
+      entityId: targetLeadId,
+      before: { assignedRepId: targetRepId, skippedRepId: duplicateRepId, repId: targetRepId, untouched: 'before' },
+      after: { assignedRepId: duplicateRepId, skippedRepId: targetRepId, repId: duplicateRepId, untouched: 'after' },
+    })
+  })
+
+  it('bulk-loads each resolver type at most once for the already-selected page', async () => {
+    const loadAccounts = vi.fn(async () => [])
+    const loadReps = vi.fn(async () => [])
+    const loadLeads = vi.fn(async () => [])
+    const page = Array.from({ length: 40 }, (_, index) => ({
+      id: randomUUID(),
+      createdAt: new Date(2099, 0, 1, 0, 0, index).toISOString(),
+      actor: null,
+      action: displayAction,
+      entityType: index % 3 === 0 ? 'app_user' : index % 3 === 1 ? 'sales_rep' : 'lead',
+      entityId: index % 3 === 0 ? targetUserId : index % 3 === 1 ? targetRepId : targetLeadId,
+      before: { assignedRepId: targetRepId },
+      after: { skippedRepId: duplicateRepId },
+    }))
+
+    await addAuditDisplayFields(page, { loadAccounts, loadReps, loadLeads })
+
+    expect(loadAccounts).toHaveBeenCalledTimes(1)
+    expect(loadReps).toHaveBeenCalledTimes(1)
+    expect(loadLeads).toHaveBeenCalledTimes(1)
+    expect(loadAccounts).toHaveBeenCalledWith([targetUserId])
+    expect(loadReps).toHaveBeenCalledWith(expect.arrayContaining([targetRepId, duplicateRepId]))
+    expect(loadLeads).toHaveBeenCalledWith([targetLeadId])
   })
 
   it.each([

@@ -1,7 +1,7 @@
 # Priority 6 Remaining Page Polish — Execution Tasks and Checkpoints
 
 **Date:** 2026-08-07  
-**Status:** Open implementation plan. No implementation, validation, deployment, or production verification is claimed here.  
+**Status:** Tasks 1–4 are implemented and focused-test verified locally. Tasks 5–8, deployment, and production verification remain open.
 **Source of truth:** `docs/superpowers/specs/2026-08-07-priority-6-remaining-page-polish-design.md`
 
 ## Goal
@@ -53,7 +53,7 @@ Complete the remaining page-level polish without changing business rules, permis
 
 **Required behavior**
 
-- [ ] Add these exact metric hints without hiding them in tooltips:
+- [x] Add these exact metric hints without hiding them in tooltips:
   - **Phone-ups assigned:** **Phone-ups currently credited this month; voided assignments are removed.**
   - **CRM sales:** **Sum of the CRM Sold values imported for active reps this month.**
   - **Reassignments:** **Lead reassignments completed this month.**
@@ -61,18 +61,18 @@ Complete the remaining page-level polish without changing business rules, permis
   - **Cycle progress:** **Active reps served in the current rotation cycle; the cycle restarts after everyone is served.**
   - **Ineligible today:** **Active reps out of rotation today, for any reason.**
   - **Overrides today:** **Manager status changes recorded for today.**
-- [ ] Preserve all current values, labels, order, period, sorting, and stale-request behavior; do not derive replacement values in the client.
-- [ ] When `onOpenRep` is present, render the instruction: **Select a rep name to view their leads, activity, and status for the month.**
-- [ ] Keep authorized rep names as native buttons styled as links, add a visible trailing arrow, and give each a target-specific accessible name such as **View Taylor Morgan's rep details**.
-- [ ] When `onOpenRep` is absent, render plain names with no instruction, arrow, button, or dead-end control.
-- [ ] In `App.tsx`, pass `onOpenRep` only when the effective role has `rep.view`. Ensure read-only View-as uses effective permissions rather than the signed-in ADMIN's real permissions.
-- [ ] Preserve the current `openRep` path, Team Dashboard return behavior, and page-heading focus.
+- [x] Preserve all current values, labels, order, period, sorting, and stale-request behavior; do not derive replacement values in the client.
+- [x] When `onOpenRep` is present, render the instruction: **Select a rep name to view their leads, activity, and status for the month.**
+- [x] Keep authorized rep names as native buttons styled as links, add a visible trailing arrow, and give each a target-specific accessible name such as **View Taylor Morgan's rep details**.
+- [x] When `onOpenRep` is absent, render plain names with no instruction, arrow, button, or dead-end control.
+- [x] In `App.tsx`, pass `onOpenRep` only when the effective role has `rep.view`. Ensure read-only View-as uses effective permissions rather than the signed-in ADMIN's real permissions.
+- [x] Preserve the current `openRep` path, Team Dashboard return behavior, and page-heading focus.
 
 **Focused proof**
 
-- [ ] Update Dashboard tests to assert every exact hint and both interactive/non-interactive rep-list variants.
-- [ ] Update App tests to cover ADMIN/MANAGER access, BDC/REP absence, and effective-role View-as behavior.
-- [ ] Run:
+- [x] Update Dashboard tests to assert every exact hint and both interactive/non-interactive rep-list variants.
+- [x] Update App tests to cover ADMIN/MANAGER access, BDC/REP absence, and effective-role View-as behavior.
+- [x] Run:
   - `pnpm --filter @phoneup/web exec vitest run src/pages/Dashboard.test.ts src/App.test.ts`
 
 ### Checkpoint 1
@@ -82,6 +82,8 @@ Stop when the focused tests pass and confirm:
 - Dashboard values and ordering did not change.
 - Only effective roles with `rep.view` receive the callback.
 - No server permission or navigation model changed.
+
+**Checkpoint recorded 2026-08-07:** Task 1 implementation is complete locally. Under Node 22.23.2 and pnpm 11.17.0, the focused command passed with 2 test files and 20 tests. Dashboard values and ordering remain server-owned and unchanged; only effective roles with `rep.view` receive `onOpenRep`; and the existing in-memory `openRep` path, permissions, and navigation model remain unchanged. Task 7 desktop/mobile browser verification, the Task 6 integration gate, deployment, and production verification remain unclaimed.
 
 ---
 
@@ -204,31 +206,31 @@ The existing `entityType`, `entityId`, `before`, and `after` fields remain uncha
 
 **Required behavior**
 
-- [ ] Select and paginate audit rows first; collect and resolve only IDs present on that returned page.
-- [ ] Resolve each record class in bounded bulk queries, never one query per event or field.
-- [ ] Build primary display identities as follows:
+- [x] Select and paginate audit rows first; collect and resolve only IDs present on that returned page.
+- [x] Resolve each record class in bounded bulk queries, never one query per event or field.
+- [x] Build primary display identities as follows:
   - `app_user`: **Account** plus current display name and email, or email alone.
   - `lead`: **Lead** plus current customer name and readable phone.
   - `sales_rep` and `rep_daily_status`: **Rep** plus current rep display name and linked account email.
   - `rep_daily_activity` with `activity.metric.edit`: **Rep activity** plus rep display name and linked account email.
   - `rep_daily_activity` with `activity.import`: **Activity import** plus the imported business date from the event payload.
   - `work_requirement_policy`: **Activity policy** plus **Call requirement settings**.
-- [ ] Never present the storage-anchor rep as the target of `activity.import`.
-- [ ] Collect `assignedRepId`, `skippedRepId`, and `repId` UUID references from both `before` and `after` and resolve them through `sales_rep` plus the linked account.
-- [ ] Use labels that distinguish duplicate rep names by including linked account email.
-- [ ] Return **Record unavailable** for missing current records and unknown future entity types; do not return a shortened/full UUID as a display fallback.
-- [ ] Keep IDs and raw event payloads intact for support and filtering.
-- [ ] Preserve current auth, filters, date boundaries, ordering, offset/limit behavior, and `hasMore` calculation.
+- [x] Never present the storage-anchor rep as the target of `activity.import`.
+- [x] Collect `assignedRepId`, `skippedRepId`, and `repId` UUID references from both `before` and `after` and resolve them through `sales_rep` plus the linked account.
+- [x] Use labels that distinguish duplicate rep names by including linked account email.
+- [x] Return **Record unavailable** for missing current records and unknown future entity types; do not return a shortened/full UUID as a display fallback.
+- [x] Keep IDs and raw event payloads intact for support and filtering.
+- [x] Preserve current auth, filters, date boundaries, ordering, offset/limit behavior, and `hasMore` calculation.
 
 **Focused proof**
 
-- [ ] Cover account, lead, rep, rep-status, rep-activity metric edit, activity import, and policy event targets.
-- [ ] Cover missing account/rep/lead records and an unknown entity type.
-- [ ] Cover `assignedRepId`, `skippedRepId`, and `repId` in both sides, including different before/after reps and duplicate display names.
-- [ ] Assert raw `entityType`, `entityId`, `before`, and `after` remain exact.
-- [ ] Assert `activity.import` uses its business date and not its anchor rep.
-- [ ] Prove resolution happens after pagination and uses a bounded number of bulk queries rather than N+1 lookups.
-- [ ] With a guarded test database whose name contains `test`, run serially:
+- [x] Cover account, lead, rep, rep-status, rep-activity metric edit, activity import, and policy event targets.
+- [x] Cover missing account/rep/lead records and an unknown entity type.
+- [x] Cover `assignedRepId`, `skippedRepId`, and `repId` in both sides, including different before/after reps and duplicate display names.
+- [x] Assert raw `entityType`, `entityId`, `before`, and `after` remain exact.
+- [x] Assert `activity.import` uses its business date and not its anchor rep.
+- [x] Prove resolution happens after pagination and uses a bounded number of bulk queries rather than N+1 lookups.
+- [x] With a guarded test database whose name contains `test`, run serially:
   - `pnpm --filter @phoneup/api exec vitest run src/routers/audit.test.ts --no-file-parallelism`
 
 ### Checkpoint 4
@@ -239,6 +241,8 @@ Stop when the focused API test passes and record:
 - Focused test count/result.
 - Evidence that raw event identity and payloads remain unchanged.
 - Evidence that query count is bounded by resolver type, not page length.
+
+**Checkpoint recorded 2026-08-07:** Task 4 implementation is complete locally. Against guarded database `phoneup_test`, under Node 22.23.2 and pnpm 11.17.0, the serial focused command passed with 1 test file and 17 tests. The response keeps exact canonical `entityType`, `entityId`, `before`, and `after` values while adding display-only `entityDisplay` and `referenceLabels`. Resolution runs after the page slice and invokes each account, rep, and lead bulk loader at most once for the page, independent of page length. `git diff --check` passed. Task 5 rendering, the Task 6 integration gate, deployment, and production verification remain unclaimed.
 
 ---
 
