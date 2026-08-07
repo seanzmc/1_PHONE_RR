@@ -103,7 +103,7 @@ has not been deployed or production-verified.
 Clarify Team Dashboard metric definitions and make rep-name drill-down more obvious.
 Improve Rep Detail empty-state copy, note placeholder, and clipboard success/failure handling.
 Rewrite cryptic Import Activity labels and link successful deactivations to Staff List.
-Add the remaining blueprint visual details to cards and primary buttons.
+Replace front-facing Audit Log UUIDs with legible account, rep, lead, import, and policy labels.
 
 ## Keep separate from this UI list
 

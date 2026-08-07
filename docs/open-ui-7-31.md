@@ -15,8 +15,8 @@ Remaining page-level polish:
 - Team Dashboard: metric definitions and the rep-name drill-in hint remain incomplete. [Dashboard.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/Dashboard.tsx:50)
 - Rep Detail: improve empty-state copy and note placeholder; reset “Copied”; only report success after the clipboard write resolves and show failure otherwise. [RepDetail.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/RepDetail.tsx:165)
 - Change Password: voluntary changes still navigate away without confirmation; strength guidance remains optional polish. [ChangePassword.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/ChangePassword.tsx:24)
-- Audit Log: Before/After creation events still use a vertically centered toolbar and `—` for missing state. [AuditLog.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/AuditLog.tsx:30)
-- Design-system fidelity: blueprint registration marks are still absent from cards and primary buttons. [ui/index.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/ui/index.tsx:28)
+- Audit Log: normal event cards expose raw primary-entity and rep-reference UUIDs even when account,
+  rep, and lead records have legible identifiers. [AuditLog.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/AuditLog.tsx:303)
 
 ## Open from `next-design-pass.md`
 
@@ -29,6 +29,8 @@ Remaining page-level polish:
 - The old client-only View-as design is superseded by real-profile, server-enforced read-only View-as.
 - The multi-day recurring-day-off design is explicitly superseded by one optional Mon–Sat day.
 - The SHADOW→ENFORCE automatic-disqualification rollout is superseded by the manager-reviewed import decision. [CLAUDE.md](/Users/seandm/Projects/1_PHONE_RR/CLAUDE.md:30)
+- Blueprint registration marks on cards and buttons are intentionally omitted by product preference;
+  their absence is not open work.
 - All seven net-new P1 findings added to the critique were subsequently fixed: roster loading, assignment busy state, View-as writes, auth bootstrap, dynamic announcements/page focus, password masking, and the Vite blank page.
 - Priority 3 navigation is resolved: every role lands on Team Dashboard; only Reps see My Dashboard; Manager+ administrative destinations are grouped under Management; active styling works; both menus stay within the 1024px and 390px viewports; and the documented small-text/action contrast failures now exceed 4.5:1.
 - The unimplemented self-service reactivation request is no longer promised by the role or permission contracts. Reps are directed to a Manager or Admin, preserving the existing audited account/status reactivation path.
