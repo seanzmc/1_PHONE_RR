@@ -45,23 +45,29 @@ Completed locally on August 2, 2026. App navigation tests passed 10/10, contract
 
 Completed locally on August 3, 2026, including the bounded whole-branch final fixer wave. Weekly call-rule suspensions now survive automatic eligible/no-DQ evaluations until explicit manager reactivation; Staff List concurrent editing preserves only touched active drafts and saves only touched rows still different from the latest baseline; Team Dashboard accepts only the latest request and preserves its last good summary behind a visible warning and Retry; and blank or whitespace account names consistently fall back to email in User Management. Under the repository's required Node 22 runtime, focused post-fix suites passed 31 eligibility, 33 Staff List, 5 Dashboard, and 16 User Management tests. A second freshly migrated and seeded guarded database passed the complete 57-file, 412-test matrix: core 16, contracts 11, API 221, and web 164. Workspace type checking, web lint with the established 48 warnings, the production web build, and `git diff --check 2c893b8..HEAD` also exited successfully. Fresh two-session Playwright proof showed a Manager's touched Alex/Tue draft survive while an Admin's remote untouched Bailey/Fri update was adopted; the Manager save submitted Alex only. Controlled Dashboard routes then proved a delayed 111 response could not replace the newer 222 summary, a latest-request HTTP 500 preserved 222 while exposing the stale-data alert and Retry, and Retry advanced the summary to 333 and cleared the alert. Earlier accepted management, accessibility, activity-import, Dashboard realtime, and open Assignment Drawer evidence remains in force. The disposable databases and local server were removed afterward; all 92 Priority 4 browser artifacts, including 20 from this final wave, were retained locally for review. This work has not been deployed or production-verified.
 
-## Priority 5 — Audit completeness
+## Priority 5 — Audit completeness — Implemented locally; browser verification pending
 
 Add missing Audit Log events for:
 
-- [ ] Lead assignment
+- [x] Lead assignment, including queued no-eligible submissions and idempotent audit/ledger writes.
 - [x] Skip. Completed in Priority 2.
-- [ ] Any future sold-status action
+- [x] Require any future sold-status action to append a same-transaction, lead-primary audit event.
+  Lead-level sold status itself remains deferred pending the separate product decisions below.
 
 Preserve the existing coverage for reassignments, voids, account access, rep status, password events, days off, notes, activity, metrics, and policy changes.
 
-Add filters for:
-Action type
-Actor
-Affected rep/user/lead
-Date range
+- [x] Add filters for action type, actor, affected rep/user/exact lead ID, and inclusive New York
+  date range, with staged Apply/Clear behavior and pagination retaining committed filters.
 
-Improve creation-event formatting so missing prior state reads naturally instead of displaying —.
+- [x] Improve creation/removal formatting so missing record state reads naturally instead of
+  displaying —, while preserving raw technical details and the responsive diff layout.
+
+Implemented locally on August 6, 2026. Focused Audit Log tests passed 9/9, all 170 web tests passed,
+and workspace type checking, web lint, the production web build, and `git diff --check` succeeded
+under Node 22.22.3. The final clean-database workspace suite and authenticated Manager/Admin browser
+matrix remain open; the available shared test database contained prior audit/counter state and was
+not accepted as the final integration fixture. This work has not been deployed or
+production-verified.
 
 ## Priority 6 — Remaining page polish
 
@@ -76,4 +82,4 @@ These require operational verification or a product decision:
 Confirm the display-name backfill actually ran in production.
 Verify whether the CRM Sold column is daily or cumulative using a real import.
 Keep “Mark a lead sold” deferred until CRM-total versus lead-attribution semantics are decided.
-Priorities 1–4 are implemented. Priority 1 is deployed and production-verified; Priorities 2–4 are locally verified but not deployed. Priorities 5–6 remain open. Priority 4 validation ran under the repository's required Node 22.x runtime.
+Priorities 1–5 are implemented. Priority 1 is deployed and production-verified; Priorities 2–5 are locally implemented but not deployed. Priority 5 still requires its clean-database integration and authenticated browser verification gates. Priority 6 remains open. Priority 4 and Priority 5 validation ran under the repository's required Node 22.x runtime.

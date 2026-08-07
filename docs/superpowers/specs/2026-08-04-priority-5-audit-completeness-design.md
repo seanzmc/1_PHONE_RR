@@ -1,10 +1,10 @@
 # Priority 5 audit completeness
 
 **Date:** 2026-08-04
-**Status:** Revised design, pending approval for the remaining web slice. The assignment, audit
-API, and cycle-reopening backend checkpoint is implemented on `main` through `363af90` and was
-locally and CI verified on August 6, 2026; do not reimplement it. The web experience, browser
-proof, and final post-web integration verification remain open.
+**Status:** The backend checkpoint is implemented on `main` through `363af90`; do not reimplement
+it. The Audit Log web slice was implemented locally on August 6, 2026 with focused tests, type
+checking, lint, and a production build passing. Authenticated browser proof and a clean-database
+final integration run remain open.
 
 ## Decision
 
@@ -50,11 +50,29 @@ column, metric, or reconciliation rule.
   successor to retain the append-only event's required cycle reference, then reopens the prior
   cycle. A truly empty successor retains the existing delete-and-reopen behavior.
 
+### Implemented local web checkpoint
+
+- `apps/web/src/pages/AuditLog.tsx` now stages action, actor, primary affected record, and date
+  controls until Apply; Clear and Apply reset pagination, while paging retains committed filters.
+- The page loads native-select choices from `audit.filterOptions`, accepts an exact lead UUID,
+  clears a staged affected ID when its kind changes, and distinguishes filtered and unfiltered
+  empty states.
+- List refreshes retain the last successful rows, suppress stale request completions, disable
+  repeated Apply/pagination while pending, announce updates through a polite status region, and
+  retain a visible Retry path after failure.
+- Creation, removal, missing-field, and unexpected-null states now use the specified natural
+  language. `lead.assign` and `lead.queue` have explicit readable labels while unknown actions
+  retain the existing humanized fallback.
+- `apps/web/src/styles/ui.css` adds the responsive filter grid and narrow Audit Log containment;
+  the existing top-aligned, stacking `ui-audit-diff` layout remains intact.
+
 ### Genuinely open
 
-- The Audit Log page does not yet expose the filters or pending/stale-result behavior.
-- A creation event has `before = null`. Its summary is readable, but Technical details renders
-  the missing Before value as `—`.
+- Authenticated Manager/Admin browser proof, including the 390×844 accessibility/layout pass, has
+  not been run for the local web checkpoint.
+- The required final workspace suite still needs a freshly migrated and seeded guarded test
+  database. The available shared test database was contaminated by prior rows and could not serve
+  as that gate.
 - No lead-level sold-status action exists. CRM-imported `rep_daily_activity.sold` is an aggregate
   and cannot yet be reconciled to individual leads.
 
@@ -289,12 +307,15 @@ Completed on `main`; preserve these files and contracts rather than scheduling t
 - `apps/api/src/domain/voidLead.ts` (`363af90`)
 - `apps/api/src/domain/voidLead.test.ts`, including the queue-only successor regression
 
-Remaining implementation surface:
+Implemented locally in the web checkpoint:
 
 - `apps/web/src/pages/AuditLog.tsx`
 - `apps/web/src/pages/AuditLog.test.ts`
 - `apps/web/src/styles/ui.css`
-- `docs/Revised consolidated action list.md` only after implementation evidence exists
+- `docs/Revised consolidated action list.md`
+
+Remaining verification surface is the authenticated browser matrix and one clean-database final
+workspace suite; no additional product implementation is currently identified.
 
 No database migration, route rename, permission, navigation, realtime, or dependency change is
 expected. The bounded assignment-ledger change is the typed zero-credit `QUEUE` event above.
@@ -360,6 +381,23 @@ implementation tasks:
   copy above; raw JSON remains available.
 - Static markup and browser accessibility inspection verify filter labels, live status/error
   regions, focus order, and pagination state.
+
+### Recorded verification for the local web checkpoint
+
+- On August 6, 2026 under Node 22.22.3, the focused Audit Log suite passed 9/9 tests. The complete
+  web suite also passed all 25 files and 170 tests.
+- Workspace type checking passed. Web lint exited successfully with 53 warnings and no errors;
+  the warnings are the repository's existing Fast Refresh/export style class, including helpers
+  exported from `AuditLog.tsx` for tests. The production web build passed, producing the Vite
+  client bundle, and `git diff --check` passed.
+- The one attempted final workspace suite was not accepted as the integration gate: contracts
+  passed 11/11, core 18/18, web 170/170, and API 274/275, but
+  `activityImportDecision.test.ts` expected the latest `activity.import` audit payload and read a
+  stale null payload from the shared database. The same run printed extensive pre-existing
+  counter drift, so this was not the freshly migrated and seeded guarded database required by
+  this spec. Per the bounded workflow, the contaminated fixture was not repeatedly rerun.
+- Authenticated browser verification was not performed in this checkpoint. These results are not
+  deployment or production verification.
 
 ### Full and browser verification
 

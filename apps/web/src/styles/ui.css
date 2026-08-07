@@ -423,6 +423,30 @@ textarea.ui-input {
 .ui-menu-panel .ui-btn { justify-content: flex-start; }
 
 /* — audit ledger — */
+.ui-audit-filters {
+  max-width: 100%;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--color-divider);
+  background: var(--color-surface);
+}
+.ui-audit-filters h3 { font-size: 20px; }
+.ui-audit-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: end;
+}
+.ui-audit-filter-actions,
+.ui-audit-results {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.ui-audit-filter-actions { margin-top: var(--space-3); }
+.ui-audit-results { justify-content: space-between; }
+.ui-audit-results p { margin-bottom: var(--space-2); }
 .ui-audit-list {
   display: grid;
   max-width: 100%;
@@ -514,6 +538,12 @@ textarea.ui-input {
 }
 
 @media (max-width: 640px) {
+  .ui-audit-page { padding: var(--space-3); }
+  .ui-audit-page > .ui-toolbar { align-items: flex-start; flex-wrap: wrap; }
+  .ui-audit-page > .ui-toolbar .ui-toolbar-spacer { display: none; }
+  .ui-audit-filter-grid { grid-template-columns: 1fr; }
+  .ui-audit-filter-actions { align-items: stretch; flex-direction: column; }
+  .ui-audit-filter-actions .ui-btn { width: 100%; }
   .ui-audit-head,
   .ui-audit-meta { align-items: flex-start; flex-direction: column; gap: var(--space-1); }
   .ui-audit-diff { grid-template-columns: 1fr; }
