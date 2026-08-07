@@ -96,29 +96,29 @@ Stop when the focused tests pass and confirm:
 
 **Required behavior**
 
-- [ ] Replace the lead empty state with: **No ups yet this month — new phone-ups appear here as they're assigned.**
-- [ ] Replace the activity empty state with: **Call numbers appear here after the daily CRM import.**
-- [ ] Add **Note for this lead…** only as the placeholder on writable note textareas.
-- [ ] Preserve read-only notes, dirty detection, trimming/null behavior, Save visibility, permissions, and audit behavior.
-- [ ] Continue copying `digitsOnly(customerPhoneE164)`.
-- [ ] Model copy feedback per attempted lead as Idle, Pending, Success, or Failure:
+- [x] Replace the lead empty state with: **No ups yet this month — new phone-ups appear here as they're assigned.**
+- [x] Replace the activity empty state with: **Call numbers appear here after the daily CRM import.**
+- [x] Add **Note for this lead…** only as the placeholder on writable note textareas.
+- [x] Preserve read-only notes, dirty detection, trimming/null behavior, Save visibility, permissions, and audit behavior.
+- [x] Continue copying `digitsOnly(customerPhoneE164)`.
+- [x] Model copy feedback per attempted lead as Idle, Pending, Success, or Failure:
   - Pending: **Copying…**, with repeated activation disabled.
   - Success only after the clipboard promise resolves: **Copied** plus polite **Phone number copied.** announcement.
   - Failure: button returns to **Copy** and visible alert reads **Couldn't copy the phone number. Select the number and copy it manually.**
-- [ ] Clear prior feedback at the beginning of every new attempt.
-- [ ] Clear successful feedback after approximately two seconds.
-- [ ] Replace the success timer after a later success and clean it up on unmount.
-- [ ] Prevent a late completion from an older attempt from overwriting a newer attempt's feedback.
-- [ ] Keep failure visible until retry, replacement by another attempt, or navigation away. Do not add an unverified fallback that reports success.
+- [x] Clear prior feedback at the beginning of every new attempt.
+- [x] Clear successful feedback after approximately two seconds.
+- [x] Replace the success timer after a later success and clean it up on unmount.
+- [x] Prevent a late completion from an older attempt from overwriting a newer attempt's feedback.
+- [x] Keep failure visible until retry, replacement by another attempt, or navigation away. Do not add an unverified fallback that reports success.
 
 **Focused proof**
 
-- [ ] Assert the exact empty-state and placeholder copy, including that the placeholder does not become a draft value.
-- [ ] Use a deferred clipboard promise to prove Pending appears before settlement.
-- [ ] Use fake timers to prove resolved writes alone produce Success and return to Idle after about two seconds.
-- [ ] Prove rejection never produces **Copied**, shows the exact alert, and allows retry.
-- [ ] Prove an older late resolve/reject cannot replace feedback for the latest attempt.
-- [ ] Run:
+- [x] Assert the exact empty-state and placeholder copy, including that the placeholder does not become a draft value.
+- [x] Use a deferred clipboard promise to prove Pending appears before settlement.
+- [x] Use fake timers to prove resolved writes alone produce Success and return to Idle after about two seconds.
+- [x] Prove rejection never produces **Copied**, shows the exact alert, and allows retry.
+- [x] Prove an older late resolve/reject cannot replace feedback for the latest attempt.
+- [x] Run:
   - `pnpm --filter @phoneup/web exec vitest run src/pages/RepDetail.test.ts`
 
 ### Checkpoint 2
@@ -128,6 +128,8 @@ Stop when the focused test passes and confirm:
 - Clipboard success is never optimistic.
 - The timer and stale-promise guards are covered.
 - No other copy control or clipboard store was changed.
+
+**Checkpoint recorded 2026-08-07:** Task 2 implementation is complete locally. The focused command passed with 1 test file and 17 tests. `pnpm --filter @phoneup/web typecheck` passed; web lint completed with 57 warnings and 0 errors; and `git diff --check` passed. The implementation changed only `RepDetail.tsx` and `RepDetail.test.ts`; no other copy control or clipboard store changed. Task 7 desktop/mobile browser verification, the Task 6 integration gate, deployment, and production verification remain unclaimed.
 
 ---
 

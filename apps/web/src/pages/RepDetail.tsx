@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { mutate, query } from '../lib/api'
 import { mutationErrorMessage } from '../lib/mutationError'
 import { canMutateInCurrentView, useAuthStore } from '../state/authStore'
@@ -39,6 +39,117 @@ type ActivityRow = {
 }
 
 export type ReassignTarget = { repId: string; displayName: string }
+
+export type CopyFeedback =
+  | { status: 'idle' }
+  | { status: 'pending' | 'success' | 'failure'; leadId: string }
+
+export type PhoneCopyAuthority = {
+  generation: number
+  successTimer: ReturnType<typeof setTimeout> | null
+}
+
+type StartPhoneCopyInput = {
+  authority: PhoneCopyAuthority
+  leadId: string
+  phone: string
+  writeText: (value: string) => Promise<void>
+  setFeedback: (feedback: CopyFeedback) => void
+}
+
+export function copyButtonPresentation(
+  feedback: CopyFeedback,
+  leadId: string,
+): { label: 'Copy' | 'Copying…' | 'Copied'; disabled: boolean } {
+  if (feedback.status === 'pending' && feedback.leadId === leadId) {
+    return { label: 'Copying…', disabled: true }
+  }
+  if (feedback.status === 'success' && feedback.leadId === leadId) {
+    return { label: 'Copied', disabled: false }
+  }
+  return { label: 'Copy', disabled: false }
+}
+
+export function PhoneCopyNotice({ feedback }: { feedback: CopyFeedback }) {
+  return (
+    <>
+      <span className="ui-sr-only" role="status" aria-live="polite">
+        {feedback.status === 'success' ? 'Phone number copied.' : ''}
+      </span>
+      {feedback.status === 'failure' && (
+        <p className="ui-error" role="alert">
+          Couldn't copy the phone number. Select the number and copy it manually.
+        </p>
+      )}
+    </>
+  )
+}
+
+export async function startPhoneCopy({
+  authority,
+  leadId,
+  phone,
+  writeText,
+  setFeedback,
+}: StartPhoneCopyInput): Promise<void> {
+  const generation = ++authority.generation
+  if (authority.successTimer !== null) {
+    clearTimeout(authority.successTimer)
+    authority.successTimer = null
+  }
+  setFeedback({ status: 'pending', leadId })
+
+  try {
+    await writeText(digitsOnly(phone))
+    if (authority.generation !== generation) return
+    setFeedback({ status: 'success', leadId })
+    authority.successTimer = setTimeout(() => {
+      if (authority.generation !== generation) return
+      authority.successTimer = null
+      setFeedback({ status: 'idle' })
+    }, 2_000)
+  } catch {
+    if (authority.generation !== generation) return
+    setFeedback({ status: 'failure', leadId })
+  }
+}
+
+export function cancelPhoneCopyFeedback(authority: PhoneCopyAuthority): void {
+  authority.generation += 1
+  if (authority.successTimer !== null) {
+    clearTimeout(authority.successTimer)
+    authority.successTimer = null
+  }
+}
+
+export function WritableLeadNote({
+  value,
+  isDirty,
+  onChange,
+  onSave,
+}: {
+  value: string
+  isDirty: boolean
+  onChange: (value: string) => void
+  onSave: () => void
+}) {
+  return (
+    <div className="ui-col">
+      <Textarea
+        value={value}
+        placeholder="Note for this lead…"
+        onChange={(event) => onChange(event.target.value)}
+        rows={2}
+      />
+      {/* Save appears only when the field is dirty */}
+      {isDirty && (
+        <Button size="sm" variant="primary" onClick={onSave}>
+          Save
+        </Button>
+      )}
+    </div>
+  )
+}
 
 export function reassignTargets(roster: ReassignTarget[], currentRepId: string): ReassignTarget[] {
   return roster.filter((target) => target.repId !== currentRepId)
@@ -105,7 +216,8 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
 
   // note drafts, keyed by lead — the Save button only appears when the field is dirty
   const [drafts, setDrafts] = useState<Record<string, string>>({})
-  const [copiedLeadId, setCopiedLeadId] = useState<string | null>(null)
+  const [copyFeedback, setCopyFeedback] = useState<CopyFeedback>({ status: 'idle' })
+  const copyAuthority = useRef<PhoneCopyAuthority>({ generation: 0, successTimer: null })
 
   // §J: inline metric edit, with E's Modal for the required reason
   const [metricTarget, setMetricTarget] = useState<ActivityRow | null>(null)
@@ -138,6 +250,7 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
   }, [repId, canReassign])
 
   useEffect(load, [load])
+  useEffect(() => () => cancelPhoneCopyFeedback(copyAuthority.current), [])
 
   function draftFor(lead: LeadRow): string {
     return drafts[lead.id] ?? lead.note ?? ''
@@ -165,8 +278,13 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
 
   function copyPhone(lead: LeadRow) {
     // Keep phone copies digits-only for dialer-friendly paste behavior.
-    navigator.clipboard.writeText(digitsOnly(lead.customerPhoneE164)).catch(() => {})
-    setCopiedLeadId(lead.id)
+    void startPhoneCopy({
+      authority: copyAuthority.current,
+      leadId: lead.id,
+      phone: lead.customerPhoneE164,
+      writeText: (value) => navigator.clipboard.writeText(value),
+      setFeedback: setCopyFeedback,
+    })
   }
 
   function openMetricEdit(row: ActivityRow) {
@@ -293,11 +411,9 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
       )}
 
       <h3 style={{ marginTop: 'var(--space-6)' }}>Leads this month</h3>
-      <span className="ui-sr-only" role="status" aria-live="polite">
-        {copiedLeadId ? 'Phone number copied.' : ''}
-      </span>
+      <PhoneCopyNotice feedback={copyFeedback} />
       {leads.length === 0 ? (
-        <p className="ui-muted">No leads assigned through the app this month.</p>
+        <p className="ui-muted">No ups yet this month — new phone-ups appear here as they're assigned.</p>
       ) : (
         <Table headers={['Date', 'Customer', 'Phone', 'Assigned by', 'Status', 'Notes', ...(canReassign ? ['Actions'] : [])]}>
           {leads.map((lead) => (
@@ -307,8 +423,12 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
               <td>
                 <div className="ui-row">
                   <span>{formatPhone(lead.customerPhoneE164)}</span>
-                  <Button size="sm" onClick={() => copyPhone(lead)}>
-                    {copiedLeadId === lead.id ? 'Copied' : 'Copy'}
+                  <Button
+                    size="sm"
+                    disabled={copyButtonPresentation(copyFeedback, lead.id).disabled}
+                    onClick={() => copyPhone(lead)}
+                  >
+                    {copyButtonPresentation(copyFeedback, lead.id).label}
                   </Button>
                 </div>
               </td>
@@ -318,19 +438,12 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
               </td>
               <td>
                 {canWriteNotes ? (
-                  <div className="ui-col">
-                    <Textarea
-                      value={draftFor(lead)}
-                      onChange={(e) => setDrafts((d) => ({ ...d, [lead.id]: e.target.value }))}
-                      rows={2}
-                    />
-                    {/* Save appears only when the field is dirty */}
-                    {isDirty(lead) && (
-                      <Button size="sm" variant="primary" onClick={() => saveNote(lead)}>
-                        Save
-                      </Button>
-                    )}
-                  </div>
+                  <WritableLeadNote
+                    value={draftFor(lead)}
+                    isDirty={isDirty(lead)}
+                    onChange={(value) => setDrafts((d) => ({ ...d, [lead.id]: value }))}
+                    onSave={() => saveNote(lead)}
+                  />
                 ) : (
                   <span className={lead.note ? '' : 'ui-muted'}>{lead.note ?? '—'}</span>
                 )}
@@ -351,7 +464,7 @@ export function RepDetail({ repId, onBack }: { repId?: string; onBack?: () => vo
 
       <h3 style={{ marginTop: 'var(--space-6)' }}>Daily activity this month</h3>
       {activity.length === 0 ? (
-        <p className="ui-muted">No activity imported for this month yet.</p>
+        <p className="ui-muted">Call numbers appear here after the daily CRM import.</p>
       ) : (
         <Table headers={['Date', 'Calls', 'Sold', 'Source', ...(canEditMetrics ? ['Edit'] : [])]}>
           {activity.map((row) => (
