@@ -109,6 +109,10 @@ export function dashboardRepDrillDown(
   return effectiveRole && roleHasPermission(effectiveRole, 'rep.view') ? openRep : undefined
 }
 
+export function activityImportStaffNavigation(setPage: (page: Page) => void): () => void {
+  return () => setPage('staff')
+}
+
 export function repBackPage(origin: Page | null, role: Role): Page {
   if (origin && origin !== 'rep' && origin !== 'password') return origin
   return landingPage(role)
@@ -358,7 +362,9 @@ function App() {
         )}
         {activePage === 'users' && <UserManagement />}
         {activePage === 'audit' && <AuditLog />}
-        {activePage === 'import' && <ActivityImport />}
+        {activePage === 'import' && (
+          <ActivityImport onOpenStaff={activityImportStaffNavigation(setPage)} />
+        )}
         {activePage === 'me' && <RepDetail />}
         {activePage === 'password' && (
           <ChangePassword onDone={() => setPage(landingPage(effectiveRole ?? session.role))} />

@@ -6,6 +6,7 @@ import {
   AssignmentDrawerMount,
   AssignmentTriggerFocusRestorer,
   RoleNavigation,
+  activityImportStaffNavigation,
   bootstrapRecoveryVisible,
   canOpenAssignmentDrawer,
   dashboardRepDrillDown,
@@ -99,6 +100,15 @@ describe('app navigation', () => {
 
     // A signed-in ADMIN viewing as a BDC must use the BDC effective role.
     expect(dashboardRepDrillDown('BDC', openRep)).toBeUndefined()
+  })
+
+  it('wires the Import Activity next step to Staff List', () => {
+    const setPage = vi.fn()
+
+    activityImportStaffNavigation(setPage)()
+
+    expect(setPage).toHaveBeenCalledOnce()
+    expect(setPage).toHaveBeenCalledWith('staff')
   })
 
   it('mounts a fresh assignment drawer only while it is open', () => {

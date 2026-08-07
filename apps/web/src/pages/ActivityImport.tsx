@@ -31,7 +31,7 @@ type EligibilityRep = {
   source: 'REPORT' | 'CARRY_FORWARD'
 }
 
-type ImportPreview = ImportSummary & {
+export type ImportPreview = ImportSummary & {
   statusDate: string
   minCallsRequired: number
   eligibleRepsCount: number
@@ -41,12 +41,145 @@ type ImportPreview = ImportSummary & {
   previewToken: string
 }
 
-type ImportResult = ImportPreview & {
+export type ImportResult = ImportPreview & {
   decision: SaveDecision
   deactivatedCount: number
 }
 
-export function ActivityImport() {
+export function staffListFollowUp(
+  result: ImportResult,
+  onOpenStaff: () => void,
+): (() => void) | undefined {
+  return result.decision === 'LOG_AND_DEACTIVATE' && result.deactivatedCount > 0
+    ? onOpenStaff
+    : undefined
+}
+
+export function ActivityImportComplete({
+  result,
+  onOpenStaff,
+  onReset,
+}: {
+  result: ImportResult
+  onOpenStaff: () => void
+  onReset: () => void
+}) {
+  const openStaff = staffListFollowUp(result, onOpenStaff)
+
+  return (
+    <Card className="ui-import-complete" role="status" aria-live="polite">
+      <Badge tone="ok">Saved</Badge>
+      <h3>
+        {result.decision === 'LOG_AND_DEACTIVATE'
+          ? `${result.deactivatedCount} rep${result.deactivatedCount === 1 ? '' : 's'} deactivated`
+          : 'Activity numbers logged'}
+      </h3>
+      <p className="ui-muted">
+        {result.repsMatched} matched rep{result.repsMatched === 1 ? '' : 's'} for{' '}
+        {result.businessDate}.
+      </p>
+      {openStaff && (
+        <p className="ui-muted">
+          Suspensions run through Saturday. To reactivate someone early, open the Staff List.
+        </p>
+      )}
+      <div className="ui-import-actions">
+        <Button onClick={onReset}>Process another report</Button>
+        {openStaff && <Button onClick={openStaff}>Open Staff List</Button>}
+      </div>
+    </Card>
+  )
+}
+
+export function ActivityImportSummary({
+  summary,
+  committed,
+}: {
+  summary: ImportPreview | ImportResult
+  committed: boolean
+}) {
+  return (
+    <div className="ui-stack ui-section-gap">
+      <h3>{committed ? 'Import summary' : 'Report summary'} — {summary.businessDate}</h3>
+      <Table headers={['Result', 'Count', 'Detail']}>
+        <tr>
+          <td>Rows parsed</td>
+          <td>{summary.rowsParsed}</td>
+          <td className="ui-muted">Data rows after the two header rows</td>
+        </tr>
+        <tr>
+          <td>Reps matched</td>
+          <td>{summary.repsMatched}</td>
+          <td className="ui-muted">Matched on display name</td>
+        </tr>
+        <tr>
+          <td>Would be ineligible</td>
+          <td>{summary.ineligibleReps.length}</td>
+          <td className="ui-muted">Calculated for {summary.statusDate}</td>
+        </tr>
+        <tr>
+          <td>Reps missing from report</td>
+          <td>{summary.repsMissingFromFile.length}</td>
+          <td>
+            {summary.repsMissingFromFile.length === 0 ? (
+              <span className="ui-muted">—</span>
+            ) : (
+              <>
+                <Badge tone="neutral">No numbers found</Badge>{' '}
+                This file had no activity numbers for these reps. The import records 0 unless a
+                hand-entered correction already exists; correct their activity on the rep's page if
+                they worked: {summary.repsMissingFromFile.join(', ')}
+              </>
+            )}
+          </td>
+        </tr>
+        <tr>
+          <td>Names not matched to staff</td>
+          <td>{summary.unmatchedNames.length}</td>
+          <td>
+            {summary.unmatchedNames.length === 0 ? (
+              <span className="ui-muted">—</span>
+            ) : (
+              <>
+                <Badge tone="warn">Not imported</Badge>{' '}
+                These report names did not match a Staff List display name. Check the spelling:{' '}
+                {summary.unmatchedNames.join(', ')}
+              </>
+            )}
+          </td>
+        </tr>
+        <tr>
+          <td>Not evaluated</td>
+          <td>{summary.notEvaluatedReps.length}</td>
+          <td>
+            {summary.notEvaluatedReps.length === 0 ? (
+              <span className="ui-muted">—</span>
+            ) : (
+              summary.notEvaluatedReps.map((rep) => (
+                <div key={rep.repId}>
+                  <Badge tone="warn">skipped</Badge> {rep.displayName}: {rep.reason}
+                </div>
+              ))
+            )}
+          </td>
+        </tr>
+        <tr>
+          <td>Hand-entered corrections kept</td>
+          <td>{summary.manualRowsPreserved.length}</td>
+          <td>
+            {summary.manualRowsPreserved.length === 0 ? (
+              <span className="ui-muted">—</span>
+            ) : (
+              <>This file did not overwrite saved corrections for: {summary.manualRowsPreserved.join(', ')}</>
+            )}
+          </td>
+        </tr>
+      </Table>
+    </div>
+  )
+}
+
+export function ActivityImport({ onOpenStaff }: { onOpenStaff: () => void }) {
   const { viewAsUserId } = useAuthStore()
   const [csv, setCsv] = useState('')
   const [filename, setFilename] = useState('')
@@ -319,96 +452,14 @@ export function ActivityImport() {
       )}
 
       {result && phase === 'done' && (
-        <Card className="ui-import-complete" role="status" aria-live="polite">
-          <Badge tone="ok">Saved</Badge>
-          <h3>
-            {result.decision === 'LOG_AND_DEACTIVATE'
-              ? `${result.deactivatedCount} rep${result.deactivatedCount === 1 ? '' : 's'} deactivated`
-              : 'Activity numbers logged'}
-          </h3>
-          <p className="ui-muted">
-            {result.repsMatched} matched rep{result.repsMatched === 1 ? '' : 's'} for{' '}
-            {result.businessDate}.
-          </p>
-          <Button onClick={cancelEntireImport}>Process another report</Button>
-        </Card>
+        <ActivityImportComplete
+          result={result}
+          onOpenStaff={onOpenStaff}
+          onReset={cancelEntireImport}
+        />
       )}
 
-      {summary && (
-        <div className="ui-stack ui-section-gap">
-          <h3>{result ? 'Import summary' : 'Report summary'} — {summary.businessDate}</h3>
-          <Table headers={['Result', 'Count', 'Detail']}>
-            <tr>
-              <td>Rows parsed</td>
-              <td>{summary.rowsParsed}</td>
-              <td className="ui-muted">Data rows after the two header rows</td>
-            </tr>
-            <tr>
-              <td>Reps matched</td>
-              <td>{summary.repsMatched}</td>
-              <td className="ui-muted">Matched on display name</td>
-            </tr>
-            <tr>
-              <td>Would be ineligible</td>
-              <td>{summary.ineligibleReps.length}</td>
-              <td className="ui-muted">Calculated for {summary.statusDate}</td>
-            </tr>
-            <tr>
-              <td>Not in the file</td>
-              <td>{summary.repsMissingFromFile.length}</td>
-              <td>
-                {summary.repsMissingFromFile.length === 0 ? (
-                  <span className="ui-muted">—</span>
-                ) : (
-                  <>
-                    <Badge tone="neutral">0 unless manually corrected</Badge>{' '}
-                    {summary.repsMissingFromFile.join(', ')}
-                  </>
-                )}
-              </td>
-            </tr>
-            <tr>
-              <td>Unmatched names</td>
-              <td>{summary.unmatchedNames.length}</td>
-              <td>
-                {summary.unmatchedNames.length === 0 ? (
-                  <span className="ui-muted">—</span>
-                ) : (
-                  <>
-                    <Badge tone="warn">not imported</Badge> {summary.unmatchedNames.join(', ')}
-                  </>
-                )}
-              </td>
-            </tr>
-            <tr>
-              <td>Not evaluated</td>
-              <td>{summary.notEvaluatedReps.length}</td>
-              <td>
-                {summary.notEvaluatedReps.length === 0 ? (
-                  <span className="ui-muted">—</span>
-                ) : (
-                  summary.notEvaluatedReps.map((rep) => (
-                    <div key={rep.repId}>
-                      <Badge tone="warn">skipped</Badge> {rep.displayName}: {rep.reason}
-                    </div>
-                  ))
-                )}
-              </td>
-            </tr>
-            <tr>
-              <td>Manual rows preserved</td>
-              <td>{summary.manualRowsPreserved.length}</td>
-              <td>
-                {summary.manualRowsPreserved.length === 0 ? (
-                  <span className="ui-muted">—</span>
-                ) : (
-                  summary.manualRowsPreserved.join(', ')
-                )}
-              </td>
-            </tr>
-          </Table>
-        </div>
-      )}
+      {summary && <ActivityImportSummary summary={summary} committed={result !== null} />}
     </div>
   )
 }

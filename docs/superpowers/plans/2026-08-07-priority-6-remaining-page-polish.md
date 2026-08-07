@@ -146,26 +146,26 @@ Stop when the focused test passes and confirm:
 
 **Required behavior**
 
-- [ ] Keep table structure, counts, names, result data, badges' existing tones, and zero-result dashes.
-- [ ] Rename **Not in the file** to **Reps missing from report**.
-- [ ] For a nonzero missing count, use badge **No numbers found** followed by: **This file had no activity numbers for these reps. The import records 0 unless a hand-entered correction already exists; correct their activity on the rep's page if they worked:** and then the affected names.
-- [ ] Rename **Unmatched names** to **Names not matched to staff**.
-- [ ] For a nonzero unmatched count, use badge **Not imported** followed by: **These report names did not match a Staff List display name. Check the spelling:** and then the affected names.
-- [ ] Rename **Manual rows preserved** to **Hand-entered corrections kept** and show: **This file did not overwrite saved corrections for:** followed by the affected names.
-- [ ] Keep missing, unmatched, not evaluated, and corrected rows separate; do not alter imported values or eligibility behavior.
-- [ ] Add an `onOpenStaff` callback to `ActivityImport` and wire it in `App.tsx` to the existing `setPage('staff')` path.
-- [ ] Only after a committed `LOG_AND_DEACTIVATE` with `deactivatedCount > 0`, show: **Suspensions run through Saturday. To reactivate someone early, open the Staff List.**
-- [ ] In that same state, render a real **Open Staff List** button beside **Process another report** and invoke the callback without mutating status or clearing import data first.
-- [ ] Do not show the suspension copy or Staff List action for `LOG_ONLY` or a zero-deactivation result.
-- [ ] Preserve **Process another report** and its current local reset behavior in every result state.
+- [x] Keep table structure, counts, names, result data, badges' existing tones, and zero-result dashes.
+- [x] Rename **Not in the file** to **Reps missing from report**.
+- [x] For a nonzero missing count, use badge **No numbers found** followed by: **This file had no activity numbers for these reps. The import records 0 unless a hand-entered correction already exists; correct their activity on the rep's page if they worked:** and then the affected names.
+- [x] Rename **Unmatched names** to **Names not matched to staff**.
+- [x] For a nonzero unmatched count, use badge **Not imported** followed by: **These report names did not match a Staff List display name. Check the spelling:** and then the affected names.
+- [x] Rename **Manual rows preserved** to **Hand-entered corrections kept** and show: **This file did not overwrite saved corrections for:** followed by the affected names.
+- [x] Keep missing, unmatched, not evaluated, and corrected rows separate; do not alter imported values or eligibility behavior.
+- [x] Add an `onOpenStaff` callback to `ActivityImport` and wire it in `App.tsx` to the existing `setPage('staff')` path.
+- [x] Only after a committed `LOG_AND_DEACTIVATE` with `deactivatedCount > 0`, show: **Suspensions run through Saturday. To reactivate someone early, open the Staff List.**
+- [x] In that same state, render a real **Open Staff List** button beside **Process another report** and invoke the callback without mutating status or clearing import data first.
+- [x] Do not show the suspension copy or Staff List action for `LOG_ONLY` or a zero-deactivation result.
+- [x] Preserve **Process another report** and its current local reset behavior in every result state.
 
 **Focused proof**
 
-- [ ] Render representative nonzero summary rows and assert the three exact labels, badges, explanations, and names.
-- [ ] Assert all outcomes remain separate and zero-result rows still show a dash.
-- [ ] Assert only a nonzero committed deactivation renders and invokes **Open Staff List**.
-- [ ] Assert App wiring reaches Staff List and retains page-heading focus behavior.
-- [ ] Run:
+- [x] Render representative nonzero summary rows and assert the three exact labels, badges, explanations, and names.
+- [x] Assert all outcomes remain separate and zero-result rows still show a dash.
+- [x] Assert only a nonzero committed deactivation renders and invokes **Open Staff List**.
+- [x] Assert App wiring reaches Staff List and retains page-heading focus behavior.
+- [x] Run:
   - `pnpm --filter @phoneup/web exec vitest run src/pages/activityImportFlow.test.ts src/App.test.ts`
   - Include any new focused Activity Import test file in this command.
 
@@ -176,6 +176,8 @@ Stop when the focused tests pass and confirm:
 - Import preview/commit semantics are unchanged.
 - Navigation has no status side effect.
 - Log-only and zero-deactivation results do not advertise reactivation work.
+
+**Checkpoint recorded 2026-08-07:** Task 3 implementation is complete locally. The focused command included `ActivityImport.test.ts` and passed with 3 test files and 19 tests. `pnpm --filter @phoneup/web typecheck` passed, and `git diff --check` passed. Import preview/commit calls and eligibility data were unchanged; **Open Staff List** only changes the in-memory page to `staff`, without resetting import state or writing status. `LOG_ONLY` and zero-deactivation results retain **Process another report** but show no suspension guidance or Staff List action. Task 7 browser verification, the Task 6 integration gate, deployment, and production verification remain unclaimed.
 
 ---
 
