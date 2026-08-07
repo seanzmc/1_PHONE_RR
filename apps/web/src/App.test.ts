@@ -8,6 +8,7 @@ import {
   RoleNavigation,
   bootstrapRecoveryVisible,
   canOpenAssignmentDrawer,
+  dashboardRepDrillDown,
   focusPageHeading,
   landingPage,
   navigationForRole,
@@ -85,6 +86,19 @@ describe('app navigation', () => {
     expect(canOpenAssignmentDrawer(true, null)).toBe(true)
     expect(canOpenAssignmentDrawer(true, 'viewed-user')).toBe(false)
     expect(canOpenAssignmentDrawer(false, null)).toBe(false)
+  })
+
+  it('supplies Dashboard rep drill-down only for the effective role with rep.view', () => {
+    const openRep = vi.fn()
+
+    expect(dashboardRepDrillDown('ADMIN', openRep)).toBe(openRep)
+    expect(dashboardRepDrillDown('MANAGER', openRep)).toBe(openRep)
+    expect(dashboardRepDrillDown('BDC', openRep)).toBeUndefined()
+    expect(dashboardRepDrillDown('REP', openRep)).toBeUndefined()
+    expect(dashboardRepDrillDown(null, openRep)).toBeUndefined()
+
+    // A signed-in ADMIN viewing as a BDC must use the BDC effective role.
+    expect(dashboardRepDrillDown('BDC', openRep)).toBeUndefined()
   })
 
   it('mounts a fresh assignment drawer only while it is open', () => {

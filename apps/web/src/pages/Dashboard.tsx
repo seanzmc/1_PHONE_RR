@@ -48,6 +48,93 @@ export function DashboardLoadAlert({ onRetry }: { onRetry: () => void }) {
   )
 }
 
+export function DashboardSummary({
+  summary,
+  onOpenRep,
+}: {
+  summary: Summary
+  onOpenRep?: (repId: string) => void
+}) {
+  return (
+    <>
+      <h3>Team totals — {summary.periodKey}</h3>
+      <div className="ui-card-grid ui-section-gap-sm">
+        <MetricCard
+          label="Phone-ups assigned"
+          value={summary.totals.assignmentsMtd}
+          hint="Phone-ups currently credited this month; voided assignments are removed."
+        />
+        <MetricCard
+          label="CRM sales"
+          value={summary.totals.salesMtd}
+          hint="Sum of the CRM Sold values imported for active reps this month."
+        />
+        <MetricCard
+          label="Reassignments"
+          value={summary.totals.reassignmentsMtd}
+          hint="Lead reassignments completed this month."
+        />
+        <MetricCard
+          label="Call-rule deactivations"
+          value={summary.totals.deactivationsMtd}
+          hint="One per weekly call-rule suspension, not one per inactive day."
+        />
+      </div>
+
+      <h3 className="ui-section-gap">Today and current cycle</h3>
+      <div className="ui-card-grid">
+        <MetricCard
+          label="Cycle progress"
+          value={`${summary.cycleProgress.served} / ${summary.cycleProgress.totalReps}`}
+          hint="Active reps served in the current rotation cycle; the cycle restarts after everyone is served."
+        />
+        <MetricCard
+          label="Ineligible today"
+          value={summary.disqualifiedCount}
+          hint="Active reps out of rotation today, for any reason."
+        />
+        <MetricCard
+          label="Overrides today"
+          value={summary.overrideCount}
+          hint="Manager status changes recorded for today."
+        />
+      </div>
+
+      <Card title="Ups per rep (this month)" className="ui-stack">
+        {onOpenRep && (
+          <p className="ui-muted">Select a rep name to view their leads, activity, and status for the month.</p>
+        )}
+        {summary.upsPerRep.length === 0 ? (
+          <p className="ui-muted">No ups assigned yet this month.</p>
+        ) : (
+          <ul className="ui-list">
+            {[...summary.upsPerRep]
+              .sort((a, b) => b.ups - a.ups)
+              .map((r) => (
+                <li key={r.repId ?? r.repName}>
+                  {onOpenRep && r.repId ? (
+                    <button
+                      type="button"
+                      className="ui-linkbtn"
+                      aria-label={`View ${r.repName}'s rep details`}
+                      onClick={() => onOpenRep(r.repId!)}
+                    >
+                      {r.repName} <span aria-hidden="true">→</span>
+                    </button>
+                  ) : (
+                    r.repName
+                  )}
+                  <span className="ui-toolbar-spacer" />
+                  <strong>{r.ups}</strong>
+                </li>
+              ))}
+          </ul>
+        )}
+      </Card>
+    </>
+  )
+}
+
 export function Dashboard({ onOpenRep }: { onOpenRep?: (repId: string) => void }) {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loadError, setLoadError] = useState(false)
@@ -90,49 +177,7 @@ export function Dashboard({ onOpenRep }: { onOpenRep?: (repId: string) => void }
     <div className="ui-page">
       <h2>Team Dashboard</h2>
       {loadError && <DashboardLoadAlert onRetry={load} />}
-
-      <h3>Team totals — {summary.periodKey}</h3>
-      <div className="ui-card-grid ui-section-gap-sm">
-        <MetricCard label="Phone-ups assigned" value={summary.totals.assignmentsMtd} hint="Void-correct month total" />
-        <MetricCard label="CRM sales" value={summary.totals.salesMtd} hint="Imported month total" />
-        <MetricCard label="Reassignments" value={summary.totals.reassignmentsMtd} hint="Moves completed this month" />
-        <MetricCard label="Call-rule deactivations" value={summary.totals.deactivationsMtd} hint="Distinct suspension episodes" />
-      </div>
-
-      <h3 className="ui-section-gap">Today and current cycle</h3>
-      <div className="ui-card-grid">
-        <MetricCard
-          label="Cycle progress"
-          value={`${summary.cycleProgress.served} / ${summary.cycleProgress.totalReps}`}
-          hint="Reps served this cycle"
-        />
-        <MetricCard label="Ineligible today" value={summary.disqualifiedCount} />
-        <MetricCard label="Overrides today" value={summary.overrideCount} />
-      </div>
-
-      <Card title="Ups per rep (this month)" className="ui-stack">
-        {summary.upsPerRep.length === 0 ? (
-          <p className="ui-muted">No ups assigned yet this month.</p>
-        ) : (
-          <ul className="ui-list">
-            {[...summary.upsPerRep]
-              .sort((a, b) => b.ups - a.ups)
-              .map((r) => (
-                <li key={r.repId ?? r.repName}>
-                  {onOpenRep && r.repId ? (
-                    <button type="button" className="ui-linkbtn" onClick={() => onOpenRep(r.repId!)}>
-                      {r.repName}
-                    </button>
-                  ) : (
-                    r.repName
-                  )}
-                  <span className="ui-toolbar-spacer" />
-                  <strong>{r.ups}</strong>
-                </li>
-              ))}
-          </ul>
-        )}
-      </Card>
+      <DashboardSummary summary={summary} onOpenRep={onOpenRep} />
     </div>
   )
 }

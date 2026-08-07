@@ -102,6 +102,13 @@ export function canOpenAssignmentDrawer(canAssign: boolean, viewAsUserId: string
   return canAssign && viewAsUserId === null
 }
 
+export function dashboardRepDrillDown(
+  effectiveRole: Role | null,
+  openRep: (repId: string) => void,
+): ((repId: string) => void) | undefined {
+  return effectiveRole && roleHasPermission(effectiveRole, 'rep.view') ? openRep : undefined
+}
+
 export function repBackPage(origin: Page | null, role: Role): Page {
   if (origin && origin !== 'rep' && origin !== 'password') return origin
   return landingPage(role)
@@ -346,7 +353,9 @@ function App() {
 
       <main ref={mainRef}>
         {activePage === 'staff' && <StaffList onOpenRep={openRep} />}
-        {activePage === 'dashboard' && <Dashboard onOpenRep={openRep} />}
+        {activePage === 'dashboard' && (
+          <Dashboard onOpenRep={dashboardRepDrillDown(effectiveRole, openRep)} />
+        )}
         {activePage === 'users' && <UserManagement />}
         {activePage === 'audit' && <AuditLog />}
         {activePage === 'import' && <ActivityImport />}

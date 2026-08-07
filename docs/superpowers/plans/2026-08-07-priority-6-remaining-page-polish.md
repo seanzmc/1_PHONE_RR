@@ -27,20 +27,22 @@ Complete the remaining page-level polish without changing business rules, permis
 
 ## Dependency map
 
-| Task | Slice | Depends on |
-| --- | --- | --- |
-| 1 | Team Dashboard copy and permission-aligned rep drill-down | None |
-| 2 | Rep Detail empty states, note prompt, and truthful clipboard feedback | None |
-| 3 | Import Activity manager language and Staff List next step | None |
-| 4 | Additive Audit Log API read model | None |
-| 5 | Audit Log human-readable event cards | Task 4 |
-| 6 | Local integration gate | Tasks 1–5 |
-| 7 | Authenticated browser checkpoint | Task 6 |
-| 8 | Documentation handoff | Tasks 6–7, using only completed evidence |
+| Task | Slice | Depends on | Browser verification |
+| --- | --- | --- | --- |
+| 1 | Team Dashboard copy and permission-aligned rep drill-down | None | **Required in Task 7** |
+| 2 | Rep Detail empty states, note prompt, and truthful clipboard feedback | None | **Required in Task 7** |
+| 3 | Import Activity manager language and Staff List next step | None | **Required in Task 7** |
+| 4 | Additive Audit Log API read model | None | Not directly; prove with API tests |
+| 5 | Audit Log human-readable event cards | Task 4 | **Required in Task 7** |
+| 6 | Local integration gate | Tasks 1–5 | No; prerequisite for Task 7 |
+| 7 | Authenticated browser checkpoint | Task 6 | **This is the browser gate** |
+| 8 | Documentation handoff | Tasks 6–7, using only completed evidence | No new browser run |
 
 ---
 
 ## Task 1 — Team Dashboard definitions and authorized rep drill-down
+
+**Browser verification:** Required in Task 7 at desktop and mobile sizes, including a Manager flow and one BDC or REP permission check.
 
 **Files**
 
@@ -84,6 +86,8 @@ Stop when the focused tests pass and confirm:
 ---
 
 ## Task 2 — Rep Detail guidance and clipboard state machine
+
+**Browser verification:** Required in Task 7 at desktop and mobile sizes, including successful copy/reset and simulated clipboard rejection.
 
 **Files**
 
@@ -129,6 +133,8 @@ Stop when the focused test passes and confirm:
 
 ## Task 3 — Import Activity language and Staff List next step
 
+**Browser verification:** Required in Task 7 for representative summary rows and a committed nonzero deactivation leading to Staff List.
+
 **Files**
 
 - Modify: `apps/web/src/pages/ActivityImport.tsx`
@@ -172,6 +178,8 @@ Stop when the focused tests pass and confirm:
 ---
 
 ## Task 4 — Add the Audit Log display-only API read model
+
+**Browser verification:** Not required directly. Prove this backend slice with focused API tests; Task 5's rendered use of the read model is browser-verified in Task 7.
 
 **Files**
 
@@ -232,6 +240,8 @@ Stop when the focused API test passes and record:
 
 ## Task 5 — Render human-readable Audit Log cards
 
+**Browser verification:** Required in Task 7 at desktop and mobile sizes, including resolved, duplicate-name, unavailable-record, and Technical details cases.
+
 **Files**
 
 - Modify: `apps/web/src/pages/AuditLog.tsx`
@@ -275,6 +285,8 @@ Stop when the focused web test passes and confirm:
 
 ## Task 6 — Local integration gate
 
+**Browser verification:** Not part of this task. This checkpoint must pass before Task 7 starts.
+
 Run this only after Tasks 1–5 pass independently.
 
 **Preflight**
@@ -301,6 +313,8 @@ Stop and report exact command results. Do not proceed to browser or deployment v
 
 ## Task 7 — Authenticated local browser checkpoint
 
+**Browser verification:** Required. This task is the consolidated browser gate for Tasks 1, 2, 3, and 5.
+
 Run only after Checkpoint 6 passes. Use a local Manager fixture at 1024×768 and 390×844, plus one BDC or REP Dashboard permission check. Retain existing evidence for unchanged flows.
 
 - [ ] Team Dashboard: verify all hints remain visible and legible, cards remain responsive, Manager rep names clearly open the intended Rep Detail, return behavior works, and page-heading focus is retained.
@@ -319,6 +333,8 @@ Record viewport, role, fixture, scenarios passed, artifacts retained, and any un
 ---
 
 ## Task 8 — Documentation handoff
+
+**Browser verification:** No new run. Record only the evidence produced by Task 7 and any explicit gaps.
 
 Only after implementation evidence exists:
 
