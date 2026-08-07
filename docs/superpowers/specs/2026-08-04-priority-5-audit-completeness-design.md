@@ -3,8 +3,9 @@
 **Date:** 2026-08-04
 **Status:** The backend checkpoint is implemented on `main` through `363af90`; do not reimplement
 it. The Audit Log web slice was implemented locally on August 6, 2026 with focused tests, type
-checking, lint, and a production build passing. Authenticated browser proof and a clean-database
-final integration run remain open.
+checking, lint, and a production build passing. The authenticated local Manager Audit Log flow
+passed at desktop and true 390×844 mobile viewports, and the clean-database final integration gate
+passed under Node 22.22.3. Only the explicitly unrun browser cases remain open locally.
 
 ## Decision
 
@@ -68,11 +69,8 @@ column, metric, or reconciliation rule.
 
 ### Genuinely open
 
-- Authenticated Manager/Admin browser proof, including the 390×844 accessibility/layout pass, has
-  not been run for the local web checkpoint.
-- The required final workspace suite still needs a freshly migrated and seeded guarded test
-  database. The available shared test database was contaminated by prior rows and could not serve
-  as that gate.
+- Admin/other-role browser coverage, pagination, a combined no-results set, and load-failure/Retry
+  have not been run. The Manager fixture had only seven events, so it could not exercise paging.
 - No lead-level sold-status action exists. CRM-imported `rep_daily_activity.sold` is an aggregate
   and cannot yet be reconciled to individual leads.
 
@@ -313,9 +311,11 @@ Implemented locally in the web checkpoint:
 - `apps/web/src/pages/AuditLog.test.ts`
 - `apps/web/src/styles/ui.css`
 - `docs/Revised consolidated action list.md`
+- `packages/db/src/seed.ts` now seeds the New York business date rather than the UTC calendar date,
+  so the guarded fixture remains eligible during the post-midnight-UTC evening window.
 
-Remaining verification surface is the authenticated browser matrix and one clean-database final
-workspace suite; no additional product implementation is currently identified.
+Remaining local verification surface is limited to the explicitly unrun browser cases; no
+additional Audit Log product implementation is currently identified.
 
 No database migration, route rename, permission, navigation, realtime, or dependency change is
 expected. The bounded assignment-ledger change is the typed zero-credit `QUEUE` event above.
@@ -396,21 +396,58 @@ implementation tasks:
   stale null payload from the shared database. The same run printed extensive pre-existing
   counter drift, so this was not the freshly migrated and seeded guarded database required by
   this spec. Per the bounded workflow, the contaminated fixture was not repeatedly rerun.
-- Authenticated browser verification was not performed in this checkpoint. These results are not
+- These results were followed by the authenticated local Manager browser pass recorded below. They
+  are not deployment or production verification.
+
+### Recorded authenticated Manager browser verification
+
+- On August 6, 2026, the Audit Log flow passed with the existing `phoneup_browser_test` fixture and
+  a Manager account. Pending migrations were applied first because the local fixture lacked the
+  current `is_protected` column.
+- At 1280×633, Audit Log opened through Management navigation and rendered all seven fixture events
+  newest-first. Action, actor, affected-kind, and date controls were present and labeled. Filtering
+  by **Skipped rep and passed lead** sent `action: "lead.skip"` and returned exactly three matching
+  events; Clear restored all seven. Technical details expanded to readable Before/After JSON.
+- At a true 390×844 viewport, filter controls stacked in one column, Apply/Clear filled the
+  available width, and all seven cards wrapped without horizontal overflow. The measured document
+  width was 390 pixels. No overlap or clipping was observed at either viewport.
+- `audit.list` and `audit.filterOptions` returned HTTP 200. There were no failed HTTP requests,
+  network-loading failures, Audit Log console errors, alerts, or uncaught JavaScript exceptions.
+  Two transient board WebSocket close-before-connect warnings occurred during automated page
+  navigation but did not affect Audit Log traffic or rendering.
+- Local API and Vite processes were stopped and the temporary Manager session was removed after the
+  pass. The mobile screenshot is `output/audit-log-verification/manager-mobile-390.png`.
+- This fixture contained only seven events, so pagination was not run. Other roles/pages/mutations,
+  a combined no-results set, and load-failure/Retry were also not run. This local proof is not
   deployment or production verification.
 
-### Full and browser verification
+### Recorded clean-database final integration gate
+
+- On August 6, 2026 under Node 22.22.3, a freshly created local PostgreSQL database was migrated and
+  seeded before running the serial workspace gate.
+- The first fresh attempt exposed a fixture boundary bug rather than an Audit Log failure: after
+  midnight UTC but before midnight in New York, `seed.ts` created rep shifts and statuses for the
+  UTC date while assignment eligibility queried the New York business date. That left the fresh
+  fixture with no eligible reps and caused six assignment/void assertions to fail.
+- `packages/db/src/seed.ts` now derives its date through the shared `businessDate` helper. A new
+  replacement database confirmed all three seeded status rows used the current New York business
+  date before the gate was retried once.
+- Workspace type checking passed. All 59 test files and 474 tests passed: contracts 11, core 18,
+  API 275, and web 170. Web lint completed with the established 53 Fast Refresh/export warnings and
+  no errors. The production web build and `git diff --check` also passed.
+- The disposable guarded databases were removed after validation. This remains local integration
+  evidence, not deployment or production verification.
+
+### Remaining browser verification
 
 - Do not rerun the completed backend-only matrix before web implementation unless a backend path
-  changes. After the remaining web slice is complete, run focused Audit Log tests, the affected
-  package checks, and one final serial workspace suite under the repository-declared Node 22.x
-  runtime.
-- Run workspace type checking, web lint, the production web build, and `git diff --check`.
-- In an authenticated local browser, run one Manager functional pass at 1024x768 covering filters,
-  a combined no-results set, Clear, paging with filters retained, creation details, and load
-  failure/Retry.
-- Run one Admin permission smoke test, plus one 390x844 accessibility/layout pass covering labels,
-  keyboard reachability, status announcements, and narrow-layout containment.
+  changes. The final serial workspace gate and affected package checks are complete.
+- The Manager desktop/mobile pass above covers navigation, action filtering, Clear, Technical
+  details, labeled controls, and narrow-layout containment. Do not repeat those successful cases
+  without new evidence that invalidates them.
+- Complete only the uncovered browser cases: a combined no-results set, pagination with filters
+  retained using a fixture with more than one page, load failure/Retry, an Admin permission smoke
+  test, and any keyboard/status-announcement checks not established by the recorded pass.
 - API permission tests carry BDC and Rep denial coverage. Recheck only that read-only Admin View-as
   does not gain mutation behavior.
 

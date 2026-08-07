@@ -13,7 +13,7 @@
  * For a real deployment use `pnpm --filter @phoneup/db import-roster` instead.
  */
 import { randomUUID, scryptSync } from 'node:crypto'
-import { generateTempPassword } from '@phoneup/core'
+import { businessDate, generateTempPassword } from '@phoneup/core'
 import { db, schema } from './client'
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '0.0.0.0'])
@@ -105,7 +105,7 @@ async function seed() {
     })
     .returning()
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = businessDate(new Date())
   const repNames = ['Alex Rep', 'Bailey Rep', 'Casey Rep']
   const repIds: string[] = []
 
