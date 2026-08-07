@@ -45,7 +45,7 @@ Completed locally on August 2, 2026. App navigation tests passed 10/10, contract
 
 Completed locally on August 3, 2026, including the bounded whole-branch final fixer wave. Weekly call-rule suspensions now survive automatic eligible/no-DQ evaluations until explicit manager reactivation; Staff List concurrent editing preserves only touched active drafts and saves only touched rows still different from the latest baseline; Team Dashboard accepts only the latest request and preserves its last good summary behind a visible warning and Retry; and blank or whitespace account names consistently fall back to email in User Management. Under the repository's required Node 22 runtime, focused post-fix suites passed 31 eligibility, 33 Staff List, 5 Dashboard, and 16 User Management tests. A second freshly migrated and seeded guarded database passed the complete 57-file, 412-test matrix: core 16, contracts 11, API 221, and web 164. Workspace type checking, web lint with the established 48 warnings, the production web build, and `git diff --check 2c893b8..HEAD` also exited successfully. Fresh two-session Playwright proof showed a Manager's touched Alex/Tue draft survive while an Admin's remote untouched Bailey/Fri update was adopted; the Manager save submitted Alex only. Controlled Dashboard routes then proved a delayed 111 response could not replace the newer 222 summary, a latest-request HTTP 500 preserved 222 while exposing the stale-data alert and Retry, and Retry advanced the summary to 333 and cleared the alert. Earlier accepted management, accessibility, activity-import, Dashboard realtime, and open Assignment Drawer evidence remains in force. The disposable databases and local server were removed afterward; all 92 Priority 4 browser artifacts, including 20 from this final wave, were retained locally for review. This work has not been deployed or production-verified.
 
-## Priority 5 — Audit completeness — Local integration complete; browser edge cases pending
+## Priority 5 — Audit completeness — Local verification complete
 
 Add missing Audit Log events for:
 
@@ -75,15 +75,28 @@ automated navigation did not affect Audit Log HTTP traffic or rendering. The exi
 `phoneup_browser_test` fixture required pending migrations for `is_protected`; local processes and
 the temporary Manager session were removed afterward. The mobile artifact is
 `output/audit-log-verification/manager-mobile-390.png`. Pagination was not exercised because the
-fixture contained only seven events; Admin/other-role, no-results, and load-failure/Retry browser
-coverage remain open. The final clean-database gate subsequently passed on a freshly migrated and
-seeded guarded PostgreSQL database: type checking, all 59 test files and 474 tests (contracts 11,
-core 18, API 275, web 170), web lint with the established 53 warnings and no errors, the production
-build, and `git diff --check` succeeded under Node 22.22.3. The first fresh run exposed and fixed a
-late-evening fixture bug in `packages/db/src/seed.ts`: it now uses the New York business date rather
-than the UTC calendar date, keeping seeded shifts/statuses aligned with API eligibility after
-midnight UTC. The disposable test databases were removed afterward. This work has not been deployed
-or production-verified.
+fixture contained only seven events; the subsequent targeted browser pass added 55 temporary events
+and completed pagination, combined no-results, load-failure/Retry, Admin, View-as BDC, keyboard,
+focus, live-status, and pending-control coverage. Page 1 showed 50 filtered events with Previous
+disabled and Next enabled; Page 2 retained the filter and showed the remaining five, with the button
+states reversed. The no-results state used **No audit events match these filters.** A simulated
+`audit.list` failure retained prior rows and exposed a keyboard-operable Retry that cleared the
+alert and restored 50 rows. A real Admin could access Audit Log, while Admin View-as BDC showed the
+read-only banner and removed Assign Lead, Management, and Audit Log. Enter activated Apply, Next,
+and Retry; the page heading received programmatic `tabindex="-1"` focus; pending requests announced
+**Updating audit log…** through polite status; pending controls disabled while prior rows remained;
+and failures used `role="alert"`. The five new artifacts are
+`pagination-page-1.png`, `pagination-page-2.png`, `combined-no-results.png`,
+`load-failure-retry.png`, and `admin-view-as-bdc.png` in `output/audit-log-verification/`.
+All temporary events were removed, returning the fixture to seven audit events, and API/Vite were
+stopped with ports 3000 and 5173 no longer listening. The final clean-database gate also passed on a
+freshly migrated and seeded guarded PostgreSQL database: type checking, all 59 test files and 474
+tests (contracts 11, core 18, API 275, web 170), web lint with the established 53 warnings and no
+errors, the production build, and `git diff --check` succeeded under Node 22.22.3. The first fresh
+run exposed and fixed a late-evening fixture bug in `packages/db/src/seed.ts`: it now uses the New
+York business date rather than the UTC calendar date, keeping seeded shifts/statuses aligned with
+API eligibility after midnight UTC. The disposable test databases were removed afterward. This work
+has not been deployed or production-verified.
 
 ## Priority 6 — Remaining page polish
 
@@ -98,4 +111,4 @@ These require operational verification or a product decision:
 Confirm the display-name backfill actually ran in production.
 Verify whether the CRM Sold column is daily or cumulative using a real import.
 Keep “Mark a lead sold” deferred until CRM-total versus lead-attribution semantics are decided.
-Priorities 1–5 are implemented. Priority 1 is deployed and production-verified; Priorities 2–5 are locally implemented but not deployed. Priority 5's clean-database integration gate and authenticated local Manager Audit Log flow passed; only the explicitly unrun Admin/other-role, pagination, no-results, and failure/Retry browser cases remain open before deployment and production verification. Priority 6 remains open. Priority 4 and Priority 5 validation ran under the repository's required Node 22.x runtime.
+Priorities 1–5 are implemented. Priority 1 is deployed and production-verified; Priorities 2–5 are locally implemented but not deployed. Priority 5's clean-database integration gate and complete requested local Audit Log browser verification passed; deployment and production verification remain separate gates. Priority 6 remains open. Priority 4 and Priority 5 validation ran under the repository's required Node 22.x runtime.

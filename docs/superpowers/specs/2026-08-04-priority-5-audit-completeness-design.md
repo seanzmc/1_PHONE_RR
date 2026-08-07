@@ -5,7 +5,8 @@
 it. The Audit Log web slice was implemented locally on August 6, 2026 with focused tests, type
 checking, lint, and a production build passing. The authenticated local Manager Audit Log flow
 passed at desktop and true 390×844 mobile viewports, and the clean-database final integration gate
-passed under Node 22.22.3. Only the explicitly unrun browser cases remain open locally.
+passed under Node 22.22.3. All requested local browser verification is complete; deployment and
+production verification remain separate gates.
 
 ## Decision
 
@@ -69,8 +70,6 @@ column, metric, or reconciliation rule.
 
 ### Genuinely open
 
-- Admin/other-role browser coverage, pagination, a combined no-results set, and load-failure/Retry
-  have not been run. The Manager fixture had only seven events, so it could not exercise paging.
 - No lead-level sold-status action exists. CRM-imported `rep_daily_activity.sold` is an aggregate
   and cannot yet be reconciled to individual leads.
 
@@ -417,9 +416,34 @@ implementation tasks:
   navigation but did not affect Audit Log traffic or rendering.
 - Local API and Vite processes were stopped and the temporary Manager session was removed after the
   pass. The mobile screenshot is `output/audit-log-verification/manager-mobile-390.png`.
-- This fixture contained only seven events, so pagination was not run. Other roles/pages/mutations,
-  a combined no-results set, and load-failure/Retry were also not run. This local proof is not
-  deployment or production verification.
+- This initial fixture contained only seven events, so the pagination and remaining edge cases were
+  retained for the separate targeted pass below. This local proof is not deployment or production
+  verification.
+
+### Recorded remaining browser verification
+
+- A subsequent local pass against `phoneup_browser_test` completed every requested uncovered case.
+  It added 55 temporary pagination audit events and removed all of them afterward, returning the
+  fixture to its original seven audit events.
+- A combined action-plus-actor filter returned zero rows and displayed **No audit events match these
+  filters.**
+- Pagination retained the committed filters: Page 1 displayed 50 filtered events with Previous
+  disabled and Next enabled; Page 2 displayed the remaining five events with Previous enabled and
+  Next disabled.
+- A simulated `audit.list` network failure preserved the last successful rows, exposed a
+  keyboard-operable Retry control, and Retry cleared the alert and restored 50 events.
+- A real Admin could access Audit Log. Admin View-as BDC showed the read-only banner and removed
+  Assign Lead, Management, and Audit Log controls.
+- Enter activated Apply, Next, and Retry. The Audit Log heading received programmatic focus with
+  `tabindex="-1"`. Pending requests announced **Updating audit log…** through `role="status"`
+  with `aria-live="polite"`; Apply and pagination controls disabled while pending and prior rows
+  remained visible; load failure used `role="alert"`.
+- New artifacts are `output/audit-log-verification/pagination-page-1.png`,
+  `pagination-page-2.png`, `combined-no-results.png`, `load-failure-retry.png`, and
+  `admin-view-as-bdc.png`. API and Vite were stopped after the pass; ports 3000 and 5173 had no
+  listeners. No product code changed. Previously passing Manager desktop/mobile, individual filter,
+  Clear, and Technical Details cases, plus BDC/Rep API denial tests, were retained rather than
+  repeated. This is local evidence, not deployment or production verification.
 
 ### Recorded clean-database final integration gate
 
@@ -438,18 +462,14 @@ implementation tasks:
 - The disposable guarded databases were removed after validation. This remains local integration
   evidence, not deployment or production verification.
 
-### Remaining browser verification
+### Local verification completion
 
 - Do not rerun the completed backend-only matrix before web implementation unless a backend path
   changes. The final serial workspace gate and affected package checks are complete.
-- The Manager desktop/mobile pass above covers navigation, action filtering, Clear, Technical
-  details, labeled controls, and narrow-layout containment. Do not repeat those successful cases
-  without new evidence that invalidates them.
-- Complete only the uncovered browser cases: a combined no-results set, pagination with filters
-  retained using a fixture with more than one page, load failure/Retry, an Admin permission smoke
-  test, and any keyboard/status-announcement checks not established by the recorded pass.
-- API permission tests carry BDC and Rep denial coverage. Recheck only that read-only Admin View-as
-  does not gain mutation behavior.
+- The recorded Manager desktop/mobile and targeted edge-case passes cover the requested Audit Log
+  browser matrix. Do not repeat successful cases without new evidence that invalidates them.
+- Existing API permission tests retain BDC and Rep denial coverage; the targeted browser pass also
+  confirmed that read-only Admin View-as BDC cannot reach Audit Log or management controls.
 
 Deployment and production verification remain separate gates and must not be inferred from local
 tests or browser proof.
