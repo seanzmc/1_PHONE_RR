@@ -257,28 +257,28 @@ Stop when the focused API test passes and record:
 
 **Required behavior**
 
-- [ ] Extend the client item type to consume `entityDisplay` and `referenceLabels` from Task 4.
-- [ ] Replace normal-card `{entityType} · {entityId}` with `{entityDisplay.kind} · {entityDisplay.label}` and allow long labels to wrap.
-- [ ] Keep actor, timestamp, action label/code, event order, filters, pagination, stale-data handling, and responsive card structure unchanged.
-- [ ] Make change-summary formatting field-aware:
+- [x] Extend the client item type to consume `entityDisplay` and `referenceLabels` from Task 4.
+- [x] Replace normal-card `{entityType} · {entityId}` with `{entityDisplay.kind} · {entityDisplay.label}` and allow long labels to wrap.
+- [x] Keep actor, timestamp, action label/code, event order, filters, pagination, stale-data handling, and responsive card structure unchanged.
+- [x] Make change-summary formatting field-aware:
   - `assignedRepId` → **Assigned rep**
   - `skippedRepId` → **Skipped rep**
   - `repId` → **Rep**
-- [ ] Resolve UUID-shaped values only through `referenceLabels`; never guess a record type from a UUID.
-- [ ] Keep null/missing values as **Not set**.
-- [ ] Display **Record unavailable** for an unresolved UUID in a normal summary, never the UUID.
-- [ ] Keep normal handling for non-UUID values and the existing three-change summary limit.
-- [ ] Expand **Technical details** to show exact raw `entityType` and `entityId` alongside the existing raw Before/After blocks.
-- [ ] Do not alter or sanitize the raw Before/After JSON shown in Technical details.
+- [x] Resolve UUID-shaped values only through `referenceLabels`; never guess a record type from a UUID.
+- [x] Keep null/missing values as **Not set**.
+- [x] Display **Record unavailable** for an unresolved UUID in a normal summary, never the UUID.
+- [x] Keep normal handling for non-UUID values and the existing three-change summary limit.
+- [x] Expand **Technical details** to show exact raw `entityType` and `entityId` alongside the existing raw Before/After blocks.
+- [x] Do not alter or sanitize the raw Before/After JSON shown in Technical details.
 
 **Focused proof**
 
-- [ ] Render account, lead, rep, import, and policy labels without front-facing UUIDs.
-- [ ] Assert field-specific labels and resolved before/after rep values.
-- [ ] Assert null remains **Not set** and unresolved UUIDs become **Record unavailable**.
-- [ ] Assert Technical details contain exact raw type, ID, Before, and After data.
-- [ ] Retain existing action, filter, pagination, empty-state, and responsive-diff tests.
-- [ ] Run:
+- [x] Render account, lead, rep, import, and policy labels without front-facing UUIDs.
+- [x] Assert field-specific labels and resolved before/after rep values.
+- [x] Assert null remains **Not set** and unresolved UUIDs become **Record unavailable**.
+- [x] Assert Technical details contain exact raw type, ID, Before, and After data.
+- [x] Retain existing action, filter, pagination, empty-state, and responsive-diff tests.
+- [x] Run:
   - `pnpm --filter @phoneup/web exec vitest run src/pages/AuditLog.test.ts`
 
 ### Checkpoint 5
@@ -288,6 +288,8 @@ Stop when the focused web test passes and confirm:
 - No normal event card exposes a resolvable or unresolved UUID.
 - Exact IDs remain available under Technical details.
 - Canonical UUID filter input remains unchanged.
+
+**Checkpoint recorded 2026-08-07:** Task 5 implementation is complete locally. The focused command passed with 1 test file and 13 tests. `pnpm --filter @phoneup/web typecheck` passed, and `git diff --check` passed. Normal event cards consume the Task 4 display read model and expose neither resolved nor unresolved UUIDs; exact canonical entity IDs and unchanged raw Before/After payloads remain available under **Technical details**. Existing canonical UUID filter input, event ordering, pagination, stale-data handling, and responsive card structure remain unchanged. Task 6 integration, Task 7 desktop/mobile browser verification, deployment, and production verification remain unclaimed.
 
 ---
 

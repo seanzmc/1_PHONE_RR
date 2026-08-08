@@ -46,15 +46,26 @@ export function formatAuditAction(action: string): string {
 }
 
 function labelForField(field: string): string {
+  const referenceFieldLabels: Record<string, string> = {
+    assignedRepId: 'Assigned rep',
+    skippedRepId: 'Skipped rep',
+    repId: 'Rep',
+  }
+  if (referenceFieldLabels[field]) return referenceFieldLabels[field]
   return field
     .replace(/_/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/^./, (letter) => letter.toUpperCase())
 }
 
-function displayAuditValue(value: unknown): string {
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function displayAuditValue(value: unknown, referenceLabels: Record<string, string>): string {
   if (value == null || value === '') return 'Not set'
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (typeof value === 'string' && UUID_PATTERN.test(value)) {
+    return referenceLabels[value] ?? 'Record unavailable'
+  }
   if (typeof value === 'string' && /^[A-Z][A-Z0-9_]*$/.test(value)) {
     return value.toLowerCase().replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase())
   }
@@ -67,7 +78,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
-export function summarizeAuditChanges(before: unknown, after: unknown): string[] {
+export function summarizeAuditChanges(
+  before: unknown,
+  after: unknown,
+  referenceLabels: Record<string, string> = {},
+): string[] {
   if (before == null && isRecord(after)) {
     const fields = Object.keys(after)
     return [`Created with ${fields.length} recorded field${fields.length === 1 ? '' : 's'}`]
@@ -79,15 +94,16 @@ export function summarizeAuditChanges(before: unknown, after: unknown): string[]
     .filter((field) => JSON.stringify(before[field]) !== JSON.stringify(after[field]))
     .map(
       (field) =>
-        `${labelForField(field)}: ${displayAuditValue(before[field])} → ${displayAuditValue(after[field])}`,
+        `${labelForField(field)}: ${displayAuditValue(before[field], referenceLabels)} → ${displayAuditValue(after[field], referenceLabels)}`,
     )
   if (changes.length <= 3) return changes.length ? changes : ['No field-level change recorded']
   return [...changes.slice(0, 3), `+${changes.length - 3} more changes`]
 }
 
-type AuditItem = {
+export type AuditItem = {
   id: string; createdAt: string; actor: { displayName: string | null; email: string } | null
   action: string; entityType: string; entityId: string; before: unknown; after: unknown
+  entityDisplay: { kind: string; label: string }; referenceLabels: Record<string, string>
 }
 type AuditResponse = { items: AuditItem[]; hasMore: boolean }
 type FilterOption = { id: string; label: string }
@@ -214,6 +230,36 @@ export function AuditFilterRegion({
   </section>
 }
 
+export function AuditEventCard({ item }: { item: AuditItem }) {
+  const actorName = item.actor?.displayName ?? item.actor?.email ?? 'Unknown historic actor'
+
+  return <article className="ui-audit-entry">
+    <header className="ui-audit-head">
+      <div className="ui-audit-action">
+        <strong>{formatAuditAction(item.action)}</strong>
+        <span className="ui-card-kicker">{item.action}</span>
+      </div>
+      <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>
+    </header>
+    <div className="ui-audit-meta">
+      <span><strong>{actorName}</strong>{item.actor?.displayName ? ` · ${item.actor.email}` : ''}</span>
+      <span>{item.entityDisplay.kind} · {item.entityDisplay.label}</span>
+    </div>
+    <ul className="ui-audit-summary">
+      {summarizeAuditChanges(item.before, item.after, item.referenceLabels).map((change) => <li key={change}>{change}</li>)}
+    </ul>
+    <details className="ui-audit-details">
+      <summary>Technical details</summary>
+      <p><strong>Entity type</strong> <code>{item.entityType}</code></p>
+      <p><strong>Entity ID</strong> <code>{item.entityId}</code></p>
+      <div className="ui-audit-diff">
+        <section><strong>Before</strong><pre>{formatAuditValue(item.before, item.after, 'before')}</pre></section>
+        <section><strong>After</strong><pre>{formatAuditValue(item.after, item.before, 'after')}</pre></section>
+      </div>
+    </details>
+  </article>
+}
+
 export function AuditLog() {
   const [data, setData] = useState<AuditResponse | null>(null)
   const [error, setError] = useState(false)
@@ -290,32 +336,7 @@ export function AuditLog() {
         {filtersActive && <button type="button" className="ui-linkbtn" onClick={clear} disabled={busy}>Clear filters</button>}
       </div>
       {data.items.length === 0 ? <p className="ui-muted">{filtersActive ? 'No audit events match these filters.' : 'No audit events yet.'}</p> : <div className="ui-audit-list">
-        {data.items.map((item) => {
-          const actorName = item.actor?.displayName ?? item.actor?.email ?? 'Unknown historic actor'
-          return <article className="ui-audit-entry" key={item.id}>
-            <header className="ui-audit-head">
-              <div className="ui-audit-action">
-                <strong>{formatAuditAction(item.action)}</strong>
-                <span className="ui-card-kicker">{item.action}</span>
-              </div>
-              <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>
-            </header>
-            <div className="ui-audit-meta">
-              <span><strong>{actorName}</strong>{item.actor?.displayName ? ` · ${item.actor.email}` : ''}</span>
-              <span>{labelForField(item.entityType)} · <code>{item.entityId}</code></span>
-            </div>
-            <ul className="ui-audit-summary">
-              {summarizeAuditChanges(item.before, item.after).map((change) => <li key={change}>{change}</li>)}
-            </ul>
-            <details className="ui-audit-details">
-              <summary>Technical details</summary>
-              <div className="ui-audit-diff">
-                <section><strong>Before</strong><pre>{formatAuditValue(item.before, item.after, 'before')}</pre></section>
-                <section><strong>After</strong><pre>{formatAuditValue(item.after, item.before, 'after')}</pre></section>
-              </div>
-            </details>
-          </article>
-        })}
+        {data.items.map((item) => <AuditEventCard item={item} key={item.id} />)}
       </div>}
       {(offset > 0 || data.hasMore) && <div className="ui-toolbar ui-section-gap"><Button disabled={busy || offset === 0} onClick={() => page(Math.max(0, offset - 50))}>Previous</Button><Button disabled={busy || !data.hasMore} onClick={() => page(offset + 50)}>Next</Button></div>}
     </>}
