@@ -1,7 +1,7 @@
 # Priority 6 Remaining Page Polish — Execution Tasks and Checkpoints
 
 **Date:** 2026-08-07  
-**Status:** Tasks 1–4 are implemented and focused-test verified locally. Tasks 5–8, deployment, and production verification remain open.
+**Status:** Tasks 1–5 are implemented and focused-test verified locally. Tasks 6–8, deployment, and production verification remain open.
 **Source of truth:** `docs/superpowers/specs/2026-08-07-priority-6-remaining-page-polish-design.md`
 
 ## Goal
@@ -83,7 +83,7 @@ Stop when the focused tests pass and confirm:
 - Only effective roles with `rep.view` receive the callback.
 - No server permission or navigation model changed.
 
-**Checkpoint recorded 2026-08-07:** Task 1 implementation is complete locally. Under Node 22.23.2 and pnpm 11.17.0, the focused command passed with 2 test files and 20 tests. Dashboard values and ordering remain server-owned and unchanged; only effective roles with `rep.view` receive `onOpenRep`; and the existing in-memory `openRep` path, permissions, and navigation model remain unchanged. Task 7 desktop/mobile browser verification, the Task 6 integration gate, deployment, and production verification remain unclaimed.
+**Checkpoint recorded 2026-08-07, reverified with Tasks 1–5:** Task 1 implementation is complete locally. Under Node 22.22.3 and pnpm 11.17.0, the consolidated focused web command passed with 6 test files and 57 tests, including `Dashboard.test.ts` and `App.test.ts` (20 Task 1 tests). Dashboard values and ordering remain server-owned and unchanged; only effective roles with `rep.view` receive `onOpenRep`; and the existing in-memory `openRep` path, permissions, and navigation model remain unchanged. Task 7 desktop/mobile browser verification, the Task 6 integration gate, deployment, and production verification remain unclaimed.
 
 ---
 
