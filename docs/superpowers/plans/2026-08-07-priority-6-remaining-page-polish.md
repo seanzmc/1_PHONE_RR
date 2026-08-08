@@ -1,7 +1,7 @@
 # Priority 6 Remaining Page Polish — Execution Tasks and Checkpoints
 
 **Date:** 2026-08-07  
-**Status:** Tasks 1–5 are implemented and focused-test verified locally. Tasks 6–8, deployment, and production verification remain open.
+**Status:** Tasks 1–7 are implemented and locally verified, including the authenticated browser gate. Task 8, deployment, and production verification remain open.
 **Source of truth:** `docs/superpowers/specs/2026-08-07-priority-6-remaining-page-polish-design.md`
 
 ## Goal
@@ -301,23 +301,25 @@ Run this only after Tasks 1–5 pass independently.
 
 **Preflight**
 
-- [ ] Confirm Node is 22.x and pnpm is 11.17.0.
-- [ ] Recheck `git status --short` and preserve all pre-existing user changes.
-- [ ] Confirm the API test database is guarded and its name contains `test` before running destructive API tests.
+- [x] Confirm Node is 22.x and pnpm is 11.17.0.
+- [x] Recheck `git status --short` and preserve all pre-existing user changes.
+- [x] Confirm the API test database is guarded and its name contains `test` before running destructive API tests.
 
 **Validation**
 
-- [ ] Run the focused API Audit router test once against the guarded database if it has not already passed on the final code.
-- [ ] Run the complete web suite once: `pnpm --filter @phoneup/web test`.
-- [ ] Run workspace typecheck once: `pnpm typecheck`.
-- [ ] Run web lint once: `pnpm --filter @phoneup/web lint`.
-- [ ] Run the production build once: `pnpm build`.
-- [ ] Run `git diff --check`.
+- [x] Run the focused API Audit router test once against the guarded database if it has not already passed on the final code.
+- [x] Run the complete web suite once: `pnpm --filter @phoneup/web test`.
+- [x] Run workspace typecheck once: `pnpm typecheck`.
+- [x] Run web lint once: `pnpm --filter @phoneup/web lint`.
+- [x] Run the production build once: `pnpm build`.
+- [x] Run `git diff --check`.
 - [ ] Run the broader serial workspace suite only if final shared typing or the Audit read-model integration crosses beyond the focused proof: `pnpm -r --workspace-concurrency=1 test -- --no-file-parallelism`.
 
 ### Checkpoint 6
 
 Stop and report exact command results. Do not proceed to browser or deployment verification if any required gate fails. After one review/fix round, rerun only checks invalidated by the fix.
+
+**Checkpoint recorded 2026-08-07:** Task 6 passed under Node 22.22.3 and pnpm 11.17.0. With `TEST_DATABASE_URL` unset, the API Vitest configuration used its guarded local fallback database `phoneup_test`; the serial focused Audit router command passed with 1 test file and 17 tests. The complete web suite passed with 26 test files and 190 tests, workspace typecheck passed for all projects, web lint completed with 59 warnings and 0 errors, the production build passed, and `git diff --check` passed. The broader serial workspace suite was not required because final shared typing and Audit read-model integration did not cross beyond the focused API proof, complete web suite, and workspace typecheck. The pre-existing plan-file changes were preserved, and Task 6 introduced no implementation changes. Task 7 authenticated desktop/mobile browser verification, Task 8 documentation handoff, deployment, and production verification remain unclaimed.
 
 ---
 
@@ -327,18 +329,42 @@ Stop and report exact command results. Do not proceed to browser or deployment v
 
 Run only after Checkpoint 6 passes. Use a local Manager fixture at 1024×768 and 390×844, plus one BDC or REP Dashboard permission check. Retain existing evidence for unchanged flows.
 
-- [ ] Team Dashboard: verify all hints remain visible and legible, cards remain responsive, Manager rep names clearly open the intended Rep Detail, return behavior works, and page-heading focus is retained.
-- [ ] BDC/REP Team Dashboard: verify names are plain text and no drill-down instruction, arrow, or interactive control appears.
-- [ ] Rep Detail: verify both empty states, note placeholder, successful copy/pending/reset behavior, and a simulated clipboard rejection with manual-copy guidance.
-- [ ] Import Activity: exercise representative nonzero missing, unmatched, and preserved summary rows; commit a fixture deactivation; verify **Open Staff List** reaches Staff List without changing status during navigation.
-- [ ] Audit Log: inspect representative account, lead Skip/Reassign/Void, rep-status, metric-correction, activity-import, and policy events. Verify normal cards contain readable labels and no UUIDs.
-- [ ] Audit Log edge cases: verify duplicate rep names remain distinguishable and an unresolved record reads **Record unavailable**.
-- [ ] Technical details: verify exact raw entity type/ID and unchanged Before/After data remain available.
-- [ ] Mobile: verify long name/email/phone labels wrap at 390 pixels without horizontal overflow.
+- [x] Team Dashboard: verify all hints remain visible and legible, cards remain responsive, Manager rep names clearly open the intended Rep Detail, return behavior works, and page-heading focus is retained.
+- [x] BDC/REP Team Dashboard: verify names are plain text and no drill-down instruction, arrow, or interactive control appears.
+- [x] Rep Detail: verify both empty states, note placeholder, successful copy/pending/reset behavior, and a simulated clipboard rejection with manual-copy guidance.
+- [x] Import Activity: exercise representative nonzero missing, unmatched, and preserved summary rows; commit a fixture deactivation; verify **Open Staff List** reaches Staff List without changing status during navigation.
+- [x] Audit Log: inspect representative account, lead Skip/Reassign/Void, rep-status, metric-correction, activity-import, and policy events. Verify normal cards contain readable labels and no UUIDs.
+- [x] Audit Log edge cases: verify duplicate rep names remain distinguishable and an unresolved record reads **Record unavailable**.
+- [x] Technical details: verify exact raw entity type/ID and unchanged Before/After data remain available.
+- [x] Mobile: verify long name/email/phone labels wrap at 390 pixels without horizontal overflow.
 
 ### Checkpoint 7
 
 Record viewport, role, fixture, scenarios passed, artifacts retained, and any untested case. Do not infer deployment or production behavior from this evidence.
+
+**Checkpoint recorded 2026-08-08:** the authenticated local browser gate passed.
+
+**Environment.** Node 22.22.3 and pnpm 11.17.0. The API (`http://127.0.0.1:3000`) and Vite (`http://localhost:5173`, same-origin `/trpc` proxy) ran against the guarded local fixture database `phoneup_browser_test`; pending migrations were applied to it first. Viewports: 1024×768 and 390×844. Roles: MANAGER `Dallas Godwin` for every manager flow, plus a separate real BDC login as `Jessica Davis` for the permission check.
+
+**Fixture preparation (fixture database only, no application code changed).** Account display names were backfilled from the roster TSV; local passwords were issued for the two fixture logins; two extra August leads (one `ASSIGNED` with a note, one `VOID`) and month counters for five reps were added; one rep was given a duplicate display name; a `MANUAL` activity row was saved for 2026-08-07; and ten representative audit rows were inserted covering account, lead assign/skip/void/reassign, rep status, metric correction, policy, an entity ID with no surviving record, and a rep reference with no surviving record. The CRM export fixture was the repository's `Standard-Daily Activity` sample re-dated to 2026-08-07.
+
+**Team Dashboard (Manager).** All seven metric hints rendered as visible card text at both viewports. The instruction **Select a rep name to view their leads, activity, and status for the month.** appeared, each rep name was a native button with a trailing arrow and a target-specific accessible name (for example **View Aaron Pursley's rep details**), and selecting one opened that rep's detail page with the `h2` heading focused. **← Back** returned to Team Dashboard with heading focus retained.
+
+**Team Dashboard (BDC).** With a real BDC session the rep list rendered plain names only — no instruction line, no arrow, and zero interactive controls in the list.
+
+**Rep Detail.** A rep with no leads and no activity showed both exact empty states. Writable note fields carried the placeholder **Note for this lead…** with an empty value, so the placeholder never became a draft. The Chrome instance denies unattended clipboard writes (`NotAllowedError`), so the copy state machine was exercised with an instrumented `navigator.clipboard.writeText` that let each attempt be resolved or rejected on command: the button showed **Copying…** while disabled, then **Copied** with the polite **Phone number copied.** announcement only after the promise resolved, then returned to **Copy** after about two seconds; a rejected attempt returned to **Copy**, never showed **Copied**, and displayed **Couldn't copy the phone number. Select the number and copy it manually.**, which stayed visible past the success timeout and cleared only on the next successful attempt. The value passed to the clipboard was the digits-only `8635550142`. The stub was removed afterward.
+
+**Import Activity.** Processing the fixture export produced nonzero rows for all three renamed summaries: **Reps missing from report** 17 with badge **No numbers found**, **Names not matched to staff** 1 with badge **Not imported** listing `Jared Lucas`, and **Hand-entered corrections kept** 1 listing `Shannon Smith`, whose manual 21 calls were preserved and kept her out of the ineligible list. Missing, unmatched, not-evaluated and corrected rows stayed separate. Committing **Yes — log numbers & deactivate 22** rendered **22 reps deactivated**, the suspension line **Suspensions run through Saturday. To reactivate someone early, open the Staff List.** and a real **Open Staff List** button beside **Process another report**. `rep_daily_status` for 2026-08-08 held 22 `INELIGIBLE`/`SYSTEM` rows both before and after using that button, and the button only moved the in-memory page to Staff List with heading focus retained. A second run committed as **No — log numbers only**, which showed **Activity numbers logged** with **Process another report** alone — no suspension copy and no Staff List action.
+
+**Audit Log.** Twenty-one events rendered newest-first at 1024×768. Normal cards showed `Account · Miles Price · mprice@stingraychevrolet.com`, `Lead · Marcus Webb · (863) 555-0188`, `Rep · Shannon Smith · ssmith@…`, `Rep activity · Jim Lewis · jlewis@…`, `Activity import · 2026-07-28` (the imported business date, not the anchor rep), and `Activity policy · Call requirement settings`. Change summaries used the field-aware labels **Assigned rep**, **Skipped rep** and **Rep**, kept **Not set** for nulls, and rendered **Record unavailable** for both the missing account target and the unresolvable rep reference. A scan of all rendered normal cards, with Technical details excluded, matched zero UUIDs. Expanding **Technical details** showed the exact raw entity type `lead`, the exact entity ID, and Before/After JSON identical to the stored payload.
+
+**Duplicate names.** Two reps sharing one display name stayed distinguishable by linked account email in both the card identity line and the change summary — verified first as two `Ray Hillman` rows and, after the second rep was renamed for import matching, as `Aaron Pursley · apursley@stingraychevrolet.com` against `Aaron Pursley · act-1785392789924-jpn7q4@dealership.test`.
+
+**Mobile.** At a true 390×844 viewport, `document.documentElement.scrollWidth` measured 390 on Team Dashboard, Rep Detail and Audit Log. Long customer names, emails and phones wrapped inside audit cards with no card overflowing its own box. The Rep Detail leads table is wider than the viewport but scrolls inside its existing `.ui-table-scroll` container, so the page itself never scrolls horizontally.
+
+**Requests and console.** Every `/trpc` call in the manager pass returned 200. The only errors were four 403s on `audit.list` and `audit.filterOptions` issued by the still-mounted Audit Log page in the instant after signing in as BDC — the server correctly refusing `audit.view` to a BDC session. No other console errors or uncaught exceptions appeared.
+
+**Artifacts and gaps.** Screenshots were reviewed in-session and not written to disk, so no image artifacts are retained for this pass; the evidence above is the record. Not covered here and not required by this task: a REP-role dashboard (the BDC check was used instead), a real OS clipboard write, and any zero-count dash in the import summary, which stayed proven at the unit level from Task 3. Local API and Vite processes were stopped and both fixture logins were signed out afterward. This is local evidence only — deployment and production verification remain explicitly unclaimed.
 
 ---
 
