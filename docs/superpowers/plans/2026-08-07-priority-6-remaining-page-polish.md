@@ -1,7 +1,7 @@
 # Priority 6 Remaining Page Polish — Execution Tasks and Checkpoints
 
 **Date:** 2026-08-07  
-**Status:** Tasks 1–7 are implemented and locally verified, including the authenticated browser gate. Task 8, deployment, and production verification remain open.
+**Status:** Locally complete. Tasks 1–8 are implemented and verified, including the authenticated browser gate. Deployment and production verification remain open.
 **Source of truth:** `docs/superpowers/specs/2026-08-07-priority-6-remaining-page-polish-design.md`
 
 ## Goal
@@ -374,11 +374,11 @@ Record viewport, role, fixture, scenarios passed, artifacts retained, and any un
 
 Only after implementation evidence exists:
 
-- [ ] Mark completed checkboxes in this plan without claiming unrun validation.
-- [ ] Update `docs/Revised consolidated action list.md` and `docs/open-ui-7-31.md` only for Priority 6 items proven complete.
-- [ ] Record exact test counts, runtime versions, lint warnings if any, browser scope, and explicit deployment/production status.
-- [ ] Inspect `git diff --stat`, `git diff`, and `git status --short` to confirm only intended implementation, tests, and documentation changed.
-- [ ] Leave unrelated pre-existing modified/untracked files untouched.
+- [x] Mark completed checkboxes in this plan without claiming unrun validation.
+- [x] Update `docs/Revised consolidated action list.md` and `docs/open-ui-7-31.md` only for Priority 6 items proven complete.
+- [x] Record exact test counts, runtime versions, lint warnings if any, browser scope, and explicit deployment/production status.
+- [x] Inspect `git diff --stat`, `git diff`, and `git status --short` to confirm only intended implementation, tests, and documentation changed.
+- [x] Leave unrelated pre-existing modified/untracked files untouched.
 
 ### Final completion checkpoint
 
@@ -392,3 +392,7 @@ Priority 6 is locally complete only when:
 - Focused tests, the complete web suite, workspace typecheck, web lint, production build, and diff check pass under Node 22.x.
 - Required authenticated local browser checks pass at desktop and mobile sizes.
 - Deployment and production verification remain explicitly unclaimed until separately performed.
+
+**Final completion checkpoint recorded 2026-08-08:** Priority 6 is locally complete under Node 22.22.3 and pnpm 11.17.0. The focused Audit router proof passed 1 file and 17 tests; the complete web suite passed 26 files and 190 tests; workspace typecheck passed for all projects; web lint completed with 59 warnings and 0 errors; the production build and `git diff --check` passed. The broader serial workspace suite was not required because the final shared typing and Audit read-model integration stayed within the focused API proof, complete web suite, and workspace typecheck.
+
+The authenticated local browser checkpoint passed against guarded fixture database `phoneup_browser_test` with Manager and BDC sessions at 1024×768 and 390×844. It covered the Dashboard definitions and permission-aligned drill-down, Rep Detail empty/note/copy states (using an instrumented clipboard because unattended Chrome denied the real OS write), Import Activity summaries and Staff List navigation after a real fixture deactivation, Audit Log readable identities/UUID exclusion/Technical details/duplicate and unavailable records, heading focus, responsive wrapping, and page-level overflow. All manager-pass tRPC requests returned 200; the only console errors were expected 403 responses from a still-mounted Audit Log immediately after switching to a BDC session. Screenshots were reviewed in-session but not retained. A REP-role check, real OS clipboard write, and browser-level zero-count import dash were not run; the BDC permission case and unit-level zero-count proof satisfied this task's stated scope. No deployment or production verification was performed or inferred.

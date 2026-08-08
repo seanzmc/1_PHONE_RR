@@ -98,12 +98,14 @@ York business date rather than the UTC calendar date, keeping seeded shifts/stat
 API eligibility after midnight UTC. The disposable test databases were removed afterward. This work
 has not been deployed or production-verified.
 
-## Priority 6 — Remaining page polish
+## Priority 6 — Remaining page polish — Local verification complete
 
-Clarify Team Dashboard metric definitions and make rep-name drill-down more obvious.
-Improve Rep Detail empty-state copy, note placeholder, and clipboard success/failure handling.
-Rewrite cryptic Import Activity labels and link successful deactivations to Staff List.
-Replace front-facing Audit Log UUIDs with legible account, rep, lead, import, and policy labels.
+- [x] Clarify every Team Dashboard metric definition and make rep-name drill-down obvious only for effective roles with `rep.view`.
+- [x] Improve Rep Detail empty-state copy and note placeholder, and make clipboard feedback truthful across pending, success, failure, timeout, cleanup, and stale-attempt states.
+- [x] Rewrite cryptic Import Activity labels and link only successful nonzero deactivations to Staff List.
+- [x] Replace front-facing Audit Log UUIDs with legible account, rep, lead, import, and policy labels while preserving exact IDs and raw payloads in Technical details.
+
+Completed locally on August 8, 2026 under Node 22.22.3 and pnpm 11.17.0. The focused Audit router proof passed 17/17 tests, the complete web suite passed 190/190 tests across 26 files, workspace type checking passed, web lint completed with 59 warnings and 0 errors, and the production build and `git diff --check` succeeded. Authenticated local browser verification used Manager and BDC sessions against `phoneup_browser_test` at 1024×768 and 390×844. It covered Dashboard definitions and permission-aligned drill-down; Rep Detail empty, note, and instrumented clipboard states; Import Activity's nonzero missing, unmatched, corrected, and deactivation flows; Audit Log readable identities, UUID exclusion, exact Technical details, duplicate names, unavailable records, wrapping, focus, and page overflow. A REP-role check, a real OS clipboard write, and a browser zero-count import dash were not run; the BDC permission case and unit proof covered the required alternatives. No deployment or production verification was performed.
 
 ## Keep separate from this UI list
 
@@ -111,4 +113,4 @@ These require operational verification or a product decision:
 Confirm the display-name backfill actually ran in production.
 Verify whether the CRM Sold column is daily or cumulative using a real import.
 Keep “Mark a lead sold” deferred until CRM-total versus lead-attribution semantics are decided.
-Priorities 1–5 are implemented. Priority 1 is deployed and production-verified; Priorities 2–5 are locally implemented but not deployed. Priority 5's clean-database integration gate and complete requested local Audit Log browser verification passed; deployment and production verification remain separate gates. Priority 6 remains open. Priority 4 and Priority 5 validation ran under the repository's required Node 22.x runtime.
+Priorities 1–6 are implemented. Priority 1 is deployed and production-verified; Priorities 2–6 are locally implemented but not deployed. Priority 5's clean-database integration gate and requested Audit Log browser verification passed, and Priority 6's complete local integration and authenticated desktop/mobile browser gates passed. Deployment and production verification remain separate gates. Priorities 4–6 validation ran under the repository's required Node 22.x runtime.

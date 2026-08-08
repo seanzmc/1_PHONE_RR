@@ -1,4 +1,4 @@
-No core rotation-correctness work remains open. Sections A–K of `next-design-pass.md` are implemented or deliberately superseded. The genuinely open work is UI refinement, one deferred feature, and two operational verifications.
+No core rotation-correctness work remains open. Sections A–K of `next-design-pass.md` are implemented or deliberately superseded. The genuinely open work is the remaining UI refinement below, one deferred feature, and two operational verifications.
 
 ## Open now
 
@@ -10,13 +10,17 @@ Highest-value UI work:
 Remaining page-level polish:
 
 - Staff List: bulk actions remain undiscoverable until a checkbox is selected; recurring-day-off guidance is minimal. [StaffList.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/StaffList.tsx:360)
-- Import Activity: “0 unless manually corrected,” “Unmatched names,” and “Manual rows preserved” remain cryptic; successful deactivation provides no Staff List next step. [ActivityImport.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/ActivityImport.tsx:337)
 - Users: rename “Reset password”/“Set manually,” improve the initial-password hint, and replace “Set name” with non-affordance copy. Sort state and repeated row controls also need specific accessible names. [UserManagement.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/UserManagement.tsx:198)
-- Team Dashboard: metric definitions and the rep-name drill-in hint remain incomplete. [Dashboard.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/Dashboard.tsx:50)
-- Rep Detail: improve empty-state copy and note placeholder; reset “Copied”; only report success after the clipboard write resolves and show failure otherwise. [RepDetail.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/RepDetail.tsx:165)
 - Change Password: voluntary changes still navigate away without confirmation; strength guidance remains optional polish. [ChangePassword.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/ChangePassword.tsx:24)
-- Audit Log: normal event cards expose raw primary-entity and rep-reference UUIDs even when account,
-  rep, and lead records have legible identifiers. [AuditLog.tsx](/Users/seandm/Projects/1_PHONE_RR/apps/web/src/pages/AuditLog.tsx:303)
+
+## Completed locally — Priority 6
+
+- Team Dashboard now shows exact metric definitions and exposes rep drill-down only to effective roles with `rep.view`.
+- Rep Detail has actionable empty states, a note placeholder, and non-optimistic clipboard pending, success, failure, timeout, cleanup, and stale-attempt handling.
+- Import Activity uses manager-readable missing, unmatched, and corrected summaries and offers Staff List only after a committed nonzero deactivation.
+- Audit Log normal cards use readable current-record identities and resolved rep references without UUID fallbacks; Technical details retain exact canonical IDs and raw payloads.
+
+August 8 Priority 6 validation ran under Node 22.22.3 and pnpm 11.17.0. The focused Audit router proof passed `17/17`, the complete web suite passed `190/190` across 26 files, workspace typecheck passed, web lint completed with 59 warnings and 0 errors, and the production build and diff check succeeded. Authenticated local Manager and BDC browser proof at 1024×768 and 390×844 covered the Dashboard, Rep Detail, Import Activity, and Audit Log flows, permissions, focus, readable identities, technical evidence, and responsive containment. Explicit gaps were a REP-role pass, real OS clipboard write, and browser-level zero-count import dash; the BDC permission alternative and unit-level dash proof passed. No deployment or production verification was performed.
 
 ## Open from `next-design-pass.md`
 
